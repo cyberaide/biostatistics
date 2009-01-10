@@ -13,7 +13,8 @@ if($fn =~ m/fcs$/)
 {
 	printf "FCS file must be converted";
 	$newfn = $fn;
-	$newfn =~ s/fcs/txt/;
+	#$newfn =~ s/fcs/txt/;
+	$newfn = $newfn . ".dat";
 	$rcommand = "cd $ARGV[13]/NVIDIA_CUDA_SDK/projects/biostatistics/R/; R --no-save < convertFCS.r $fn $newfn; cd -";
 	printf "$rcommand";
 	system $rcommand;

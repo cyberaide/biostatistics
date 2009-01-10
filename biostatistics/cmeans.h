@@ -8,13 +8,13 @@
 #define MDL_on_GPU 1
 
 // number of clusters
-#define NUM_CLUSTERS 50
+#define NUM_CLUSTERS 4
 
 // number of dimensions
-#define ALL_DIMENSIONS 21 
+#define ALL_DIMENSIONS 12 
 
 // number of elements
-#define NUM_EVENTS 100000
+#define NUM_EVENTS 630138
 
 // Parameters
 #define FUZZINESS 2
@@ -33,7 +33,7 @@ const float VOLUME_INC_PARAMS[] = {.05,0.1,0.15};
 
 // number of Threads and blocks
 #define Q_THREADS 92 // number of threads per block building Q
-#define NUM_THREADS 128  // number of threads per block
+#define NUM_THREADS 224  // number of threads per block
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
