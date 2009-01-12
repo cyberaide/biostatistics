@@ -29,7 +29,21 @@ int main( int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
-	CUT_DEVICE_INIT(argc, argv);
+	int GPUCount;
+	int device = 0;
+
+	CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
+
+	if (GPUCount > 1) {
+		device = 1;
+		CUDA_SAFE_CALL(cudaSetDevice(device));
+	}
+
+	cudaDeviceProp prop;
+	cudaGetDeviceProperties(&prop, device);
+	printf("\nUsing device - %s\n\n", prop.name);
+
+	//CUT_DEVICE_INIT(argc, argv);
 
 	const int dimSize = 3 * sizeof(int);
 	int* det = (int*)malloc(sizeof(int));
