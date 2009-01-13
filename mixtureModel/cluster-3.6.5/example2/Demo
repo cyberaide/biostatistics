@@ -1,0 +1,26 @@
+#!/bin/csh
+# This Demo show how you can estimate two (or more) Gaussian mixture models
+# from training data, and then use these to classify testing vectors.
+
+# To generate your own data using Matlab, remove the comment
+# from the following command.
+#matlab <MakeData2.m
+
+echo " "
+echo "Demo I:  Apply clust using default option which allows "
+echo "         full convariance matrices "
+echo "../clust  20 info_file params"
+echo " "
+echo " "
+../clust  20 info_file params
+
+
+echo "Example showing how mixtured model can be used to classify "
+echo "data vectors."
+echo " "
+echo "../classify  params data"
+echo " "
+echo " "
+../classify params TestingData
+
+

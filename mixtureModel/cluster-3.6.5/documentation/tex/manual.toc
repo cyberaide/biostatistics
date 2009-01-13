@@ -1,0 +1,9 @@
+\contentsline {section}{\numberline {1}Introduction}{3}
+\contentsline {section}{\numberline {2}Demo}{4}
+\contentsline {subsection}{\numberline {2.1}example1 - GMM Parameter Estimation}{4}
+\contentsline {subsection}{\numberline {2.2}example2 - ML Classification using GMM Models}{4}
+\contentsline {subsection}{\numberline {2.3}example3 - Unsupervised Clustering}{5}
+\contentsline {section}{\numberline {3}Clustering}{5}
+\contentsline {section}{\numberline {4}Program Manual Pages}{10}
+\contentsline {section}{\numberline {5}Example Parameter File}{12}
+\contentsline {section}{\numberline {A}Appendix: Parameter Estimation for Gaussian Mixture Models}{14}

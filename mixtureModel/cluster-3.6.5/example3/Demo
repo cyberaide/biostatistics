@@ -1,0 +1,31 @@
+#!/bin/csh
+# This shell creates data for the clustering program (i.mgensig)
+# It requires matlab.
+
+# To generate your own data using Matlab, remove the comment
+# from the following command.
+#matlab <mk_data.m
+
+echo " "
+echo "Apply clust using default options"
+echo "../clust  20 info_file params"
+echo " "
+../clust  20 info_file params
+
+echo " "
+echo " "
+echo " "
+echo "Separate components of GMM into individual classes"
+echo "../clust  20 info_file params_diag diag"
+echo " "
+../SplitClasses params params
+
+
+echo "Example showing how mixtured model can be used to classify "
+echo "data vectors."
+echo " "
+echo "../classify  params data"
+echo " "
+echo " "
+../classify params data
+

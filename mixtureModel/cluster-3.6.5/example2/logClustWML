@@ -1,0 +1,296 @@
+ 
+Demo I:  Apply clust using default option which allows 
+         full convariance matrices 
+../clust  20 info_file params
+ 
+ 
+Start clustering class 0
+
+Subclasses = 20; Rissanen = -2695.945294; 
+Combining Subclasses (4,5)
+Subclasses = 19; Rissanen = -2716.857926; 
+Combining Subclasses (4,5)
+Subclasses = 18; Rissanen = -2737.739156; 
+Combining Subclasses (4,5)
+Subclasses = 17; Rissanen = -2758.599811; 
+Combining Subclasses (4,5)
+Subclasses = 16; Rissanen = -2779.436511; 
+Combining Subclasses (4,5)
+Subclasses = 15; Rissanen = -2800.246079; 
+Combining Subclasses (4,5)
+Subclasses = 14; Rissanen = -2821.030317; 
+Combining Subclasses (4,5)
+Subclasses = 13; Rissanen = -2841.795290; 
+Combining Subclasses (4,5)
+Subclasses = 12; Rissanen = -2862.547796; 
+Combining Subclasses (5,6)
+Subclasses = 11; Rissanen = -2883.293218; 
+Combining Subclasses (4,5)
+Subclasses = 10; Rissanen = -2904.035399; 
+Combining Subclasses (5,6)
+Subclasses = 9; Rissanen = -2924.777303; 
+Combining Subclasses (4,5)
+Subclasses = 8; Rissanen = -2945.521735; 
+Combining Subclasses (4,5)
+Subclasses = 7; Rissanen = -2966.271928; 
+Combining Subclasses (5,6)
+Subclasses = 6; Rissanen = -2987.031540; 
+Combining Subclasses (4,5)
+Subclasses = 5; Rissanen = -3007.802624; 
+Combining Subclasses (0,3)
+Subclasses = 4; Rissanen = -3025.164494; 
+Combining Subclasses (1,2)
+Subclasses = 3; Rissanen = -3032.841689; 
+Combining Subclasses (0,1)
+Subclasses = 2; Rissanen = -2994.318525; 
+Combining Subclasses (0,1)
+Subclasses = 1; Rissanen = 1395.500500; 
+Start clustering class 1
+
+Subclasses = 20; Rissanen = -2685.956343; 
+Combining Subclasses (4,5)
+Subclasses = 19; Rissanen = -2706.820330; 
+Combining Subclasses (4,5)
+Subclasses = 18; Rissanen = -2727.654878; 
+Combining Subclasses (4,5)
+Subclasses = 17; Rissanen = -2748.476810; 
+Combining Subclasses (4,5)
+Subclasses = 16; Rissanen = -2769.294712; 
+Combining Subclasses (5,6)
+Subclasses = 15; Rissanen = -2790.115554; 
+Combining Subclasses (4,5)
+Subclasses = 14; Rissanen = -2810.945840; 
+Combining Subclasses (4,5)
+Subclasses = 13; Rissanen = -2831.790903; 
+Combining Subclasses (4,5)
+Subclasses = 12; Rissanen = -2852.652673; 
+Combining Subclasses (4,5)
+Subclasses = 11; Rissanen = -2873.526493; 
+Combining Subclasses (4,5)
+Subclasses = 10; Rissanen = -2894.399872; 
+Combining Subclasses (4,5)
+Subclasses = 9; Rissanen = -2915.257502; 
+Combining Subclasses (4,5)
+Subclasses = 8; Rissanen = -2936.091588; 
+Combining Subclasses (4,5)
+Subclasses = 7; Rissanen = -2956.908866; 
+Combining Subclasses (4,5)
+Subclasses = 6; Rissanen = -2977.732342; 
+Combining Subclasses (4,5)
+Subclasses = 5; Rissanen = -2998.615374; 
+Combining Subclasses (1,2)
+Subclasses = 4; Rissanen = -3015.631602; 
+Combining Subclasses (0,2)
+Subclasses = 3; Rissanen = -3029.833006; 
+Combining Subclasses (0,1)
+Subclasses = 2; Rissanen = -3002.857434; 
+Combining Subclasses (0,1)
+Subclasses = 1; Rissanen = 1346.316394; 
+Example showing how mixtured model can be used to classify 
+data vectors.
+ 
+../classify  params data
+ 
+ 
+get_class
+get_class
+Loglike = -8.04815 Loglike = -6.04095 ML Class = 1
+Loglike = -4.83665 Loglike = -11.57 ML Class = 0
+Loglike = -4.13339 Loglike = -12.0253 ML Class = 0
+Loglike = -5.16623 Loglike = -7.3611 ML Class = 0
+Loglike = -10.2649 Loglike = -17.3465 ML Class = 0
+Loglike = -6.05494 Loglike = -17.7153 ML Class = 0
+Loglike = -4.8227 Loglike = -10.256 ML Class = 0
+Loglike = -4.76398 Loglike = -13.8344 ML Class = 0
+Loglike = -4.82995 Loglike = -9.24845 ML Class = 0
+Loglike = -4.31012 Loglike = -12.3526 ML Class = 0
+Loglike = -4.13724 Loglike = -12.7919 ML Class = 0
+Loglike = -4.46643 Loglike = -10.9144 ML Class = 0
+Loglike = -5.66485 Loglike = -16.3712 ML Class = 0
+Loglike = -5.67693 Loglike = -6.48139 ML Class = 0
+Loglike = -4.78477 Loglike = -8.34373 ML Class = 0
+Loglike = -5.0055 Loglike = -8.90676 ML Class = 0
+Loglike = -5.64794 Loglike = -11.4531 ML Class = 0
+Loglike = -4.5144 Loglike = -10.6084 ML Class = 0
+Loglike = -4.44752 Loglike = -14.6034 ML Class = 0
+Loglike = -4.91869 Loglike = -11.2857 ML Class = 0
+Loglike = -5.58901 Loglike = -6.48419 ML Class = 0
+Loglike = -4.36852 Loglike = -13.0541 ML Class = 0
+Loglike = -10.4543 Loglike = -24.8254 ML Class = 0
+Loglike = -5.7193 Loglike = -14.7591 ML Class = 0
+Loglike = -5.2529 Loglike = -7.73407 ML Class = 0
+Loglike = -4.33744 Loglike = -11.0224 ML Class = 0
+Loglike = -5.41029 Loglike = -14.1243 ML Class = 0
+Loglike = -5.89371 Loglike = -17.7868 ML Class = 0
+Loglike = -5.16823 Loglike = -15.4649 ML Class = 0
+Loglike = -4.50956 Loglike = -10.5465 ML Class = 0
+Loglike = -7.678 Loglike = -5.78319 ML Class = 1
+Loglike = -5.8741 Loglike = -12.1709 ML Class = 0
+Loglike = -4.98377 Loglike = -14.7231 ML Class = 0
+Loglike = -6.37348 Loglike = -9.02358 ML Class = 0
+Loglike = -4.92467 Loglike = -7.61459 ML Class = 0
+Loglike = -6.69396 Loglike = -9.13186 ML Class = 0
+Loglike = -7.93643 Loglike = -5.36644 ML Class = 1
+Loglike = -5.34957 Loglike = -15.9647 ML Class = 0
+Loglike = -5.66214 Loglike = -9.15459 ML Class = 0
+Loglike = -6.54087 Loglike = -19.2615 ML Class = 0
+Loglike = -4.0933 Loglike = -12.6073 ML Class = 0
+Loglike = -4.91543 Loglike = -16.3079 ML Class = 0
+Loglike = -5.85895 Loglike = -7.59596 ML Class = 0
+Loglike = -4.50469 Loglike = -9.61567 ML Class = 0
+Loglike = -6.05223 Loglike = -7.75346 ML Class = 0
+Loglike = -6.16159 Loglike = -19.597 ML Class = 0
+Loglike = -5.22196 Loglike = -8.89628 ML Class = 0
+Loglike = -7.26073 Loglike = -15.2467 ML Class = 0
+Loglike = -4.09179 Loglike = -12.6873 ML Class = 0
+Loglike = -4.93736 Loglike = -8.53447 ML Class = 0
+Loglike = -4.20214 Loglike = -11.9379 ML Class = 0
+Loglike = -5.11255 Loglike = -12.989 ML Class = 0
+Loglike = -4.10008 Loglike = -12.4877 ML Class = 0
+Loglike = -4.63703 Loglike = -8.90144 ML Class = 0
+Loglike = -6.46513 Loglike = -6.36982 ML Class = 1
+Loglike = -5.30491 Loglike = -8.4807 ML Class = 0
+Loglike = -4.76832 Loglike = -11.3729 ML Class = 0
+Loglike = -4.55899 Loglike = -10.4856 ML Class = 0
+Loglike = -5.51341 Loglike = -6.7139 ML Class = 0
+Loglike = -7.5275 Loglike = -7.09608 ML Class = 1
+Loglike = -5.69074 Loglike = -9.58073 ML Class = 0
+Loglike = -4.96666 Loglike = -8.2387 ML Class = 0
+Loglike = -4.25047 Loglike = -13.6616 ML Class = 0
+Loglike = -7.30431 Loglike = -7.52629 ML Class = 0
+Loglike = -5.77735 Loglike = -7.64152 ML Class = 0
+Loglike = -4.84885 Loglike = -8.53303 ML Class = 0
+Loglike = -4.48228 Loglike = -14.618 ML Class = 0
+Loglike = -4.47971 Loglike = -10.3427 ML Class = 0
+Loglike = -5.7796 Loglike = -15.6262 ML Class = 0
+Loglike = -5.11784 Loglike = -11.3198 ML Class = 0
+Loglike = -4.8663 Loglike = -14.2228 ML Class = 0
+Loglike = -5.19653 Loglike = -12.3775 ML Class = 0
+Loglike = -5.0359 Loglike = -15.3858 ML Class = 0
+Loglike = -4.26957 Loglike = -12.006 ML Class = 0
+Loglike = -4.69442 Loglike = -9.44303 ML Class = 0
+Loglike = -4.80973 Loglike = -9.27898 ML Class = 0
+Loglike = -4.37232 Loglike = -11.179 ML Class = 0
+Loglike = -4.79951 Loglike = -15.0333 ML Class = 0
+Loglike = -4.52992 Loglike = -10.0066 ML Class = 0
+Loglike = -10.2969 Loglike = -5.96699 ML Class = 1
+Loglike = -5.09247 Loglike = -7.37466 ML Class = 0
+Loglike = -7.9442 Loglike = -7.17893 ML Class = 1
+Loglike = -4.79312 Loglike = -11.3628 ML Class = 0
+Loglike = -5.23236 Loglike = -15.8588 ML Class = 0
+Loglike = -4.76995 Loglike = -12.589 ML Class = 0
+Loglike = -4.87322 Loglike = -12.6151 ML Class = 0
+Loglike = -5.18815 Loglike = -7.04261 ML Class = 0
+Loglike = -6.55965 Loglike = -10.3099 ML Class = 0
+Loglike = -4.60905 Loglike = -13.7036 ML Class = 0
+Loglike = -4.92628 Loglike = -9.64179 ML Class = 0
+Loglike = -4.854 Loglike = -8.45758 ML Class = 0
+Loglike = -4.83812 Loglike = -13.6809 ML Class = 0
+Loglike = -7.05997 Loglike = -7.76769 ML Class = 0
+Loglike = -4.33172 Loglike = -12.732 ML Class = 0
+Loglike = -5.57029 Loglike = -6.96724 ML Class = 0
+Loglike = -5.70512 Loglike = -7.05045 ML Class = 0
+Loglike = -4.47941 Loglike = -10.554 ML Class = 0
+Loglike = -4.0898 Loglike = -12.8933 ML Class = 0
+Loglike = -5.68704 Loglike = -8.7047 ML Class = 0
+Loglike = -5.83222 Loglike = -8.59203 ML Class = 0
+Loglike = -17.6018 Loglike = -4.96987 ML Class = 1
+Loglike = -16.7217 Loglike = -6.0911 ML Class = 1
+Loglike = -15.032 Loglike = -4.38615 ML Class = 1
+Loglike = -14.3285 Loglike = -6.07997 ML Class = 1
+Loglike = -17.2262 Loglike = -6.21177 ML Class = 1
+Loglike = -8.52744 Loglike = -4.66031 ML Class = 1
+Loglike = -8.91234 Loglike = -4.91461 ML Class = 1
+Loglike = -10.8013 Loglike = -4.57545 ML Class = 1
+Loglike = -9.83596 Loglike = -4.8483 ML Class = 1
+Loglike = -6.81926 Loglike = -6.6756 ML Class = 1
+Loglike = -13.8851 Loglike = -4.611 ML Class = 1
+Loglike = -14.6292 Loglike = -4.14005 ML Class = 1
+Loglike = -6.29116 Loglike = -6.52405 ML Class = 0
+Loglike = -11.6751 Loglike = -4.57519 ML Class = 1
+Loglike = -17.9136 Loglike = -8.0592 ML Class = 1
+Loglike = -12.4258 Loglike = -4.48092 ML Class = 1
+Loglike = -14.7883 Loglike = -4.17633 ML Class = 1
+Loglike = -7.0006 Loglike = -5.39362 ML Class = 1
+Loglike = -15.4024 Loglike = -4.2161 ML Class = 1
+Loglike = -8.94974 Loglike = -4.65491 ML Class = 1
+Loglike = -8.50769 Loglike = -4.7362 ML Class = 1
+Loglike = -15.5238 Loglike = -7.26092 ML Class = 1
+Loglike = -14.9146 Loglike = -4.82404 ML Class = 1
+Loglike = -9.2031 Loglike = -4.61925 ML Class = 1
+Loglike = -10.3224 Loglike = -5.7956 ML Class = 1
+Loglike = -9.04214 Loglike = -4.88703 ML Class = 1
+Loglike = -11.5894 Loglike = -5.66978 ML Class = 1
+Loglike = -8.03551 Loglike = -5.13701 ML Class = 1
+Loglike = -9.7266 Loglike = -5.98655 ML Class = 1
+Loglike = -11.8289 Loglike = -5.06135 ML Class = 1
+Loglike = -8.162 Loglike = -6.07502 ML Class = 1
+Loglike = -11.0403 Loglike = -4.96091 ML Class = 1
+Loglike = -9.60424 Loglike = -4.76123 ML Class = 1
+Loglike = -12.9027 Loglike = -6.16891 ML Class = 1
+Loglike = -15.5573 Loglike = -4.26936 ML Class = 1
+Loglike = -7.83636 Loglike = -4.81514 ML Class = 1
+Loglike = -8.26932 Loglike = -5.15782 ML Class = 1
+Loglike = -15.0687 Loglike = -4.22927 ML Class = 1
+Loglike = -10.2582 Loglike = -4.69207 ML Class = 1
+Loglike = -8.60097 Loglike = -9.39223 ML Class = 0
+Loglike = -11.2674 Loglike = -4.62551 ML Class = 1
+Loglike = -10.9536 Loglike = -4.78071 ML Class = 1
+Loglike = -8.21583 Loglike = -4.97967 ML Class = 1
+Loglike = -10.8932 Loglike = -4.41232 ML Class = 1
+Loglike = -12.6147 Loglike = -4.85367 ML Class = 1
+Loglike = -12.8268 Loglike = -5.40943 ML Class = 1
+Loglike = -16.3435 Loglike = -6.06634 ML Class = 1
+Loglike = -12.857 Loglike = -4.8883 ML Class = 1
+Loglike = -14.0056 Loglike = -5.23734 ML Class = 1
+Loglike = -14.3645 Loglike = -6.27858 ML Class = 1
+Loglike = -17.9774 Loglike = -4.97726 ML Class = 1
+Loglike = -8.41851 Loglike = -4.77443 ML Class = 1
+Loglike = -7.89518 Loglike = -4.82675 ML Class = 1
+Loglike = -10.9387 Loglike = -4.47324 ML Class = 1
+Loglike = -17.9024 Loglike = -6.5285 ML Class = 1
+Loglike = -8.99079 Loglike = -4.92259 ML Class = 1
+Loglike = -7.84557 Loglike = -7.13691 ML Class = 1
+Loglike = -16.4211 Loglike = -4.72465 ML Class = 1
+Loglike = -12.8378 Loglike = -5.32733 ML Class = 1
+Loglike = -10.9892 Loglike = -5.02948 ML Class = 1
+Loglike = -7.19579 Loglike = -5.21012 ML Class = 1
+Loglike = -15.8986 Loglike = -5.84068 ML Class = 1
+Loglike = -11.8981 Loglike = -4.80076 ML Class = 1
+Loglike = -8.20819 Loglike = -5.06585 ML Class = 1
+Loglike = -11.0149 Loglike = -5.0362 ML Class = 1
+Loglike = -13.5154 Loglike = -4.08849 ML Class = 1
+Loglike = -9.09748 Loglike = -5.16798 ML Class = 1
+Loglike = -8.95309 Loglike = -5.3818 ML Class = 1
+Loglike = -7.69913 Loglike = -4.88698 ML Class = 1
+Loglike = -10.0734 Loglike = -5.35496 ML Class = 1
+Loglike = -8.66288 Loglike = -5.60896 ML Class = 1
+Loglike = -13.646 Loglike = -4.46196 ML Class = 1
+Loglike = -16.7895 Loglike = -6.19398 ML Class = 1
+Loglike = -10.0998 Loglike = -5.65161 ML Class = 1
+Loglike = -8.61135 Loglike = -4.71966 ML Class = 1
+Loglike = -13.8399 Loglike = -4.43723 ML Class = 1
+Loglike = -9.40519 Loglike = -6.22055 ML Class = 1
+Loglike = -9.68201 Loglike = -4.65891 ML Class = 1
+Loglike = -23.8994 Loglike = -9.02526 ML Class = 1
+Loglike = -8.38104 Loglike = -4.79758 ML Class = 1
+Loglike = -8.89706 Loglike = -5.32846 ML Class = 1
+Loglike = -10.3723 Loglike = -4.56116 ML Class = 1
+Loglike = -12.0415 Loglike = -5.35697 ML Class = 1
+Loglike = -11.3684 Loglike = -4.63988 ML Class = 1
+Loglike = -8.03554 Loglike = -4.83162 ML Class = 1
+Loglike = -8.6028 Loglike = -4.66952 ML Class = 1
+Loglike = -17.2037 Loglike = -4.69325 ML Class = 1
+Loglike = -10.9327 Loglike = -5.13273 ML Class = 1
+Loglike = -16.6922 Loglike = -4.81322 ML Class = 1
+Loglike = -17.5733 Loglike = -6.72095 ML Class = 1
+Loglike = -14.3045 Loglike = -4.2113 ML Class = 1
+Loglike = -12.5493 Loglike = -7.97216 ML Class = 1
+Loglike = -13.7267 Loglike = -5.08811 ML Class = 1
+Loglike = -7.07022 Loglike = -5.1975 ML Class = 1
+Loglike = -16.3069 Loglike = -6.5186 ML Class = 1
+Loglike = -13.456 Loglike = -6.23777 ML Class = 1
+Loglike = -10.4727 Loglike = -4.50255 ML Class = 1
+Loglike = -10.4683 Loglike = -4.58166 ML Class = 1
+Loglike = -7.50845 Loglike = -5.07471 ML Class = 1
+Loglike = -11.2073 Loglike = -4.20371 ML Class = 1
