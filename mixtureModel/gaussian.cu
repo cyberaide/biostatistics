@@ -81,8 +81,8 @@ runTest( int argc, char** argv)
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
 
-    unsigned int num_dimensions = 20;
-    unsigned int num_events = 1000;
+    unsigned int num_dimensions = 100;
+    unsigned int num_events = 1000000;
     
     // allocate host memory
     float* h_idata = (float*) malloc(sizeof(float)*num_dimensions*num_events);

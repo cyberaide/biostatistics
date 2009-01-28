@@ -16,7 +16,7 @@ echo " "
 echo " "
 echo " "
 echo "Separate components of GMM into individual classes"
-echo "../clust  20 info_file params_diag diag"
+echo "../SplitClasses params params"
 echo " "
 ../SplitClasses params params
 

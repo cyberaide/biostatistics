@@ -83,7 +83,7 @@ char *argv[];
       fprintf(stderr,"      diag - use diagonal convariance matrices\n\n");
       fprintf(stderr,"    option2 - (optional) controls number of clusters\n");
       fprintf(stderr,"      0 - (default) estimate number of clusters\n");
-      fprintf(stderr,"      n - use n clusters in mixture model with n<#_subclasses");
+      fprintf(stderr,"      n - use n clusters in mixture model with n<#_subclasses\n");
       exit(1);
     } 
 
