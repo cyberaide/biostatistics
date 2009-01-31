@@ -69,6 +69,7 @@ int main( int argc, char** argv) {
 
 	float* costs = (float*)malloc(costSize);
 	float* medoids = (float*)malloc(sizeMedoid);
+	float* finalMedoids = (float*)malloc(sizeMedoid);
 	float* membership = (float*)malloc(sizeMemb);
 	float* BIC = (float*)malloc(bicSize);
 
@@ -131,9 +132,6 @@ int main( int argc, char** argv) {
 
 	float oldCost = 1;
 	float newCost = 0;
-	float tempMedoid[dims[0]];
-	int mi;
-	int di;
 
 	chooseMedoids(medoids, data, *numClusters, dims);
 	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
@@ -189,13 +187,8 @@ int main( int argc, char** argv) {
 			CUDA_SAFE_CALL(cudaMemcpy(costs, d_costs, costSize, cudaMemcpyDeviceToHost));
 			oldCost = *costs;
 
-			mi = randInt(*numClusters) - 1;
-			di = randInt(dims[0] * dims[1]) - 1;
-
-			for (int i = 0; i < dims[0]; i++) {
-				tempMedoid[i] = medoids[i + mi * dims[0]];
-				medoids[i + mi * dims[0]] = data[di + i * dims[0]];
-			}
+			memcpy(finalMedoids, medoids, sizeMedoid);
+			chooseMedoids(medoids, data, *numClusters, dims);
 
 			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
 
@@ -228,10 +221,6 @@ int main( int argc, char** argv) {
 	// check if kernel execution generated an error
 	CUT_CHECK_ERROR("Kernel execution failed");
 
-	for (int i = 0; i < dims[0]; i++) {
-		medoids[i + mi * dims[0]] = tempMedoid[i];
-	}
-
 	float volResults[*numClusters][3];
 	calcVol(volResults, membership, h_odata, dims, volMin, volMax, *numClusters);
 
@@ -240,7 +229,7 @@ int main( int argc, char** argv) {
 		printf("Medoid: ");
 
 		for (int j = 0; j < dims[0]; j++) {
-			printf("%f ", medoids[j + i * dims[0]]);
+			printf("%f ", finalMedoids[j + i * dims[0]]);
 		}
 
 		printf("\n");
@@ -250,12 +239,13 @@ int main( int argc, char** argv) {
 		printf("Density: %f\n\n", volResults[i][0]);
 	}
 
-	writeData(data, medoids, h_odata, dims, *numClusters, membership, argv[7]);
+	writeData(data, finalMedoids, h_odata, dims, *numClusters, membership, argv[7]);
 
 	free(costs);
 	free(h_odata);
 	free(data);
 	free(medoids);
+	free(finalMedoids);
 	free(dims);
 	free(membership);
 	free(BIC);
