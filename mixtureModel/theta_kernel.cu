@@ -43,7 +43,7 @@
 
 #include <stdio.h>
 
-#define SDATA(index)      CUT_BANK_CHECKER(sdata, index)
+#define sdata(index)      CUT_BANK_CHECKER(sdata, index)
 
 ////////////////////////////////////////////////////////////////////////////////
 //! Simple test kernel for device functionality
@@ -51,11 +51,10 @@
 //! @param g_odata  output data in global memory
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void
-testKernel( float* g_idata, float* g_odata, int num_dimensions, int num_events) 
+testKernel( float* g_idata, float* g_means, float* g_covs, int num_dimensions, int num_events) 
 {
     // shared memory
-    // the size is determined by the host application
-    extern  __shared__  float sdata[];
+    __shared__ float means[21];
 
     // access thread id
     const unsigned int tid = threadIdx.x;
@@ -63,20 +62,26 @@ testKernel( float* g_idata, float* g_odata, int num_dimensions, int num_events)
     const unsigned int num_threads = blockDim.x;
 
     //g_odata[tid] = 0.0;
-    SDATA(tid) = 0.0;
+    means[tid] = 0.0;
     
     __syncthreads();
 
+    // Compute means
     for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_threads) {
         //g_odata[tid] += g_idata[i];
-        sdata[tid] += g_idata[i];  
+        means[tid] += g_idata[i];  
     }
     
     __syncthreads();
 
     // write data to global memory
     //g_odata[tid] /= (float) num_events;
-    g_odata[tid] = sdata[tid] / (float) num_events;
+    g_means[tid] = means[tid] / (float) num_events;
+
+    __syncthreads();
+
+    // Compute covariances
+    
 }
 
 #endif // #ifndef _TEMPLATE_KERNEL_H_

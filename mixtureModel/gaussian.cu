@@ -56,9 +56,6 @@
 int runTest( int argc, char** argv);
 
 extern "C"
-void computeGold( float* reference, float* idata, const unsigned int len);
-
-extern "C"
 float* readData(char* f, int* ndims, int*nevents);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,21 +157,22 @@ runTest( int argc, char** argv)
     
     CUT_DEVICE_INIT(argc, argv);
 
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
     
     // print the input
     for( unsigned int i = 0; i < num_events*num_dimensions; i += num_dimensions ) 
     {
         for(unsigned int j = 0; j < num_dimensions; j++) {
-            printf("%f ",fcs_data[i+j]);
+            //printf("%f ",fcs_data[i+j]);
         }
-        printf("\n");
+        //printf("\n");
     }
 
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     unsigned int num_threads = num_dimensions;
+    
+    unsigned int timer = 0;
+    CUT_SAFE_CALL( cutCreateTimer( &timer));
+    CUT_SAFE_CALL( cutStartTimer( timer));
     
     // allocate device memory
     float* d_idata;
@@ -184,23 +182,29 @@ runTest( int argc, char** argv)
                                 cudaMemcpyHostToDevice) );
 
     // allocate device memory for result
-    float* d_odata;
-    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_odata, num_dimensions*sizeof(float)));
+    float* d_means; // spectral mean (M)
+    float* d_covs; // covariance matrix (MxM)
+    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_means, num_dimensions*sizeof(float)));
+    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_covs, num_dimensions*num_dimensions*sizeof(float)));
 
     // setup execution parameters
     dim3  grid( 1, 1, 1);
     dim3  threads( num_threads, 1, 1);
-
+    
     // execute the kernel
-    testKernel<<< 1, num_threads >>>( d_idata, d_odata, num_dimensions, num_events);
+    testKernel<<< 1, num_threads >>>( d_idata, d_means, d_covs, num_dimensions, num_events);
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
 
     // allocate mem for the result on host side
-    float* h_odata = (float*) malloc(num_dimensions*sizeof(float));
+    float* h_means = (float*) malloc(num_dimensions*sizeof(float));
+    float* h_covs = (float*) malloc(num_dimensions*num_dimensions*sizeof(float));
+    
     // copy result from device to host
-    CUDA_SAFE_CALL(cudaMemcpy(h_odata, d_odata, sizeof(float) * num_dimensions,
+    CUDA_SAFE_CALL(cudaMemcpy(h_means, d_means, sizeof(float) * num_dimensions,
+                                cudaMemcpyDeviceToHost) );
+    CUDA_SAFE_CALL(cudaMemcpy(h_covs, d_covs, sizeof(float) * num_dimensions * num_dimensions,
                                 cudaMemcpyDeviceToHost) );
 
     CUT_SAFE_CALL(cutStopTimer(timer));
@@ -209,15 +213,17 @@ runTest( int argc, char** argv)
     
     printf("Spectral Mean: ");
     for(int i=0; i<num_dimensions; i++){
-        printf("%f ",h_odata[i]);
+        printf("%f ",h_means[i]);
     }
     printf("\n");
     
     // cleanup memory
     free(fcs_data);
-    free(h_odata);
+    free(h_means);
+    free(h_covs);
     CUDA_SAFE_CALL(cudaFree(d_idata));
-    CUDA_SAFE_CALL(cudaFree(d_odata));
+    CUDA_SAFE_CALL(cudaFree(d_means));
+    CUDA_SAFE_CALL(cudaFree(d_covs));
     
     return 0;
 }
