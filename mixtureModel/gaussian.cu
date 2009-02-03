@@ -46,55 +46,131 @@
 
 // includes, project
 #include <cutil.h>
+#include "gaussian.h"
 
 // includes, kernels
 #include <means_kernel.cu>
 
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
-void runTest( int argc, char** argv);
+int runTest( int argc, char** argv);
 
 extern "C"
 void computeGold( float* reference, float* idata, const unsigned int len);
+
+extern "C"
+float* readData(char* f, int* ndims, int*nevents);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
 int
-main( int argc, char** argv) 
-{
+main( int argc, char** argv) {
     runTest( argc, argv);
 
-    CUT_EXIT(argc, argv);
+    //CUT_EXIT(argc, argv);
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Validate command line arguments
+///////////////////////////////////////////////////////////////////////////////
+int validateArguments(int argc, char** argv, int* num_clusters) {
+    if(argc <= 4 && argc >= 3) {
+        // parse num_clusters
+        if(!sscanf(argv[1],"%d",num_clusters)) {
+            printf("Invalid number of starting clusters\n\n");
+            printUsage(argv);
+            return 1;
+        } 
+        
+        // Check bounds for num_clusters
+        if(*num_clusters < 1 || *num_clusters > MAX_CLUSTERS) {
+            printf("Invalid number of starting clusters\n\n");
+            printUsage(argv);
+            return 1;
+        }
+        
+        // parse infile
+        FILE* infile = fopen(argv[2],"r");
+        if(!infile) {
+            printf("Invalid infile.\n\n");
+            printUsage(argv);
+            return 2;
+        } 
+        
+        // parse outfile
+        FILE* outfile = fopen(argv[3],"w");
+        if(!outfile) {
+            printf("Unable to create output file.\n\n");
+            printUsage(argv);
+            return 3;
+        }
+        
+        // Clean up so the EPA is happy
+        fclose(infile);
+        fclose(outfile);
+        return 0;
+    } else {
+        printUsage(argv);
+        return 1;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Print usage statement
+///////////////////////////////////////////////////////////////////////////////
+void printUsage(char** argv)
+{
+   printf("Usage: %s num_clusters infile [outfile]\n",argv[0]);
+   printf("\t num_clusters: The number of starting clusters\n");
+   printf("\t infile: ASCII space-delimited FCS data file\n");
+   printf("\t outfile: Clustering results output file\n");
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //! Run a simple test for CUDA
 ////////////////////////////////////////////////////////////////////////////////
-void
+int
 runTest( int argc, char** argv) 
 {
-
+    
+    int num_clusters;
+    
+    int error = validateArguments(argc,argv,&num_clusters);
+    
+    // Don't continue if we had a problem with the program arguments
+    if(error) {
+        return 1;
+    }
+    
+    int num_dimensions;
+    int num_events;
+        
+    float* fcs_data = readData(argv[2],&num_dimensions,&num_events);
+    
+    if(!fcs_data) {
+        printf("Error parsing input file. This could be due to an empty file ");
+        printf("or an inconsistent number of dimensions. Aborting.\n");
+        return 1;
+    }
+    
+    printf("Number of events: %d\n",num_events);
+    printf("Number of dimensions: %d\n\n",num_dimensions);
+    
     CUT_DEVICE_INIT(argc, argv);
 
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
-
-    unsigned int num_dimensions = 100;
-    unsigned int num_events = 1000000;
     
-    // allocate host memory
-    float* h_idata = (float*) malloc(sizeof(float)*num_dimensions*num_events);
-    
-    // initalize the memory
+    // print the input
     for( unsigned int i = 0; i < num_events*num_dimensions; i += num_dimensions ) 
     {
         for(unsigned int j = 0; j < num_dimensions; j++) {
-            h_idata[i+j]= (float)(i+j);
-            //printf("%f ",(float)i+j);
+            printf("%f ",fcs_data[i+j]);
         }
-        //printf("\n");
+        printf("\n");
     }
 
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
@@ -104,7 +180,7 @@ runTest( int argc, char** argv)
     float* d_idata;
     CUDA_SAFE_CALL( cudaMalloc( (void**) &d_idata, mem_size));
     // copy host memory to device
-    CUDA_SAFE_CALL( cudaMemcpy( d_idata, h_idata, mem_size,
+    CUDA_SAFE_CALL( cudaMemcpy( d_idata, fcs_data, mem_size,
                                 cudaMemcpyHostToDevice) );
 
     // allocate device memory for result
@@ -131,15 +207,17 @@ runTest( int argc, char** argv)
     printf( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
+    printf("Spectral Mean: ");
     for(int i=0; i<num_dimensions; i++){
-        printf("Means[%d]: %f\n",i,h_odata[i]);
+        printf("%f ",h_odata[i]);
     }
+    printf("\n");
     
-    fflush(stdout);
-
     // cleanup memory
-    free( h_idata);
-    free( h_odata);
+    free(fcs_data);
+    free(h_odata);
     CUDA_SAFE_CALL(cudaFree(d_idata));
     CUDA_SAFE_CALL(cudaFree(d_odata));
+    
+    return 0;
 }

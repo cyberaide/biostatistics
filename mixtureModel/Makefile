@@ -42,7 +42,7 @@ CU_DEPS		:= \
 	means_kernel.cu \
 
 # C/C++ source files (compiled with gcc / c++)
-CCFILES		:= \
+CCFILES		:= readData.cpp \
 
 
 ################################################################################

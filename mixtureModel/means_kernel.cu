@@ -62,11 +62,9 @@ testKernel( float* g_idata, float* g_odata, int num_dimensions, int num_events)
   // access number of threads in this block
   const unsigned int num_threads = blockDim.x;
   
-  //SDATA(tid) = (float) 0.0;
   g_odata[tid] = 0.0;
   
   for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_threads) {
-      //SDATA(tid) = SDATA(tid) + g_idata[i];
       g_odata[tid] += g_idata[i];
   }
   __syncthreads();
