@@ -39,7 +39,7 @@ EXECUTABLE	:= gaussian
 CUFILES		:= gaussian.cu
 # CUDA dependency files
 CU_DEPS		:= \
-	means_kernel.cu \
+	theta_kernel.cu \
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= readData.cpp \

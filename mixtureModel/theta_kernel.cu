@@ -53,24 +53,30 @@
 __global__ void
 testKernel( float* g_idata, float* g_odata, int num_dimensions, int num_events) 
 {
-  // shared memory
-  // the size is determined by the host application
-  extern  __shared__  float sdata[];
+    // shared memory
+    // the size is determined by the host application
+    extern  __shared__  float sdata[];
 
-  // access thread id
-  const unsigned int tid = threadIdx.x;
-  // access number of threads in this block
-  const unsigned int num_threads = blockDim.x;
-  
-  g_odata[tid] = 0.0;
-  
-  for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_threads) {
-      g_odata[tid] += g_idata[i];
-  }
-  __syncthreads();
+    // access thread id
+    const unsigned int tid = threadIdx.x;
+    // access number of threads in this block
+    const unsigned int num_threads = blockDim.x;
 
-  // write data to global memory
-  g_odata[tid] /= (float) num_events;
+    //g_odata[tid] = 0.0;
+    SDATA(tid) = 0.0;
+    
+    __syncthreads();
+
+    for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_threads) {
+        //g_odata[tid] += g_idata[i];
+        sdata[tid] += g_idata[i];  
+    }
+    
+    __syncthreads();
+
+    // write data to global memory
+    //g_odata[tid] /= (float) num_events;
+    g_odata[tid] = sdata[tid] / (float) num_events;
 }
 
 #endif // #ifndef _TEMPLATE_KERNEL_H_

@@ -49,7 +49,7 @@
 #include "gaussian.h"
 
 // includes, kernels
-#include <means_kernel.cu>
+#include <theta_kernel.cu>
 
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
