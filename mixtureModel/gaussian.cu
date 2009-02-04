@@ -168,11 +168,11 @@ runTest( int argc, char** argv)
     }
 
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
-    unsigned int num_threads = num_dimensions;
-    
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
+    //unsigned int num_threads = num_dimensions;
+    unsigned int num_threads = num_dimensions*num_dimensions;
+    if(num_threads > 192) {
+        num_threads = 192;
+    }
     
     // allocate device memory
     float* d_idata;
@@ -190,6 +190,10 @@ runTest( int argc, char** argv)
     // setup execution parameters
     dim3  grid( 1, 1, 1);
     dim3  threads( num_threads, 1, 1);
+    
+    unsigned int timer = 0;
+    CUT_SAFE_CALL( cutCreateTimer( &timer));
+    CUT_SAFE_CALL( cutStartTimer( timer));
     
     // execute the kernel
     testKernel<<< 1, num_threads >>>( d_idata, d_means, d_covs, num_dimensions, num_events);
@@ -213,10 +217,17 @@ runTest( int argc, char** argv)
     
     printf("Spectral Mean: ");
     for(int i=0; i<num_dimensions; i++){
-        printf("%f ",h_means[i]);
+        printf("%.3f ",h_means[i]);
     }
     printf("\n");
-    
+   
+    printf("R Matrix:\n");
+    for(int i=0; i<num_dimensions; i++) {
+        for(int j=0; j<num_dimensions; j++) {
+            printf("%.3f ", h_covs[i*num_dimensions+j]);
+        }
+        printf("\n");
+    } 
     // cleanup memory
     free(fcs_data);
     free(h_means);
