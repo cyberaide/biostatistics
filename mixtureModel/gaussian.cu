@@ -228,10 +228,10 @@ runTest( int argc, char** argv)
     
     for(int i=0; i<num_clusters; i++) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, temp_clusters[i].w, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
     }
     
     CUT_SAFE_CALL(cutStopTimer(timer));
@@ -263,12 +263,13 @@ runTest( int argc, char** argv)
     free(clusters);
     CUDA_SAFE_CALL(cudaFree(d_idata));
     for(int i=0; i<num_clusters; i++) {
-        CUDA_SAFE_CALL(cudaFree(d_clusters[i].means));
-        CUDA_SAFE_CALL(cudaFree(d_clusters[i].R));
-        CUDA_SAFE_CALL(cudaFree(d_clusters[i].Rinv));
-        CUDA_SAFE_CALL(cudaFree(d_clusters[i].p));
-        CUDA_SAFE_CALL(cudaFree(d_clusters[i].w));
+        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].means));
+        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].R));
+        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].Rinv));
+        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].p));
+        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].w));
     }
+    free(temp_clusters);
     CUDA_SAFE_CALL(cudaFree(d_clusters));
 
     return 0;
