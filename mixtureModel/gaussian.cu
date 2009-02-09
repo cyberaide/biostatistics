@@ -143,7 +143,8 @@ runTest( int argc, char** argv)
     
     int num_dimensions;
     int num_events;
-        
+    
+    // Read FCS data    
     float* fcs_data = readData(argv[2],&num_dimensions,&num_events);
     
     if(!fcs_data) {
@@ -166,75 +167,102 @@ runTest( int argc, char** argv)
         }
         //printf("\n");
     }
-
-    unsigned int mem_size = num_dimensions*num_events*sizeof(float);
-    //unsigned int num_threads = num_dimensions;
+    
     unsigned int num_threads = num_dimensions*num_dimensions;
     if(num_threads > 192) {
         num_threads = 192;
     }
+
+    // Setup the cluster data structures on host
+    cluster* clusters = (cluster*)malloc(sizeof(cluster)*num_clusters);
+    for(int i=0; i<num_clusters;i++) {
+        clusters[i].N = 0.0;
+        clusters[i].pi = 0.0;
+        clusters[i].means = (float*) malloc(sizeof(float)*num_dimensions);
+        clusters[i].R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
+        clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
+        clusters[i].constant = 0.0;
+        clusters[i].p = (float*) malloc(sizeof(float)*num_events);
+        clusters[i].w = (float*) malloc(sizeof(float)*num_events);
+    }
     
-    // allocate device memory
+    // Setup the cluster data structures on device
+    cluster* d_clusters;
+    for(int i=0; i<num_clusters;i++) {
+        CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*num_clusters));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].means),sizeof(float)*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].R),sizeof(float)*num_dimensions*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].Rinv),sizeof(float)*num_dimensions*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].p),sizeof(float)*num_events));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].w),sizeof(float)*num_events));
+
+    }
+    
+    unsigned int mem_size = num_dimensions*num_events*sizeof(float);
+    
+    // allocate device memory for FCS data
     float* d_idata;
     CUDA_SAFE_CALL( cudaMalloc( (void**) &d_idata, mem_size));
-    // copy host memory to device
+    // copy FCS to device
     CUDA_SAFE_CALL( cudaMemcpy( d_idata, fcs_data, mem_size,
                                 cudaMemcpyHostToDevice) );
 
-    // allocate device memory for result
-    float* d_means; // spectral mean (M)
-    float* d_covs; // covariance matrix (MxM)
-    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_means, num_dimensions*sizeof(float)));
-    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_covs, num_dimensions*num_dimensions*sizeof(float)));
+    // Copy Cluster data to device
+    CUDA_SAFE_CALL(cudaMemcpy(d_clusters,clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
 
-    // setup execution parameters
-    dim3  grid( 1, 1, 1);
-    dim3  threads( num_threads, 1, 1);
-    
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
     
     // execute the kernel
-    testKernel<<< 1, num_threads >>>( d_idata, d_means, d_covs, num_dimensions, num_events);
+    testKernel<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
-
-    // allocate mem for the result on host side
-    float* h_means = (float*) malloc(num_dimensions*sizeof(float));
-    float* h_covs = (float*) malloc(num_dimensions*num_dimensions*sizeof(float));
     
     // copy result from device to host
-    CUDA_SAFE_CALL(cudaMemcpy(h_means, d_means, sizeof(float) * num_dimensions,
-                                cudaMemcpyDeviceToHost) );
-    CUDA_SAFE_CALL(cudaMemcpy(h_covs, d_covs, sizeof(float) * num_dimensions * num_dimensions,
-                                cudaMemcpyDeviceToHost) );
-
+    CUDA_SAFE_CALL(cudaMemcpy(clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
+    
+    for(int i=0; i<num_clusters; i++) {
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, d_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+    }
+    
     CUT_SAFE_CALL(cutStopTimer(timer));
     printf( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
     printf("Spectral Mean: ");
     for(int i=0; i<num_dimensions; i++){
-        printf("%.3f ",h_means[i]);
+        printf("%.3f ",clusters[0].means[i]);
     }
     printf("\n");
    
     printf("R Matrix:\n");
     for(int i=0; i<num_dimensions; i++) {
         for(int j=0; j<num_dimensions; j++) {
-            printf("%.3f ", h_covs[i*num_dimensions+j]);
+            printf("%.3f ", clusters[0].R[i*num_dimensions+j]);
         }
         printf("\n");
     } 
     // cleanup memory
     free(fcs_data);
-    free(h_means);
-    free(h_covs);
+    for(int i=0; i<num_clusters; i++) {
+        free(clusters[i].means);
+        free(clusters[i].R);
+        free(clusters[i].Rinv);
+        free(clusters[i].p);
+        free(clusters[i].w);
+    }    
+    free(clusters);
     CUDA_SAFE_CALL(cudaFree(d_idata));
-    CUDA_SAFE_CALL(cudaFree(d_means));
-    CUDA_SAFE_CALL(cudaFree(d_covs));
-    
+    for(int i=0; i<num_clusters; i++) {
+        CUDA_SAFE_CALL(cudaFree(d_clusters[i].means));
+        CUDA_SAFE_CALL(cudaFree(d_clusters[i].R));
+        CUDA_SAFE_CALL(cudaFree(d_clusters[i].Rinv));
+        CUDA_SAFE_CALL(cudaFree(d_clusters[i].p));
+        CUDA_SAFE_CALL(cudaFree(d_clusters[i].w));
+    }
+    CUDA_SAFE_CALL(cudaFree(d_clusters));
+
     return 0;
 }

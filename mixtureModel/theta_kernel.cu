@@ -42,6 +42,7 @@
 #define _TEMPLATE_KERNEL_H_
 
 #include <stdio.h>
+#include "gaussian.h"
 
 #define sdata(index)      CUT_BANK_CHECKER(sdata, index)
 
@@ -51,7 +52,7 @@
 //! @param g_odata  output data in global memory
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void
-testKernel( float* g_idata, float* g_means, float* g_covs, int num_dimensions, int num_events) 
+testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
 {
     // shared memory
     __shared__ float means[21];
@@ -79,7 +80,7 @@ testKernel( float* g_idata, float* g_means, float* g_covs, int num_dimensions, i
     // write data to global memory
     if(tid < num_dimensions) {
         means[tid] /= (float) num_events;
-        g_means[tid] = means[tid];
+        clusters[0].means[tid] = means[tid];
     }
 
     __syncthreads();
@@ -108,8 +109,8 @@ testKernel( float* g_idata, float* g_means, float* g_covs, int num_dimensions, i
                 covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
             }
             //printf("covs[%d][%d]: %f\n",row,tid,covs[i+tid]);
-            g_covs[i+tid] = covs[i+tid] / (float) num_events;
-            g_covs[i+tid] -= means[row]*means[col];
+            clusters[0].R[i+tid] = covs[i+tid] / (float) num_events;
+            clusters[0].R[i+tid] -= means[row]*means[col];
         }
     }
 }
