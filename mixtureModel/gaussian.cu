@@ -215,7 +215,7 @@ runTest( int argc, char** argv)
     CUT_SAFE_CALL( cutStartTimer( timer));
     
     // execute the kernel
-    testKernel<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
+    testKernel<<< 1, num_threads >>>( d_idata, d_clusters[0], num_dimensions, num_clusters, num_events);
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
@@ -225,6 +225,10 @@ runTest( int argc, char** argv)
     
     for(int i=0; i<num_clusters; i++) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, d_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, d_clusters[i].R, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
     }
     
     CUT_SAFE_CALL(cutStopTimer(timer));
