@@ -187,16 +187,19 @@ runTest( int argc, char** argv)
     }
     
     // Setup the cluster data structures on device
-    cluster* d_clusters;
+    cluster* temp_clusters = (cluster*) malloc(sizeof(cluster)*num_clusters);
     for(int i=0; i<num_clusters;i++) {
-        CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*num_clusters));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].means),sizeof(float)*num_dimensions));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].R),sizeof(float)*num_dimensions*num_dimensions));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].Rinv),sizeof(float)*num_dimensions*num_dimensions));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].p),sizeof(float)*num_events));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(d_clusters[i].w),sizeof(float)*num_events));
-
+        temp_clusters[i].N = 0.0;
+        temp_clusters[i].pi = 0.0;
+        temp_clusters[i].constant = 0.0;
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].means),sizeof(float)*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].R),sizeof(float)*num_dimensions*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].Rinv),sizeof(float)*num_dimensions*num_dimensions));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].p),sizeof(float)*num_events));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].w),sizeof(float)*num_events));
     }
+    cluster* d_clusters;
+    CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*num_clusters));
     
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     
@@ -208,27 +211,27 @@ runTest( int argc, char** argv)
                                 cudaMemcpyHostToDevice) );
 
     // Copy Cluster data to device
-    CUDA_SAFE_CALL(cudaMemcpy(d_clusters,clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
 
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
     
     // execute the kernel
-    testKernel<<< 1, num_threads >>>( d_idata, d_clusters[0], num_dimensions, num_clusters, num_events);
+    testKernel<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
     
     // copy result from device to host
-    CUDA_SAFE_CALL(cudaMemcpy(clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
     
     for(int i=0; i<num_clusters; i++) {
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, d_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, d_clusters[i].R, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, d_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, temp_clusters[i].Rinv, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
     }
     
     CUT_SAFE_CALL(cutStopTimer(timer));

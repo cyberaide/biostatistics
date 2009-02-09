@@ -52,7 +52,7 @@
 //! @param g_odata  output data in global memory
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void
-testKernel( float* g_idata, cluster clust, int num_dimensions, int num_clusters, int num_events) 
+testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
 {
     // shared memory
     __shared__ float means[21];
@@ -80,8 +80,7 @@ testKernel( float* g_idata, cluster clust, int num_dimensions, int num_clusters,
     // write data to global memory
     if(tid < num_dimensions) {
         means[tid] /= (float) num_events;
-        //clusters[0].means[tid] = means[tid];
-        clust.means[tid] = means[tid];
+        clusters[0].means[tid] = means[tid];
     }
 
     __syncthreads();
@@ -110,8 +109,8 @@ testKernel( float* g_idata, cluster clust, int num_dimensions, int num_clusters,
                 covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
             }
             //printf("covs[%d][%d]: %f\n",row,tid,covs[i+tid]);
-            //clusters[0].R[i+tid] = covs[i+tid] / (float) num_events;
-            //clusters[0].R[i+tid] -= means[row]*means[col];
+            clusters[0].R[i+tid] = covs[i+tid] / (float) num_events;
+            clusters[0].R[i+tid] -= means[row]*means[col];
         }
     }
 }
