@@ -38,6 +38,8 @@
  * Device code.
  */
 
+#define COVARIANCE_DYNAMIC_RANGE 1E5
+
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
 
@@ -46,21 +48,16 @@
 
 #define sdata(index)      CUT_BANK_CHECKER(sdata, index)
 
-////////////////////////////////////////////////////////////////////////////////
-//! Simple test kernel for device functionality
-//! @param g_idata  input data in global memory
-//! @param g_odata  output data in global memory
-////////////////////////////////////////////////////////////////////////////////
-__global__ void
-testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
-{
-    // shared memory
-    __shared__ float means[21];
-
+/*
+ * Compute the spectral means of the FCS data
+ */ 
+__device__ void spectralMean(float* fcs_data, int num_dimensions, int num_events, float* means) {
     // access thread id
     const unsigned int tid = threadIdx.x;
     // access number of threads in this block
     const unsigned int num_threads = blockDim.x;
+    // Cluster Id, what cluster this thread block is working on
+    //const unsigned int cid = blockIdx.x;
 
     if(tid < num_dimensions) {
         means[tid] = 0.0;
@@ -68,49 +65,126 @@ testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clust
 
     __syncthreads();
 
-    // Compute means
+    // Sum up all the values for the dimension
     for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_dimensions) {
         if(tid < num_dimensions) {
-            means[tid] += g_idata[i];
+            means[tid] += fcs_data[i];
         }  
     }
     
     __syncthreads();
 
-    // write data to global memory
+    // Divide by the # of elements to get the average
     if(tid < num_dimensions) {
         means[tid] /= (float) num_events;
-        clusters[0].means[tid] = means[tid];
     }
+}
+
+__device__ void averageVariance(float* fcs_data, float* means, int num_dimensions, int num_events, float* avgvar) {
+    // access thread id
+    const unsigned int tid = threadIdx.x;
+    // access number of threads
+    const unsigned int num_threads = blockDim.x;
+    
+    __shared__ float variances[21];
+    __shared__ float total_variance;
+    
+    // Compute average variance for each dimension
+    for(int i=0; i < num_dimensions; i += num_threads) {
+        if(tid+i < num_dimensions) {
+            variances[tid] = 0.0;
+            // Sum up all the variance
+            for(int j=0; j < num_events; j++) {
+                // variance = (data - mean)^2
+                //variances[tid+i] += (fcs_data[j*num_dimensions + tid + i]-means[tid+i])*(fcs_data[j*num_dimensions + tid + i]-means[tid+i]);
+                variances[tid+i] += (fcs_data[j*num_dimensions + tid + i])*(fcs_data[j*num_dimensions + tid + i]);
+            }
+            variances[tid+i] /= (float) num_events;
+            variances[tid+i] -= means[tid+i]*means[tid+i];
+        }
+    }
+    
+    __syncthreads();
+    
+    if(tid == 0) {
+        total_variance = 0.0;
+        for(int i=0; i<num_dimensions;i++) {
+            //printf("%f ",variances[tid]);
+            total_variance += variances[i];
+        }
+        //printf("\nTotal variance: %f\n",total_variance);
+        *avgvar = total_variance / (float) num_dimensions;
+        //printf("Average Variance: %f\n",*avgvar);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//! Simple test kernel for device functionality
+//! @param g_idata          FCS data: [num_events]
+//! @param clusters         Clusters: [num_clusters]
+//! @param num_dimensions   number of dimensions in an FCS event
+//! @param num_events       number of FCS events
+////////////////////////////////////////////////////////////////////////////////
+__global__ void
+testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
+{
+    // access thread id
+    const unsigned int tid = threadIdx.x;
+    // access number of threads in this block
+    const unsigned int num_threads = blockDim.x;
+    // Cluster Id, what cluster this thread block is working on
+    //const unsigned int cid = blockIdx.x;
+
+    // shared memory
+    __shared__ float means[21]; // TODO: setup #define for the number of dimensions
+    spectralMean(g_idata, num_dimensions, num_events, means);
 
     __syncthreads();
     
+    float avgvar;
+    
+    averageVariance(g_idata, means, num_dimensions, num_events, &avgvar);
+    
+    //printf("Average Variance: %f\n",avgvar);
+    
     // Initialize covariances
-    __shared__ float covs[21*21];
-    __shared__ int num_elements;
-    __shared__ int row;
-    __shared__ int col;
+    __shared__ float covs[21*21]; // TODO: setup #define for the number of dimensions
+    __shared__ int num_elements, row, col;
+    // Number of elements in the covariance matrix
     num_elements = num_dimensions*num_dimensions; 
-    row = 0;
-    col = 0;
 
     __syncthreads();
 
+    // Compute the initial covariance matrix of the data
     for(int i=0; i < num_elements; i+= num_threads) {
         if(i+tid < num_elements) { // make sure we don't proces too many elements
-
             // zero the value, find what row and col this thread is computing
             covs[i+tid] = 0.0;
             row = (i+tid) / num_dimensions;
             col = (i+tid) % num_dimensions;
 
             for(int j=0; j < num_events; j++) {
-                //printf("data[%d][%d]: %f, data[%d][%d]: %f\n",j,row,g_idata[j*num_dimensions+row],j,col,g_idata[j*num_dimensions+col]);
                 covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
             }
-            //printf("covs[%d][%d]: %f\n",row,tid,covs[i+tid]);
-            clusters[0].R[i+tid] = covs[i+tid] / (float) num_events;
-            clusters[0].R[i+tid] -= means[row]*means[col];
+            covs[i+tid] = covs[i+tid] / (float) num_events;
+            covs[i+tid] = covs[i+tid] - means[row]*means[col];
+        }
+    }
+    
+    __syncthreads();
+    
+    // Copy the covariance matrix into every cluster
+    for(int c=0; c < num_clusters; c++) {
+        if(tid < num_dimensions) {
+            clusters[c].means[tid] = means[tid];
+        }
+        for(int i=0; i < num_elements; i+= num_threads) {
+            if(i+tid < num_elements) { // make sure we don't process too many elements
+                row = (i+tid) / num_dimensions;
+                col = (i+tid) % num_dimensions;
+                // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
+                clusters[c].R[i+tid] = covs[i+tid] + avgvar/COVARIANCE_DYNAMIC_RANGE;
+            }
         }
     }
 }

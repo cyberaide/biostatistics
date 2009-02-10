@@ -186,7 +186,13 @@ runTest( int argc, char** argv)
         clusters[i].w = (float*) malloc(sizeof(float)*num_events);
     }
     
+    unsigned int timer = 0;
+    CUT_SAFE_CALL( cutCreateTimer( &timer));
+    CUT_SAFE_CALL( cutStartTimer( timer));
+    
     // Setup the cluster data structures on device
+    // First allocate structures on the host, CUDA malloc the arrays
+    // Then CUDA malloc structures on the device and copy them over
     cluster* temp_clusters = (cluster*) malloc(sizeof(cluster)*num_clusters);
     for(int i=0; i<num_clusters;i++) {
         temp_clusters[i].N = 0.0;
@@ -212,10 +218,6 @@ runTest( int argc, char** argv)
 
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
-
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
     
     // execute the kernel
     testKernel<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
@@ -223,34 +225,40 @@ runTest( int argc, char** argv)
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
     
-    // copy result from device to host
+    // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
-    
+    // copy all of the arrays from the structs
     for(int i=0; i<num_clusters; i++) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, temp_clusters[i].w, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
+        clusters[i].N = temp_clusters[i].N;
+        clusters[i].pi = temp_clusters[i].pi;
+        clusters[i].constant = temp_clusters[i].constant;
     }
     
     CUT_SAFE_CALL(cutStopTimer(timer));
     printf( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
-    printf("Spectral Mean: ");
-    for(int i=0; i<num_dimensions; i++){
-        printf("%.3f ",clusters[0].means[i]);
-    }
-    printf("\n");
-   
-    printf("R Matrix:\n");
-    for(int i=0; i<num_dimensions; i++) {
-        for(int j=0; j<num_dimensions; j++) {
-            printf("%.3f ", clusters[0].R[i*num_dimensions+j]);
+    for(int c=0; c<num_clusters; c++) {
+        printf("Probability: %f\n", clusters[c].pi);
+        printf("Spectral Mean: ");
+        for(int i=0; i<num_dimensions; i++){
+            printf("%.3f ",clusters[c].means[i]);
         }
         printf("\n");
-    } 
+   
+        printf("R Matrix:\n");
+        for(int i=0; i<num_dimensions; i++) {
+            for(int j=0; j<num_dimensions; j++) {
+                printf("%.3f ", clusters[c].R[i*num_dimensions+j]);
+            }
+            printf("\n");
+        } 
+    }
     // cleanup memory
     free(fcs_data);
     for(int i=0; i<num_clusters; i++) {
