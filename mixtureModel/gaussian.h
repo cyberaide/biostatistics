@@ -7,6 +7,8 @@
 
 #define MAX_CLUSTERS	64
 
+#define PI  3.141593
+
 typedef struct 
 {
     float N;        // expected # of pixels in cluster

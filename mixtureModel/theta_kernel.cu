@@ -118,6 +118,76 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
     }
 }
 
+__device__ void invert_RMatrix(float* matrix, int num_dimensions, float* determinant) {
+    // Do an LU decomposition on the matrix...
+    
+    // Backsubstitute...
+    
+    
+    *determinant = 1.0;
+}
+
+__device__ void normalize_pi(cluster* clusters, int num_clusters) {
+    __shared__ int sum;
+    sum = 0.0;
+    // TODO: could maybe use a parallel reduction..but the # of elements is really small
+    if(threadIdx.x == 0) {
+        for(int i=0; i<num_clusters; i++) {
+            sum += clusters[i].pi;
+        }
+    }
+    
+    // Other threads need to wait for thread 0 to do the sum
+    __syncthreads();
+    
+    if(threadIdx.x < num_clusters) {
+        if(sum > 0.0) {
+            clusters[threadIdx.x].pi /= sum;
+        } else {
+            clusters[threadIdx.x].pi = 0.0;
+        }
+    }
+}
+
+__device__ void compute_constants(cluster* clusters, int num_clusters, int num_dimensions) {
+    float determinant;
+    const int tid = threadIdx.x;
+    const int num_threads = blockDim.x;
+    const int num_elements = num_dimensions*num_dimensions;
+    
+    __shared__ float matrix[21*21]; // TODO: Make num_dimensions a #define constant
+    
+    // Invert the matrix for every cluster
+    for(int c=0; c < num_clusters; c++) {
+        // Copy the R matrix into shared memory for doing the matrix inversion
+        for(int i=0; i<num_elements; i+= num_threads ) {
+            if(i+tid < num_elements) {
+                matrix[i+tid] = clusters[c].R[i+tid];
+            }
+        }
+        
+        __syncthreads(); // Not sure if this is neccesary..
+
+        invert_RMatrix(matrix,num_dimensions,&determinant);
+
+        __syncthreads(); // Not sure if this is neccesary..
+        
+        // Copy the matrx from shared memory back into the cluster memory
+        for(int i=0; i<num_elements; i+= num_threads) {
+            if(i+tid < num_elements) {
+                clusters[c].Rinv[i+tid] = matrix[i+tid];
+            }
+        }
+        
+        __syncthreads();
+    }
+    
+    // Compute the constant
+    if(threadIdx.x < num_clusters) {
+        clusters[tid].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //! Simple test kernel for device functionality
 //! @param g_idata          FCS data: [num_events]
@@ -126,7 +196,7 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
 //! @param num_events       number of FCS events
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void
-testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
+seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
 {
     // access thread id
     const unsigned int tid = threadIdx.x;
@@ -171,12 +241,22 @@ testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clust
         }
     }
     
-    __syncthreads();
+    __syncthreads();    
     
-    // Copy the covariance matrix into every cluster
+    // Calculate a seed value for the means
+    float seed;
+    if(num_clusters > 1) {
+        seed = (num_events-1.0)/(num_clusters-1.0);
+    } else {
+        seed = 0.0;
+    }
+    
+    int index;
+    // Seed the means and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
         if(tid < num_dimensions) {
-            clusters[c].means[tid] = means[tid];
+            index = (int) c*seed+tid;
+            clusters[c].means[tid] = means[index];
         }
         for(int i=0; i < num_elements; i+= num_threads) {
             if(i+tid < num_elements) { // make sure we don't process too many elements
@@ -186,6 +266,50 @@ testKernel( float* g_idata, cluster* clusters, int num_dimensions, int num_clust
                 clusters[c].R[i+tid] = covs[i+tid] + avgvar/COVARIANCE_DYNAMIC_RANGE;
             }
         }
+    }
+    
+    __syncthreads();
+    
+    // Compute matrix inverses and constants for each cluster
+    compute_constants(clusters,num_clusters,num_dimensions);
+    
+    __syncthreads();
+    
+    normalize_pi(clusters,num_clusters);
+    
+    __syncthreads();
+}
+
+__device__ float
+regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+    return 0.0;
+}
+
+__device__ void
+reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+
+}
+
+/*
+ * EM Algorthm kernel. Iterates until the change in likelihood of the data points is less than some epsilon
+ *
+ * Each iteration calculates likelihoods for all data points to every cluster, 
+ *   regroups the data pointers, and re-estimates model parameters
+ */
+__global__ void 
+refine_clusters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+    int nparams_clust = 1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions;
+    int ndata_points = num_events*num_dimensions;
+    float epsilon = nparams_clust*log((float)ndata_points)*0.01;
+    
+    float old_likelihood;
+    float likelihood = regroup(fcs_data,clusters,num_dimensions,num_clusters,num_events);
+    float change = epsilon*2;
+    while(change > epsilon) {
+        old_likelihood = likelihood;
+        reestimate_parameters(fcs_data,clusters,num_dimensions,num_clusters,num_events);
+        likelihood = regroup(fcs_data,clusters,num_dimensions,num_clusters,num_events);
+        change = likelihood - old_likelihood;
     }
 }
 

@@ -124,6 +124,32 @@ void printUsage(char** argv)
    printf("\t outfile: Clustering results output file\n");
 }
 
+void printCluster(cluster c, int num_dimensions) {
+    printf("Probability: %f\n", c.pi);
+    printf("Spectral Mean: ");
+    for(int i=0; i<num_dimensions; i++){
+        printf("%.3f ",c.means[i]);
+    }
+    printf("\n");
+
+    printf("\nR Matrix:\n");
+    for(int i=0; i<num_dimensions; i++) {
+        for(int j=0; j<num_dimensions; j++) {
+            printf("%.3f ", c.R[i*num_dimensions+j]);
+        }
+        printf("\n");
+    }   
+    
+    printf("\nR-inverse Matrix:\n");
+    for(int i=0; i<num_dimensions; i++) {
+        for(int j=0; j<num_dimensions; j++) {
+            printf("%.3f ", c.Rinv[i*num_dimensions+j]);
+        }
+        printf("\n");
+    } 
+    
+    printf("\nConstant: %f\n",c.constant);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //! Run a simple test for CUDA
@@ -211,16 +237,19 @@ runTest( int argc, char** argv)
     
     // allocate device memory for FCS data
     float* d_idata;
-    CUDA_SAFE_CALL( cudaMalloc( (void**) &d_idata, mem_size));
+    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_idata, mem_size));
     // copy FCS to device
-    CUDA_SAFE_CALL( cudaMemcpy( d_idata, fcs_data, mem_size,
-                                cudaMemcpyHostToDevice) );
+    CUDA_SAFE_CALL(cudaMemcpy( d_idata, fcs_data, mem_size,cudaMemcpyHostToDevice) );
 
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
     
     // execute the kernel
-    testKernel<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
+    seed_clusters<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
+    
+    //for(int i=0; i<num_clusters; i++) {
+    refine_clusters<<< 1, num_threads >>>(d_idata, d_clusters, num_dimensions, num_clusters, num_events);
+    //}
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
@@ -244,20 +273,7 @@ runTest( int argc, char** argv)
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
     for(int c=0; c<num_clusters; c++) {
-        printf("Probability: %f\n", clusters[c].pi);
-        printf("Spectral Mean: ");
-        for(int i=0; i<num_dimensions; i++){
-            printf("%.3f ",clusters[c].means[i]);
-        }
-        printf("\n");
-   
-        printf("R Matrix:\n");
-        for(int i=0; i<num_dimensions; i++) {
-            for(int j=0; j<num_dimensions; j++) {
-                printf("%.3f ", clusters[c].R[i*num_dimensions+j]);
-            }
-            printf("\n");
-        } 
+        printCluster(clusters[c],num_dimensions);
     }
     // cleanup memory
     free(fcs_data);
