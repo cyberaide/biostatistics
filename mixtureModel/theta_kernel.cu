@@ -282,12 +282,93 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
 
 __device__ float
 regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
-    return 0.0;
+    __shared__ float sums[192];
+    __shared__ float max_likelihoods[192];
+    __shared__ float denominator_sums[192];
+    __shared__ float total_likelihoods[192];
+    
+    const int num_threads = blockDim.x;
+    
+    // Compute likelihood for every event, for every cluster
+    for(int s=0; s<num_events;s += num_threads) {
+        if(s+threadIdx.x < num_events) {
+            max_likelihoods[threadIdx.x] = -1000000000000.0;
+            
+            // compute likelihood of pixel 's' in cluster 'c'
+            for(int c=0; c<num_clusters; c++) {
+                sums[threadIdx.x] = 0.0;
+                for(int i=0; i<num_dimensions; i++) {
+                    for(int j=0; j<num_dimensions; j++) {
+                        sums[threadIdx.x] += (fcs_data[s*num_dimensions+i]-clusters[c].means[i])*(fcs_data[s*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
+                    }
+                }
+                sums[threadIdx.x] = -0.5*sums[threadIdx.x]+clusters[c].constant;
+                // Keep track of the maximum likelihood
+                max_likelihoods[threadIdx.x] = fmaxf(max_likelihoods[threadIdx.x],sums[threadIdx.x]);
+            }
+            printf("maximum_likelihood for pixel %d is %f\n",s,max_likelihoods[threadIdx.x]);
+            denominator_sums[threadIdx.x] = 0.0;
+            for(int c=0; c<num_clusters; c++) {
+                clusters[c].p[s] = exp(clusters[c].p[s]-max_likelihoods[threadIdx.x])*clusters[c].pi;
+                printf("Clusters[%d].p[%d]: %f\n",c,s,clusters[c].p[s]);
+                denominator_sums[threadIdx.x] += clusters[c].p[s];
+            }
+            
+            printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
+            
+            total_likelihoods[threadIdx.x] += log(denominator_sums[threadIdx.x]) + max_likelihoods[threadIdx.x];
+            
+            for(int c=0; c<num_clusters; c++) {
+                clusters[c].p[s] /= denominator_sums[threadIdx.x];
+            }
+            
+        }
+    }
+    
+    float likelihood = 0.0;
+    
+    __syncthreads();
+    
+    if(threadIdx.x == 0) {
+        for(int i=0; i<num_threads; i++) {
+            likelihood += total_likelihoods[i];
+        }
+    }
+    
+    __syncthreads();
+    return likelihood;
 }
 
 __device__ void
 reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+    // Figure out # of elements each thread should add up
+    int num_elements_per_thread = num_events / blockDim.x;
+    int start_index = threadIdx.x * num_elements_per_thread;
+    int end_index;
+    // handle the end block so that we add left-over elements too
+    if(threadIdx.x == blockDim.x -1) {
+        end_index = num_events;
+    } else {
+        end_index = start_index + num_elements_per_thread;
+    }
 
+    __shared__ int temp_sums[192];
+    
+    // Compute new N 
+    for(int i=0; i<num_clusters; i++) {
+        temp_sums[threadIdx.x] = 0.0;
+        for(int s=start_index; s<end_index; s++) {
+            temp_sums[threadIdx.x] += clusters[i].p[s];
+        }
+        __syncthreads();
+        // Let the first thread add up all the intermediate sums
+        if(threadIdx.x == 0) {
+            clusters[i].N = 0;
+            for(int j=0; j<blockDim.x; j++) {
+                clusters[i].N += temp_sums[j];
+            }
+        }
+    }
 }
 
 /*

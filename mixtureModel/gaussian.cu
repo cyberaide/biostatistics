@@ -126,6 +126,7 @@ void printUsage(char** argv)
 
 void printCluster(cluster c, int num_dimensions) {
     printf("Probability: %f\n", c.pi);
+    printf("N: %f\n",c.N);
     printf("Spectral Mean: ");
     for(int i=0; i<num_dimensions; i++){
         printf("%.3f ",c.means[i]);
