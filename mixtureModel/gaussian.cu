@@ -226,10 +226,15 @@ runTest( int argc, char** argv)
         temp_clusters[i].pi = 0.0;
         temp_clusters[i].constant = 0.0;
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].means),sizeof(float)*num_dimensions));
+        if(!temp_clusters[i].means) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].R),sizeof(float)*num_dimensions*num_dimensions));
+        if(!temp_clusters[i].R) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].Rinv),sizeof(float)*num_dimensions*num_dimensions));
+        if(!temp_clusters[i].Rinv) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].p),sizeof(float)*num_events));
+        if(!temp_clusters[i].p) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].w),sizeof(float)*num_events));
+        if(!temp_clusters[i].w) printf("ERROR: Could not allocate memory.\n");
     }
     cluster* d_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*num_clusters));
@@ -245,9 +250,11 @@ runTest( int argc, char** argv)
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
     
+    printf("Invoking seed_clusters kernel\n");
     // execute the kernel
     seed_clusters<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
     
+    printf("Invoking refine_clusters kernel\n");
     //for(int i=0; i<num_clusters; i++) {
     refine_clusters<<< 1, num_threads >>>(d_idata, d_clusters, num_dimensions, num_clusters, num_events);
     //}

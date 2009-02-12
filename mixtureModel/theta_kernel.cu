@@ -128,12 +128,13 @@ __device__ void invert_RMatrix(float* matrix, int num_dimensions, float* determi
 }
 
 __device__ void normalize_pi(cluster* clusters, int num_clusters) {
-    __shared__ int sum;
-    sum = 0.0;
+    __shared__ float sum;
     // TODO: could maybe use a parallel reduction..but the # of elements is really small
     if(threadIdx.x == 0) {
+        sum = 0.0;
         for(int i=0; i<num_clusters; i++) {
             sum += clusters[i].pi;
+            //printf("original pi value: %f\n",clusters[i].pi);
         }
     }
     
@@ -141,11 +142,13 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __syncthreads();
     
     if(threadIdx.x < num_clusters) {
+        //printf("Sum of probabilities: %f\n",sum);
         if(sum > 0.0) {
             clusters[threadIdx.x].pi /= sum;
         } else {
             clusters[threadIdx.x].pi = 0.0;
         }
+        //printf("Normalized pi value: %f\n",clusters[threadIdx.x].pi);
     }
 }
 
@@ -219,7 +222,10 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     
     // Initialize covariances
     __shared__ float covs[21*21]; // TODO: setup #define for the number of dimensions
-    __shared__ int num_elements, row, col;
+    __shared__ int num_elements;
+    __shared__ int row[192];
+    __shared__ int col[192];
+    
     // Number of elements in the covariance matrix
     num_elements = num_dimensions*num_dimensions; 
 
@@ -227,17 +233,17 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
 
     // Compute the initial covariance matrix of the data
     for(int i=0; i < num_elements; i+= num_threads) {
-        if(i+tid < num_elements) { // make sure we don't proces too many elements
+        if( (i+tid) < num_elements) { // make sure we don't proces too many elements
             // zero the value, find what row and col this thread is computing
             covs[i+tid] = 0.0;
-            row = (i+tid) / num_dimensions;
-            col = (i+tid) % num_dimensions;
+            row[tid] = (i+tid) / num_dimensions;
+            col[tid] = (i+tid) % num_dimensions;
 
             for(int j=0; j < num_events; j++) {
-                covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
+                covs[i+tid] += (g_idata[j*num_dimensions+row[tid]])*(g_idata[j*num_dimensions+col[tid]]); 
             }
             covs[i+tid] = covs[i+tid] / (float) num_events;
-            covs[i+tid] = covs[i+tid] - means[row]*means[col];
+            covs[i+tid] = covs[i+tid] - means[row[tid]]*means[col[tid]];
         }
     }
     
@@ -251,23 +257,23 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
         seed = 0.0;
     }
     
-    int index;
-    // Seed the means and covariances for every cluster
+    __syncthreads();
+    
+    // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
+        clusters[c].pi = 1.0/num_clusters;
         if(tid < num_dimensions) {
-            index = (int) c*seed+tid;
-            clusters[c].means[tid] = means[index];
+            //clusters[c].means[tid] = fcs_data[((int)(c*seed))*num_dimensions+tid];
+            clusters[c].means[tid] = means[tid];
         }
+          
         for(int i=0; i < num_elements; i+= num_threads) {
-            if(i+tid < num_elements) { // make sure we don't process too many elements
-                row = (i+tid) / num_dimensions;
-                col = (i+tid) % num_dimensions;
+            if( (i+tid) < num_elements) { // make sure we don't process too many elements
                 // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
                 clusters[c].R[i+tid] = covs[i+tid] + avgvar/COVARIANCE_DYNAMIC_RANGE;
             }
         }
     }
-    
     __syncthreads();
     
     // Compute matrix inverses and constants for each cluster
@@ -282,46 +288,59 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
 
 __device__ float
 regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
-    __shared__ float sums[192];
+    __shared__ float temp[192];
     __shared__ float max_likelihoods[192];
     __shared__ float denominator_sums[192];
     __shared__ float total_likelihoods[192];
     
     const int num_threads = blockDim.x;
     
+    total_likelihoods[threadIdx.x] = 0.0;
+    
     // Compute likelihood for every event, for every cluster
-    for(int s=0; s<num_events;s += num_threads) {
-        if(s+threadIdx.x < num_events) {
-            max_likelihoods[threadIdx.x] = -1000000000000.0;
-            
-            // compute likelihood of pixel 's' in cluster 'c'
-            for(int c=0; c<num_clusters; c++) {
-                sums[threadIdx.x] = 0.0;
-                for(int i=0; i<num_dimensions; i++) {
-                    for(int j=0; j<num_dimensions; j++) {
-                        sums[threadIdx.x] += (fcs_data[s*num_dimensions+i]-clusters[c].means[i])*(fcs_data[s*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
-                    }
+    for(int pixel=threadIdx.x; pixel<num_events; pixel += num_threads) {
+        max_likelihoods[threadIdx.x] = -1000000000000.0;
+        
+        // compute likelihood of pixel in cluster 'c'
+        for(int c=0; c<num_clusters; c++) {
+            temp[threadIdx.x] = 0.0;
+            // this does the loglike() function
+            for(int i=0; i<num_dimensions; i++) {
+                for(int j=0; j<num_dimensions; j++) {
+                    //printf("fcs_data[%d]: %f, clusters[%d].means[%d]: %f\n",pixel*num_dimensions+j,fcs_data[pixel*num_dimensions+j],c,j,clusters[c].means[j]);
+                    //printf("diff1: %f, diff2: %f, Rinv: %f\n",(fcs_data[pixel*num_dimensions+i]-clusters[c].means[i]),(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j]),clusters[c].Rinv[i*num_dimensions+j]);
+                    temp[threadIdx.x] += (fcs_data[pixel*num_dimensions+i]-clusters[c].means[i])*(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
-                sums[threadIdx.x] = -0.5*sums[threadIdx.x]+clusters[c].constant;
-                // Keep track of the maximum likelihood
-                max_likelihoods[threadIdx.x] = fmaxf(max_likelihoods[threadIdx.x],sums[threadIdx.x]);
-            }
-            printf("maximum_likelihood for pixel %d is %f\n",s,max_likelihoods[threadIdx.x]);
-            denominator_sums[threadIdx.x] = 0.0;
-            for(int c=0; c<num_clusters; c++) {
-                clusters[c].p[s] = exp(clusters[c].p[s]-max_likelihoods[threadIdx.x])*clusters[c].pi;
-                printf("Clusters[%d].p[%d]: %f\n",c,s,clusters[c].p[s]);
-                denominator_sums[threadIdx.x] += clusters[c].p[s];
-            }
-            
-            printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
-            
-            total_likelihoods[threadIdx.x] += log(denominator_sums[threadIdx.x]) + max_likelihoods[threadIdx.x];
-            
-            for(int c=0; c<num_clusters; c++) {
-                clusters[c].p[s] /= denominator_sums[threadIdx.x];
-            }
-            
+            }            
+            clusters[c].p[pixel] = -0.5*temp[threadIdx.x]+clusters[c].constant;
+            // Keep track of the maximum likelihood
+            max_likelihoods[threadIdx.x] = fmaxf(max_likelihoods[threadIdx.x],clusters[c].p[pixel]);
+        }
+        
+        //printf("maximum_likelihood for pixel %d is %f\n",pixel,max_likelihoods[threadIdx.x]);
+        denominator_sums[threadIdx.x] = 0.0;
+        for(int c=0; c<num_clusters; c++) {
+            //printf("Clusters[%d].pi: %f\n",c,clusters[c].pi);
+            //printf("Clusters[%d].p[%d] before exp(): %f\n",c,pixel,clusters[c].p[pixel]);
+            // ????: for some reason if I don't use a temporary variable here I get NaN results in clusters[c].pixel[pixel]
+            // possible compiler optimization bug? or is just something goofy with the printing and the actual value would be fine on a real card?
+            //temp[threadIdx.x] = exp(clusters[c].p[pixel]-max_likelihoods[threadIdx.x])*clusters[c].pi;
+            //clusters[c].p[pixel] = temp[threadIdx.x];
+            clusters[c].p[pixel] = exp(clusters[c].p[pixel]-max_likelihoods[threadIdx.x])*clusters[c].pi;
+            //printf("Thread %d: Clusters[%d].p[%d]: %f\n",threadIdx.x,c,pixel,clusters[c].p[pixel]);
+            denominator_sums[threadIdx.x] += clusters[c].p[pixel];
+        }
+        
+        //printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
+        
+        total_likelihoods[threadIdx.x] += log(denominator_sums[threadIdx.x]) + max_likelihoods[threadIdx.x];
+        
+        // Normalizes probabilities
+        for(int c=0; c<num_clusters; c++) {
+            //temp[threadIdx.x] = clusters[c].p[pixel];
+            //clusters[c].p[pixel] = temp[threadIdx.x] / denominator_sums[threadIdx.x];
+            clusters[c].p[pixel] /= denominator_sums[threadIdx.x];
+            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
         }
     }
     
@@ -384,7 +403,12 @@ refine_clusters(float* fcs_data, cluster* clusters, int num_dimensions, int num_
     float epsilon = nparams_clust*log((float)ndata_points)*0.01;
     
     float old_likelihood;
+    
+    // do initial regrouping
     float likelihood = regroup(fcs_data,clusters,num_dimensions,num_clusters,num_events);
+    
+    __syncthreads();
+    
     float change = epsilon*2;
     while(change > epsilon) {
         old_likelihood = likelihood;
