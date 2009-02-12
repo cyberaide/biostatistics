@@ -242,22 +242,44 @@ runTest( int argc, char** argv)
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     
     // allocate device memory for FCS data
-    float* d_idata;
-    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_idata, mem_size));
+    float* d_fcs_data;
+    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data, mem_size));
     // copy FCS to device
-    CUDA_SAFE_CALL(cudaMemcpy( d_idata, fcs_data, mem_size,cudaMemcpyHostToDevice) );
+    CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data, fcs_data, mem_size,cudaMemcpyHostToDevice) );
 
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
     
     printf("Invoking seed_clusters kernel\n");
     // execute the kernel
-    seed_clusters<<< 1, num_threads >>>( d_idata, d_clusters, num_dimensions, num_clusters, num_events);
+    seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, num_clusters, num_events);
     
-    printf("Invoking refine_clusters kernel\n");
-    //for(int i=0; i<num_clusters; i++) {
-    refine_clusters<<< 1, num_threads >>>(d_idata, d_clusters, num_dimensions, num_clusters, num_events);
-    //}
+    int nparams_clust = 1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions;
+    int ndata_points = num_events*num_dimensions;
+    float epsilon = nparams_clust*log((float)ndata_points)*0.01;
+    float likelihood, old_likelihood;
+    
+    float* d_likelihood;
+    CUDA_SAFE_CALL(cudaMalloc((void**) &d_likelihood, sizeof(float)));
+
+    // do initial regrouping
+    printf("Invoking regroup kernel\n");
+    regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+    CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
+    printf("Gaussian.cu: likelihood = %f\n",likelihood);
+
+    float change = epsilon*2;
+    while(change > epsilon) {
+        old_likelihood = likelihood;
+        printf("Invoking reestimate_parameters kernel\n");
+        reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+        printf("Invoking regroup kernel\n");
+        regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+        CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
+        printf("Gaussian.cu: likelihood = %f\n",likelihood);
+        change = likelihood - old_likelihood;
+        printf("Change in likelihood: %f\n",change);
+    }
 
     // check if kernel execution generated and error
     CUT_CHECK_ERROR("Kernel execution failed");
@@ -293,7 +315,7 @@ runTest( int argc, char** argv)
         free(clusters[i].w);
     }    
     free(clusters);
-    CUDA_SAFE_CALL(cudaFree(d_idata));
+    CUDA_SAFE_CALL(cudaFree(d_fcs_data));
     for(int i=0; i<num_clusters; i++) {
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].means));
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].R));

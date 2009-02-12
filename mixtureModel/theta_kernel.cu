@@ -284,8 +284,8 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     __syncthreads();
 }
 
-__device__ float
-regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+__global__ void
+regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
     __shared__ float temp[192];
     __shared__ float max_likelihoods[192];
     __shared__ float denominator_sums[192];
@@ -342,21 +342,21 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
         }
     }
     
-    float likelihood = 0.0;
+    float retval = 0.0;
     
     __syncthreads();
     
     if(threadIdx.x == 0) {
         for(int i=0; i<num_threads; i++) {
-            likelihood += total_likelihoods[i];
+            //printf("Total likelihood[%d]: %f\n",i,total_likelihoods[i]);
+            retval += total_likelihoods[i];
         }
+        *likelihood = retval;
+        printf("Likelihood: %f\n",*likelihood);
     }
-    
-    __syncthreads();
-    return likelihood;
 }
 
-__device__ void
+__global__ void
 reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
     // Figure out # of elements each thread should add up
     int num_elements_per_thread = num_events / blockDim.x;
@@ -456,7 +456,7 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
  */
 __global__ void 
 refine_clusters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
-    int nparams_clust = 1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions;
+    /*int nparams_clust = 1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions;
     int ndata_points = num_events*num_dimensions;
     float epsilon = nparams_clust*log((float)ndata_points)*0.01;
     
@@ -473,8 +473,7 @@ refine_clusters(float* fcs_data, cluster* clusters, int num_dimensions, int num_
         reestimate_parameters(fcs_data,clusters,num_dimensions,num_clusters,num_events);
         likelihood = regroup(fcs_data,clusters,num_dimensions,num_clusters,num_events);
         change = likelihood - old_likelihood;
-        //printf("Change in likelihood: %f\n",change);
-    }
+    }*/
 }
 
 #endif // #ifndef _TEMPLATE_KERNEL_H_
