@@ -130,11 +130,11 @@ __device__ void invert_RMatrix(float* matrix, int num_dimensions, float* determi
 __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __shared__ float sum;
     // TODO: could maybe use a parallel reduction..but the # of elements is really small
+    // What is better: having thread 0 compute a shared sum and sync, or just have each one compute the sum?
     if(threadIdx.x == 0) {
         sum = 0.0;
         for(int i=0; i<num_clusters; i++) {
             sum += clusters[i].pi;
-            //printf("original pi value: %f\n",clusters[i].pi);
         }
     }
     
@@ -142,13 +142,11 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __syncthreads();
     
     if(threadIdx.x < num_clusters) {
-        //printf("Sum of probabilities: %f\n",sum);
         if(sum > 0.0) {
             clusters[threadIdx.x].pi /= sum;
         } else {
             clusters[threadIdx.x].pi = 0.0;
         }
-        //printf("Normalized pi value: %f\n",clusters[threadIdx.x].pi);
     }
 }
 
@@ -186,7 +184,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     }
     
     // Compute the constant
-    if(threadIdx.x < num_clusters) {
+    if(tid < num_clusters) {
         clusters[tid].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
     }
 }
@@ -210,12 +208,15 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
 
     // shared memory
     __shared__ float means[21]; // TODO: setup #define for the number of dimensions
+    
+    // Compute the means
     spectralMean(g_idata, num_dimensions, num_events, means);
 
     __syncthreads();
     
     float avgvar;
     
+    // Compute the average variance
     averageVariance(g_idata, means, num_dimensions, num_events, &avgvar);
     
     //printf("Average Variance: %f\n",avgvar);
@@ -223,9 +224,8 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     // Initialize covariances
     __shared__ float covs[21*21]; // TODO: setup #define for the number of dimensions
     __shared__ int num_elements;
-    __shared__ int row[192];
-    __shared__ int col[192];
-    
+    int row, col;
+        
     // Number of elements in the covariance matrix
     num_elements = num_dimensions*num_dimensions; 
 
@@ -236,14 +236,14 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
         if( (i+tid) < num_elements) { // make sure we don't proces too many elements
             // zero the value, find what row and col this thread is computing
             covs[i+tid] = 0.0;
-            row[tid] = (i+tid) / num_dimensions;
-            col[tid] = (i+tid) % num_dimensions;
+            row = (i+tid) / num_dimensions;
+            col = (i+tid) % num_dimensions;
 
             for(int j=0; j < num_events; j++) {
-                covs[i+tid] += (g_idata[j*num_dimensions+row[tid]])*(g_idata[j*num_dimensions+col[tid]]); 
+                covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
             }
             covs[i+tid] = covs[i+tid] / (float) num_events;
-            covs[i+tid] = covs[i+tid] - means[row[tid]]*means[col[tid]];
+            covs[i+tid] = covs[i+tid] - means[row]*means[col];
         }
     }
     
@@ -267,11 +267,9 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             clusters[c].means[tid] = means[tid];
         }
           
-        for(int i=0; i < num_elements; i+= num_threads) {
-            if( (i+tid) < num_elements) { // make sure we don't process too many elements
-                // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
-                clusters[c].R[i+tid] = covs[i+tid] + avgvar/COVARIANCE_DYNAMIC_RANGE;
-            }
+        for(int i=tid; i < num_elements; i+= num_threads) {
+            // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
+            clusters[c].R[i] = covs[i] + avgvar/COVARIANCE_DYNAMIC_RANGE;
         }
     }
     __syncthreads();
@@ -370,24 +368,84 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     } else {
         end_index = start_index + num_elements_per_thread;
     }
-
-    __shared__ int temp_sums[192];
     
-    // Compute new N 
-    for(int i=0; i<num_clusters; i++) {
+    // Number of elements in the covariance matrix
+    const int num_elements = num_dimensions*num_dimensions;
+    const int tid = threadIdx.x;
+    const int num_threads = blockDim.x;
+
+    //printf("Thread %d: start_index=%d, end_index=%d\n",threadIdx.x,start_index,end_index);
+    __shared__ float temp_sums[192];
+    
+    // Compute new N
+    for(int c=0; c<num_clusters; c++) {
         temp_sums[threadIdx.x] = 0.0;
         for(int s=start_index; s<end_index; s++) {
-            temp_sums[threadIdx.x] += clusters[i].p[s];
+            temp_sums[threadIdx.x] += clusters[c].p[s];
         }
+        
         __syncthreads();
+        
         // Let the first thread add up all the intermediate sums
         if(threadIdx.x == 0) {
-            clusters[i].N = 0;
+            clusters[c].N = 0;
             for(int j=0; j<blockDim.x; j++) {
-                clusters[i].N += temp_sums[j];
+                clusters[c].N += temp_sums[j];
             }
         }
+        
+        __syncthreads();
+        
+        // Set PI to the # of expected items, and then normalize it later
+        clusters[c].pi = clusters[c].N;
     }
+    
+    __syncthreads();    
+    
+    normalize_pi(clusters,num_clusters);
+    
+    __syncthreads();
+    
+    
+    float cov_sum = 0.0;
+    int row,col;
+    
+    // Compute means and covariances for each subcluster
+    for(int c=0; c<num_clusters; c++) {
+        // Compute means
+        temp_sums[threadIdx.x] = 0.0;
+        if(threadIdx.x < num_dimensions) {
+            // Sum up all the weighted values
+            for(int s=0; s<num_events; s++) {
+                temp_sums[threadIdx.x] += fcs_data[s*num_dimensions+threadIdx.x]*clusters[c].p[s];
+            }
+            // Divide by the # of elements in this cluster
+            clusters[c].means[threadIdx.x] = temp_sums[threadIdx.x] / clusters[c].N;
+        }
+
+        __syncthreads();
+
+        // Compute the covariance matrix of the data
+        for(int i=tid; i < num_elements; i+= num_threads) {
+            // zero the value, find what row and col this thread is computing
+            cov_sum = 0.0;
+            row = (i) / num_dimensions;
+            col = (i) % num_dimensions;
+
+            for(int j=0; j < num_events; j++) {
+                cov_sum += (fcs_data[j*num_dimensions+row]-clusters[c].means[row])*(fcs_data[j*num_dimensions+col]-clusters[c].means[col])*clusters[c].p[j]; 
+            }
+            clusters[c].R[i] = cov_sum / clusters[c].N;
+        }
+    }
+    
+    // Do we need really need to "regularize" the R matrix here?
+    // The sequential version adds Rmin to all the diagonal elements here
+    
+    // Compute constant and R-inverses again
+    compute_constants(clusters,num_clusters,num_dimensions);
+    
+    // Sequential code also re-normalizes pis again here...why? compute constants shouldn't effect N or pi
 }
 
 /*
@@ -415,6 +473,7 @@ refine_clusters(float* fcs_data, cluster* clusters, int num_dimensions, int num_
         reestimate_parameters(fcs_data,clusters,num_dimensions,num_clusters,num_events);
         likelihood = regroup(fcs_data,clusters,num_dimensions,num_clusters,num_events);
         change = likelihood - old_likelihood;
+        //printf("Change in likelihood: %f\n",change);
     }
 }
 
