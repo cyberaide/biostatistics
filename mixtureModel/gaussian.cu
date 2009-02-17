@@ -96,16 +96,18 @@ int validateArguments(int argc, char** argv, int* num_clusters) {
         } 
         
         // parse outfile
-        FILE* outfile = fopen(argv[3],"w");
-        if(!outfile) {
-            printf("Unable to create output file.\n\n");
-            printUsage(argv);
-            return 3;
+        if(argc == 4) {
+            FILE* outfile = fopen(argv[3],"w");
+            if(!outfile) {
+                printf("Unable to create output file.\n\n");
+                printUsage(argv);
+                return 3;
+            }
+            fclose(outfile);
         }
         
         // Clean up so the EPA is happy
         fclose(infile);
-        fclose(outfile);
         return 0;
     } else {
         printUsage(argv);
@@ -267,9 +269,10 @@ runTest( int argc, char** argv)
     regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
     CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
     printf("Gaussian.cu: likelihood = %f\n",likelihood);
+    printf("Gaussian.cu: epsilon = %f\n",epsilon);
 
     float change = epsilon*2;
-    while(change > epsilon) {
+    while(fabs(change) > epsilon) {
         old_likelihood = likelihood;
         printf("Invoking reestimate_parameters kernel\n");
         reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);

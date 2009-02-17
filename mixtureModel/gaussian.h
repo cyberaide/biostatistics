@@ -16,6 +16,7 @@ typedef struct
     float *means;   // Spectral mean for the cluster
     float *R;      // Covariance matrix
     float *Rinv;   // Inverse of covariance matrix
+    float avgvar;    // average variance
     float constant; // Normalizing constant
     float *p;       // Probability that each pixel belongs to this cluster
     float *w;       // Weight for pixels in cluster
