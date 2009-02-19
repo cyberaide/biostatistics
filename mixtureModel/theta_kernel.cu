@@ -403,9 +403,9 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         // TODO: determinant's are sometimes coming out as 0 and causing big problems
         // I guess that's why the cluster code managed the mantissa and exp separate...bleh
         determinant = fabs(determinant);
-        if(determinant < 1e-30) {
-            determinant = 1e-30;
-        }
+        //if(determinant < 1e-30) {
+        //    determinant = 1e-30;
+        //}
         printf("Log(%E): %f\n",determinant,log(determinant));
         clusters[tid].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
         printf("Constant: %f\n",clusters[tid].constant);
@@ -486,8 +486,8 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     for(int c=0; c < num_clusters; c++) {
         clusters[c].pi = 1.0/num_clusters;
         if(tid < num_dimensions) {
-            //clusters[c].means[tid] = fcs_data[((int)(c*seed))*num_dimensions+tid];
-            clusters[c].means[tid] = means[tid];
+            clusters[c].means[tid] = g_idata[((int)(c*seed))*num_dimensions+tid];
+            //clusters[c].means[tid] = means[tid];
         }
           
         for(int i=tid; i < num_elements; i+= num_threads) {
@@ -534,9 +534,10 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
                     //printf("diff1: %f, diff2: %f, Rinv: %f\n",(fcs_data[pixel*num_dimensions+i]-clusters[c].means[i]),(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j]),clusters[c].Rinv[i*num_dimensions+j]);
                     like += (fcs_data[pixel*num_dimensions+i]-clusters[c].means[i])*(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
-            }            
+            }
             //printf("constant: %f\n",clusters[c].constant);
             temp = -0.5*like+clusters[c].constant;
+            //printf("loglike() of cluster[%d] pixel# %d: %f\n",c,pixel,temp);
             clusters[c].p[pixel] = temp;
             
             // Keep track of the maximum likelihood
@@ -615,17 +616,17 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     
     // Compute new N
     for(int c=0; c<num_clusters; c++) {
-        temp_sums[threadIdx.x] = 0.0;
+        temp_sums[tid] = 0.0;
         for(int s=start_index; s<end_index; s++) {
-            temp_sums[threadIdx.x] += clusters[c].p[s];
+            temp_sums[tid] += clusters[c].p[s];
         }
         
         __syncthreads();
         
         // Let the first thread add up all the intermediate sums
-        if(threadIdx.x == 0) {
-            clusters[c].N = 0;
-            for(int j=0; j<blockDim.x; j++) {
+        if(tid == 0) {
+            clusters[c].N = 0.0;
+            for(int j=0; j<num_threads; j++) {
                 clusters[c].N += temp_sums[j];
             }
         }
@@ -649,26 +650,31 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     // Compute means and covariances for each subcluster
     for(int c=0; c<num_clusters; c++) {
         // Compute means
-        temp_sums[threadIdx.x] = 0.0;
-        if(threadIdx.x < num_dimensions) {
+        temp_sums[tid] = 0.0;
+        if(tid < num_dimensions) {
             // Sum up all the weighted values
             for(int s=0; s<num_events; s++) {
-                temp_sums[threadIdx.x] += fcs_data[s*num_dimensions+threadIdx.x]*clusters[c].p[s];
+                //printf("Thread: %d, clusters[%d].p[%d]: %.2f\n",tid,c,s,clusters[c].p[s]);
+                temp_sums[tid] += fcs_data[s*num_dimensions+tid]*clusters[c].p[s];
             }
             // Divide by the # of elements in this cluster
-            clusters[c].means[threadIdx.x] = temp_sums[threadIdx.x] / clusters[c].N;
+            clusters[c].means[tid] = temp_sums[tid] / clusters[c].N;
         }
+        
 
         __syncthreads();
         
         if(tid == 0) {
-            printf("clusters.c[%d].means: ",c);
+            printf("clusters.[%d].N: %.2f\n",c,clusters[c].N);
+            printf("clusters.[%d].means: ",c);
             for(int i=0;i<num_dimensions;i++) {
                 printf("%.2f ",clusters[c].means[i]);
             }
             printf("\n");
         }
 
+        __syncthreads();
+        
         // Compute the covariance matrix of the data
         for(int i=tid; i < num_elements; i+= num_threads) {
             // zero the value, find what row and col this thread is computing
@@ -688,10 +694,16 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         }
     }
     
+    __syncthreads();
+    
     // Compute constant and R-inverses again
     compute_constants(clusters,num_clusters,num_dimensions);
     
-    // Sequential code also re-normalizes pis again here...why? compute constants shouldn't effect N or pi
+    __syncthreads();
+    
+    normalize_pi(clusters,num_clusters);
+    
+    __syncthreads();
 }
 
 /*

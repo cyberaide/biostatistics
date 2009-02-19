@@ -279,7 +279,7 @@ runTest( int argc, char** argv)
         printf("Invoking regroup kernel\n");
         regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
         CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
-        printf("Gaussian.cu: likelihood = %f\n",likelihood);
+        printf("likelihood = %f\n",likelihood);
         change = likelihood - old_likelihood;
         printf("Change in likelihood: %f\n",change);
     }
