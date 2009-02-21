@@ -697,10 +697,8 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     __syncthreads();
     
     // Compute constant and R-inverses again
-    compute_constants(clusters,num_clusters,num_dimensions);
-    
-    __syncthreads();
-    
+    //compute_constants(clusters,num_clusters,num_dimensions);
+        
     normalize_pi(clusters,num_clusters);
     
     __syncthreads();

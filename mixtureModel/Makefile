@@ -43,6 +43,7 @@ CU_DEPS		:= \
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= readData.cpp \
+	invert_matrix.c
 
 
 ################################################################################
