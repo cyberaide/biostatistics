@@ -6,8 +6,9 @@
 #define GAUSSIAN_H
 
 #define MAX_CLUSTERS	64
-
 #define PI  3.141593
+#define NUM_THREADS 128
+#define NUM_DIMENSIONS 21
 
 typedef struct 
 {

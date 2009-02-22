@@ -199,8 +199,8 @@ runTest( int argc, char** argv)
     }
     
     unsigned int num_threads = num_dimensions*num_dimensions;
-    if(num_threads > 192) {
-        num_threads = 192;
+    if(num_threads > NUM_THREADS) {
+        num_threads = NUM_THREADS;
     }
 
     // Setup the cluster data structures on host
@@ -270,7 +270,8 @@ runTest( int argc, char** argv)
         memcpy(temp_clusters[i].Rinv,temp_clusters[i].R,sizeof(float)*num_dimensions*num_dimensions);
         
         // invert the matrix
-        invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+        //invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+        invert(temp_clusters[i].Rinv,num_dimensions,&determinant);
         
         // compute the new constant
         temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
@@ -286,6 +287,8 @@ runTest( int argc, char** argv)
     int ndata_points = num_events*num_dimensions;
     float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)ndata_points)*0.01;
     float likelihood, old_likelihood;
+    
+    epsilon = epsilon*1;
     printf("Gaussian.cu: epsilon = %f\n",epsilon);
     
     float* d_likelihood;
@@ -299,7 +302,7 @@ runTest( int argc, char** argv)
 
     float change = epsilon*2;
     
-    while(fabs(change) > epsilon) {
+    while(change > epsilon) {
         old_likelihood = likelihood;
         printf("Invoking reestimate_parameters kernel\n");
         reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
@@ -315,7 +318,8 @@ runTest( int argc, char** argv)
             memcpy(temp_clusters[i].Rinv,temp_clusters[i].R,sizeof(float)*num_dimensions*num_dimensions);
             
             // invert the matrix
-            invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+            //invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+            invert(temp_clusters[i].Rinv,num_dimensions,&determinant);
             
             // compute the new constant
             temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));

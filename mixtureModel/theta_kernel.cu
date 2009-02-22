@@ -86,7 +86,7 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
     // access number of threads
     const unsigned int num_threads = blockDim.x;
     
-    __shared__ float variances[21];
+    __shared__ float variances[NUM_DIMENSIONS];
     __shared__ float total_variance;
     
     // Compute average variance for each dimension
@@ -127,14 +127,14 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     
     // Do an LU decomposition on the matrix...
     //  Find max value of every row
-    __shared__ float max_row_vals[192];
-    __shared__ float temp_sums[192];
+    __shared__ float max_row_vals[NUM_THREADS];
+    __shared__ float temp_sums[NUM_THREADS];
     __shared__ int imax;
-    __shared__ int indx[21];
-    __shared__ float col[192];
+    __shared__ int indx[NUM_DIMENSIONS];
+    __shared__ float col[NUM_THREADS];
     
     // Temporary matrix
-    __shared__ float y[21*21];
+    __shared__ float y[NUM_DIMENSIONS*NUM_DIMENSIONS];
     
     double det = 1.0;
     
@@ -434,7 +434,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     //const unsigned int cid = blockIdx.x;
 
     // shared memory
-    __shared__ float means[21]; // TODO: setup #define for the number of dimensions
+    __shared__ float means[NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
     
     // Compute the means
     spectralMean(g_idata, num_dimensions, num_events, means);
@@ -449,7 +449,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     //printf("Average Variance: %f\n",avgvar);
     
     // Initialize covariances
-    __shared__ float covs[21*21]; // TODO: setup #define for the number of dimensions
+    __shared__ float covs[NUM_DIMENSIONS*NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
     __shared__ int num_elements;
     int row, col;
         
@@ -459,19 +459,17 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     __syncthreads();
 
     // Compute the initial covariance matrix of the data
-    for(int i=0; i < num_elements; i+= num_threads) {
-        if( (i+tid) < num_elements) { // make sure we don't proces too many elements
+    for(int i=tid; i < num_elements; i+= num_threads) {
             // zero the value, find what row and col this thread is computing
-            covs[i+tid] = 0.0;
-            row = (i+tid) / num_dimensions;
-            col = (i+tid) % num_dimensions;
+            covs[i] = 0.0;
+            row = (i) / num_dimensions;
+            col = (i) % num_dimensions;
 
             for(int j=0; j < num_events; j++) {
-                covs[i+tid] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
+                covs[i] += (g_idata[j*num_dimensions+row])*(g_idata[j*num_dimensions+col]); 
             }
-            covs[i+tid] = covs[i+tid] / (float) num_events;
-            covs[i+tid] = covs[i+tid] - means[row]*means[col];
-        }
+            covs[i] = covs[i] / (float) num_events;
+            covs[i] = covs[i] - means[row]*means[col];
     }
     
     __syncthreads();    
@@ -528,7 +526,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     float max_likelihood;
     float denominator_sum;
     float temp;
-    __shared__ float total_likelihoods[192];
+    __shared__ float total_likelihoods[NUM_THREADS];
     
     const int num_threads = blockDim.x;
     
@@ -572,9 +570,10 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
             // possible compiler optimization bug? or is just something goofy with the printing and the actual value would be fine on a real card?
             //temp[threadIdx.x] = exp(clusters[c].p[pixel]-max_likelihoods[threadIdx.x])*clusters[c].pi;
             //clusters[c].p[pixel] = temp[threadIdx.x];
-            clusters[c].p[pixel] = exp(clusters[c].p[pixel]-max_likelihood)*clusters[c].pi;
+            temp = exp(clusters[c].p[pixel]-max_likelihood)*clusters[c].pi;
             //printf("Thread %d: Clusters[%d].p[%d]: %f\n",threadIdx.x,c,pixel,clusters[c].p[pixel]);
-            denominator_sum += clusters[c].p[pixel];
+            denominator_sum += temp;
+            clusters[c].p[pixel] = temp;
         }
         
         //printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
@@ -594,15 +593,12 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     
     __syncthreads();
     
+    // Reduce all the total_likelihoods to a single total
     if(threadIdx.x == 0) {
         for(int i=0; i<num_threads; i++) {
-            //printf("Total likelihood[%d]: %f\n",i,total_likelihoods[i]);
             retval += total_likelihoods[i];
         }
         *likelihood = retval;
-        //if(threadIdx.x == 0) {
-            printf("Likelihood: %f\n",*likelihood);
-        //}
     }
 }
 
@@ -624,12 +620,12 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     const int tid = threadIdx.x;
     const int num_threads = blockDim.x;
 
-    //printf("Thread %d: start_index=%d, end_index=%d\n",threadIdx.x,start_index,end_index);
-    __shared__ float temp_sums[192];
+    __shared__ float temp_sums[NUM_THREADS];
     
     // Compute new N
     for(int c=0; c<num_clusters; c++) {
         temp_sums[tid] = 0.0;
+        // Break all the events accross the threads, add up probabilities
         for(int s=start_index; s<end_index; s++) {
             temp_sums[tid] += clusters[c].p[s];
         }
@@ -667,7 +663,6 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         if(tid < num_dimensions) {
             // Sum up all the weighted values
             for(int s=0; s<num_events; s++) {
-                //printf("Thread: %d, clusters[%d].p[%d]: %.2f\n",tid,c,s,clusters[c].p[s]);
                 temp_sums[tid] += fcs_data[s*num_dimensions+tid]*clusters[c].p[s];
             }
             // Divide by the # of elements in this cluster
@@ -700,6 +695,8 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             }
             clusters[c].R[i] = cov_sum / clusters[c].N;
         }
+        
+        __syncthreads();
         
         // Regularize matrix
         if(tid < num_dimensions) {
