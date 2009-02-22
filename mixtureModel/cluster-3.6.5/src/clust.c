@@ -253,6 +253,7 @@ double AverageVariance(struct ClassSig *Sig, int nbands)
        mean[b1] /= Sig->ClassData.SummedWeights;
      }
 
+     printf("Variances: ");
      for(b1=0; b1<nbands; b1++) {
        R[b1][b1] = 0.0;
        for(i=0; i<Sig->ClassData.npixels; i++) {
@@ -260,13 +261,16 @@ double AverageVariance(struct ClassSig *Sig, int nbands)
        }
        R[b1][b1] /= Sig->ClassData.SummedWeights;
        R[b1][b1] -= mean[b1]*mean[b1];
+       printf("%f ",R[b1][b1]);
      }
+     printf("\n");
 
      /* Compute average of diagonal entries */
      Rmin = 0.0;
      for(b1=0; b1<nbands; b1++) 
        Rmin += R[b1][b1];
 
+   printf("Total variance: %f\n",Rmin);
      Rmin = Rmin/(nbands);
 
      G_free_vector(mean);

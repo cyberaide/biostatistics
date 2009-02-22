@@ -263,9 +263,12 @@ static void seed(struct ClassSig *Sig, int nbands, double Rmin, int option)
 
      /* Seed the means and set the covarience components */
      for(i=0; i<Sig->nsubclasses; i++) {
+         printf("Seeded means: ");
        for(b1=0; b1<nbands; b1++) {
          Sig->SubSig[i].means[b1] = Sig->ClassData.x[(int)(i*period)][b1];
+         printf("%.2f ",Sig->SubSig[i].means[b1]);
        }
+       printf("\n");
 
        for(b1=0; b1<nbands; b1++)
        for(b2=0; b2<nbands; b2++) {
@@ -325,6 +328,7 @@ static double refine_clusters(
 
        ll_new = regroup(Sig,nbands);
        change = ll_new-ll_old;
+       printf("Likelihood change: %f\n",change);
        repeat = change>epsilon;
      } while(repeat);
 
@@ -355,8 +359,10 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
      for(i=0; i<Sig->nsubclasses; i++) 
      {
        Sig->SubSig[i].N = 0;
-       for(s=0; s<Data->npixels; s++)
-         Sig->SubSig[i].N += (Data->p[s][i])*(Data->w[s]);
+       for(s=0; s<Data->npixels; s++) {
+           Sig->SubSig[i].N += (Data->p[s][i])*(Data->w[s]);
+       }
+       printf("clusters[%d].N: %.2f\n",i,Sig->SubSig[i].N);
        Sig->SubSig[i].pi = Sig->SubSig[i].N;
      }
 
@@ -364,13 +370,18 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
      for(i=0; i<Sig->nsubclasses; i++) 
      {
        /* Compute mean */
+         printf("clusters[%d].means: ",i);
        for(b1=0; b1<nbands; b1++) 
        {
          Sig->SubSig[i].means[b1] = 0;
-         for(s=0; s<Data->npixels; s++)
-           Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1]*Data->w[s];
+         for(s=0; s<Data->npixels; s++) {
+             Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1]*Data->w[s];
+             //printf("clusters[%d].p[%d]: %.2f\n",i,s,Data->p[s][i]);
+         }
          Sig->SubSig[i].means[b1] /= Sig->SubSig[i].N;
+         printf("%.2f ",Sig->SubSig[i].means[b1]);
        }
+       printf("\n");
 	
        /* Compute R */
        for(b1=0; b1<nbands; b1++) 
@@ -391,6 +402,8 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
        for(b1=0; b1<nbands; b1++) {
          Sig->SubSig[i].R[b1][b1] += Rmin;
        }
+       
+       //printf("Rmin: %f\n",Rmin);
 
        if(option==CLUSTER_DIAG) DiagonalizeMatrix(Sig->SubSig[i].R,nbands);
      }
@@ -425,15 +438,20 @@ static double regroup(struct ClassSig *Sig, int nbands)
      for(i=0; i<Sig->nsubclasses; i++)
      {
        tmp = loglike(Data->x[s],&(Sig->SubSig[i]),nbands);
+       //printf("loglike() of cluster[%d] pixel# %d: %f\n",i,s,tmp);
        Data->p[s][i] = tmp;
        if(i==0) maxlike = tmp;
        if(tmp>maxlike) maxlike = tmp;
      }
 
+     //printf("Maxlike: %f\n",maxlike);
      subsum = 0;
      for(i=0; i<Sig->nsubclasses; i++)
      {
+       //printf("Cluster[%d].p[%d]: %f\n",i,s,Data->p[s][i]);
+       //printf("Cluster[%d] pi: %f\n",i,Sig->SubSig[i].pi);
        tmp = exp( Data->p[s][i]-maxlike )*Sig->SubSig[i].pi;
+       //printf("tmp: %.2f\n",tmp);
        subsum += tmp;
        Data->p[s][i] = tmp;
      }
@@ -442,7 +460,7 @@ static double regroup(struct ClassSig *Sig, int nbands)
      for(i=0; i<Sig->nsubclasses; i++)
        Data->p[s][i] /= subsum;
    }
-
+   //printf("likelihood: %f\n",likelihood);
    return(likelihood);
 }
 
@@ -530,8 +548,10 @@ static double loglike(double *x, struct SubSig *SubSig, int nbands)
     for(b1=0; b1<nbands; b1++) 
     for(b2=0; b2<nbands; b2++)
     {
+      //printf("x[%d]: %f, means[%d]: %f\n",b1,x[b1],b1,SubSig->means[b1]);
       diff1 = x[b1]-SubSig->means[b1];
       diff2 = x[b2]-SubSig->means[b2];
+      //printf("diff1: %f, diff2: %f, Rinv: %f\n",diff1,diff2,SubSig->Rinv[b1][b2]);
       sum += diff1*diff2*SubSig->Rinv[b1][b2];
     }
 
@@ -613,6 +633,7 @@ static void compute_constants(struct ClassSig *Sig, int nbands)
 
      Sig->SubSig[i].cnst = (-nbands/2.0)*log(2*PI) 
                             - 0.5*log(det_man) - 0.5*det_exp*log(10.0);
+     printf("Determinant: %E, new constant: %f\n",(1.0+det_man)*pow(10.0,det_exp),Sig->SubSig[i].cnst);
    } 
 }
 

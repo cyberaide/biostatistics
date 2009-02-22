@@ -65,12 +65,29 @@ int clust_invert(
   double *col      /* col = G_alloc_vector(n); */
 )
 {
-	int  i,j;
-	double  d_man;
+        int  i,j,f,g;
+        double  d_man;
         int d_exp;
+        
+        printf("\n\nR matrix before LU decomposition:\n");
+        for(i=0; i<n; i++) {
+            for(j=0; j<n; j++) {
+                printf("%.2f ",a[i][j]);
+            }
+            printf("\n");
+        }
 
         d_exp = 0;
         if(ludcmp(a,n,indx,&d_man)) {
+            printf("Determinant mantissa after LU decomposition: %f\n",d_man);
+            printf("\n\nR matrix after LU decomposition:\n");
+            for(i=0; i<n; i++) {
+                for(j=0; j<n; j++) {
+                    printf("%.2f ",a[i][j]);
+                }
+                printf("\n");
+            }
+            
           for(j=0; j<n; j++) {
             d_man *= a[j][j];
             while( double_abs(d_man)>10 ) {
@@ -82,17 +99,29 @@ int clust_invert(
               d_exp--;
             }
           }
+          
           *det_man = d_man;
           *det_exp = d_exp;
-	  for(j=0; j<n; j++) {
-	    for(i=0; i<n; i++) col[i]=0.0;
-	    col[j]=1.0;
-	    lubksb(a,n,indx,col);
-	    for(i=0; i<n; i++) y[i][j]=col[i];
-	  } 
+          
+          printf("det: %fE%d\n",d_man,d_exp);
+          
+          for(j=0; j<n; j++) {
+            for(i=0; i<n; i++) col[i]=0.0;
+            col[j]=1.0;
+            lubksb(a,n,indx,col);
+            for(i=0; i<n; i++) y[i][j]=col[i];
+          } 
 
-	  for(i=0; i<n; i++)
-	  for(j=0; j<n; j++) a[i][j]=y[i][j];
+          for(i=0; i<n; i++)
+          for(j=0; j<n; j++) a[i][j]=y[i][j];
+          
+          printf("\n\nMatrix at end of clust_invert function:\n");
+          for(f=0; f<n; f++) {
+              for(g=0; g<n; g++) {
+                  printf("%.2f ",a[f][g]);
+              }
+              printf("\n");
+          }
           return(1);
         }
         else {
@@ -131,37 +160,57 @@ ludcmp(double **a,int n,int *indx,double *d)
         big=0.0;
         for (j=0;j<n;j++)
             if ((temp=fabs(a[i][j])) > big)
-		big=temp;
+                big=temp;
         if (big == 0.0)
-	    return 0; /* Singular matrix  */
+            return 0; /* Singular matrix  */
         vv[i]=1.0/big;
     }
+    
+    int f,g;
+    
     for (j=0;j<n;j++) 
-    {
+    {   
         for (i=0;i<j;i++) 
-	{
+        {
             sum=a[i][j];
             for (k=0;k<i;k++)
-		sum -= a[i][k]*a[k][j];
+                sum -= a[i][k]*a[k][j];
             a[i][j]=sum;
         }
+        
+        /*
+        printf("\n\nMatrix After Step 1:\n");
+        for(f=0; f<n; f++) {
+            for(g=0; g<n; g++) {
+                printf("%.2f ",a[f][g]);
+            }
+            printf("\n");
+        }*/
+        
         big=0.0;
+        dum=0.0;
         for (i=j;i<n;i++) 
-	{
+        {
             sum=a[i][j];
             for (k=0;k<j;k++)
                 sum -= a[i][k]*a[k][j];
             a[i][j]=sum;
-            if ( (dum=vv[i]*fabs(sum)) >= big) 
-	    {
+            dum=vv[i]*fabs(sum);
+            //printf("sum: %f, dum: %f, big: %f\n",sum,dum,big);
+            //printf("dum-big: %E\n",dum-big);
+            if(dum >= big)
+            //if ( (dum-big) >= 0.0 || fabs(dum-big) < 1e-3) 
+            {
                 big=dum;
                 imax=i;
+                //printf("imax: %d\n",imax);
             }
         }
+        
         if (j != imax) 
-	{
+        {
             for (k=0;k<n;k++) 
-	    {
+            {
                 dum=a[imax][k];
                 a[imax][k]=a[j][k];
                 a[j][k]=dum;
@@ -170,16 +219,27 @@ ludcmp(double **a,int n,int *indx,double *d)
             vv[imax]=vv[j];
         }
         indx[j]=imax;
+        
+        /*
+        printf("\n\nMatrix after %dth iteration of LU decomposition:\n",j);
+        for(f=0; f<n; f++) {
+            for(g=0; g<n; g++) {
+                printf("%.2f ",a[f][g]);
+            }
+            printf("\n");
+        }
+        printf("imax: %d\n",imax);
+        */
 
- 	/* Change made 3/27/98 for robustness */
+        /* Change made 3/27/98 for robustness */
         if ( (a[j][j]>=0)&&(a[j][j]<TINY) ) a[j][j]= TINY;
         if ( (a[j][j]<0)&&(a[j][j]>-TINY) ) a[j][j]= -TINY;
 
         if (j != n-1) 
-	{
+        {
             dum=1.0/(a[j][j]);
             for (i=j+1;i<n;i++)
-		a[i][j] *= dum;
+                a[i][j] *= dum;
         }
     }
     G_free_vector (vv);
@@ -202,16 +262,16 @@ lubksb(double **a,int n,int *indx,double *b)
         b[ip]=b[i];
         if (ii >= 0)
             for (j=ii;j<i;j++)
-		sum -= a[i][j]*b[j];
+                sum -= a[i][j]*b[j];
         else if (sum)
-	    ii=i;
+            ii=i;
         b[i]=sum;
     }
     for (i=n-1;i>=0;i--)
     {
         sum=b[i];
         for (j=i+1;j<n;j++)
-	    sum -= a[i][j]*b[j];
+            sum -= a[i][j]*b[j];
         b[i]=sum/a[i][i];
     }
 }

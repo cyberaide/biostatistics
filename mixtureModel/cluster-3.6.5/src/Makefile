@@ -3,7 +3,8 @@
 
 # Linux or MacOSX 10.2 or most gcc compilers
 CC = gcc
-CFLAGS = -ansi -Wall -pedantic -O
+CFLAGS = -Wall -O
+#CFLAGS = -ansi -Wall -pedantic -O
 #CFLAGS = -ansi -Wall -pedantic -g
 
 
