@@ -118,6 +118,7 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
     }
 }
 
+
 __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     const int tid = threadIdx.x;
     const int num_threads = blockDim.x;
@@ -346,6 +347,7 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     return 1;
 }
 
+
 __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __shared__ float sum;
     // TODO: could maybe use a parallel reduction..but the # of elements is really small
@@ -369,6 +371,7 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     }
 }
 
+/*
 __device__ void compute_constants(cluster* clusters, int num_clusters, int num_dimensions) {
     float determinant;
     const int tid = threadIdx.x;
@@ -411,6 +414,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         printf("Constant: %f\n",clusters[tid].constant);
     }
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////
 //! Simple test kernel for device functionality
@@ -497,12 +501,21 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
         
         clusters[c].avgvar = avgvar / COVARIANCE_DYNAMIC_RANGE;
     }
+    
     __syncthreads();
+    
+    if(tid == 0) {
+        for(int c=0; c<num_clusters;c++) {
+            printf("Cluster[%d] Seeded means: ",c);
+            for(int i=0; i<num_dimensions;i++) {
+                printf("%.2f ",clusters[c].means[i]);
+            }
+            printf("\n");
+        }
+    }
     
     // Compute matrix inverses and constants for each cluster
-    compute_constants(clusters,num_clusters,num_dimensions);
-    
-    __syncthreads();
+    //compute_constants(clusters,num_clusters,num_dimensions);
     
     normalize_pi(clusters,num_clusters);
     

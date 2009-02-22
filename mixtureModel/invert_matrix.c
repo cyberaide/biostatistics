@@ -18,9 +18,17 @@ int invert_matrix(float* a, int n, double* determinant) {
     float* col = (float*) malloc(sizeof(float)*n);
     int* indx = (int*) malloc(sizeof(int)*n);
 
+    printf("\n\nR matrix before LU decomposition:\n");
+    for(i=0; i<n; i++) {
+        for(j=0; j<n; j++) {
+            printf("%.2f ",a[i*n+j]);
+        }
+        printf("\n");
+    }
+
     *determinant = 0.0;
     if(ludcmp(a,n,indx,determinant)) {
-    
+        printf("Determinant mantissa after LU decomposition: %f\n",*determinant);
         printf("\n\nR matrix after LU decomposition:\n");
         for(i=0; i<n; i++) {
             for(j=0; j<n; j++) {
@@ -89,13 +97,13 @@ ludcmp(float *a,int n,int *indx,double *d)
     {
         big=0.0;
         for (j=0;j<n;j++)
-            if ((temp=fabs(a[i*n+j])) > big)
+            if ((temp=fabsf(a[i*n+j])) > big)
                 big=temp;
         if (big == 0.0)
             return 0; /* Singular matrix  */
         vv[i]=1.0/big;
     }
-    
+        
     int f,g;
     
     for (j=0;j<n;j++) 
@@ -108,17 +116,31 @@ ludcmp(float *a,int n,int *indx,double *d)
             a[i*n+j]=sum;
         }
         
+        /*
+        printf("\n\nMatrix After Step 1:\n");
+        for(f=0; f<n; f++) {
+            for(g=0; g<n; g++) {
+                printf("%.2f ",a[f*n+g]);
+            }
+            printf("\n");
+        }*/
+        
         big=0.0;
+        dum=0.0;
         for (i=j;i<n;i++) 
         {
             sum=a[i*n+j];
             for (k=0;k<j;k++)
                 sum -= a[i*n+k]*a[k*n+j];
             a[i*n+j]=sum;
-            if ( (dum=vv[i]*fabs(sum)) >= big) 
+            dum=vv[i]*fabsf(sum);
+            //printf("sum: %f, dum: %f, big: %f\n",sum,dum,big);
+            //printf("dum-big: %E\n",fabs(dum-big));
+            if ( (dum-big) >= 0.0 || fabs(dum-big) < 1e-3) 
             {
                 big=dum;
                 imax=i;
+                //printf("imax: %d\n",imax);
             }
         }
         

@@ -47,6 +47,7 @@
 // includes, project
 #include <cutil.h>
 #include "gaussian.h"
+#include "invert_matrix.h"
 
 // includes, kernels
 #include <theta_kernel.cu>
@@ -256,10 +257,36 @@ runTest( int argc, char** argv)
     // execute the kernel
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, num_clusters, num_events);
     
-    int nparams_clust = 1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions;
+    double determinant;
+        
+    // Compute new constants and invert matrix
+    // copy clusters from the device
+    CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
+    for(int i=0; i<num_clusters; i++) {
+        // copy the R matrix from the device
+        CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].R, d_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+
+        // copy R into Rinv
+        memcpy(temp_clusters[i].Rinv,temp_clusters[i].R,sizeof(float)*num_dimensions*num_dimensions);
+        
+        // invert the matrix
+        invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+        
+        // compute the new constant
+        temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
+        printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
+        
+        // copy the R matrix back to the device
+        CUDA_SAFE_CALL(cudaMemcpy(d_clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
+        // copy the new constant to the device
+        CUDA_SAFE_CALL(cudaMemcpy(&(d_clusters[i].constant), &(temp_clusters[i].constant), sizeof(float),cudaMemcpyHostToDevice));            
+    }
+    
+    // Calculate an epsilon value
     int ndata_points = num_events*num_dimensions;
-    float epsilon = nparams_clust*log((float)ndata_points)*0.01;
+    float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)ndata_points)*0.01;
     float likelihood, old_likelihood;
+    printf("Gaussian.cu: epsilon = %f\n",epsilon);
     
     float* d_likelihood;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_likelihood, sizeof(float)));
@@ -269,13 +296,37 @@ runTest( int argc, char** argv)
     regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
     CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
     printf("Gaussian.cu: likelihood = %f\n",likelihood);
-    printf("Gaussian.cu: epsilon = %f\n",epsilon);
 
     float change = epsilon*2;
+    
     while(fabs(change) > epsilon) {
         old_likelihood = likelihood;
         printf("Invoking reestimate_parameters kernel\n");
         reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+        
+        // Compute new constants and invert matrix
+        // copy clusters from the device
+        CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
+        for(int i=0; i<num_clusters; i++) {
+            // copy the R matrix from the device
+            CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].R, d_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+
+            // copy R into Rinv
+            memcpy(temp_clusters[i].Rinv,temp_clusters[i].R,sizeof(float)*num_dimensions*num_dimensions);
+            
+            // invert the matrix
+            invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
+            
+            // compute the new constant
+            temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
+            printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
+            
+            // copy the R matrix back to the device
+            CUDA_SAFE_CALL(cudaMemcpy(d_clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
+            // copy the new constant to the device
+            CUDA_SAFE_CALL(cudaMemcpy(&(d_clusters[i].constant), &(temp_clusters[i].constant), sizeof(float),cudaMemcpyHostToDevice));            
+        }
+        
         printf("Invoking regroup kernel\n");
         regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
         CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
