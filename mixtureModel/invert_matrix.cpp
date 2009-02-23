@@ -16,12 +16,14 @@ void invert(float* data, int actualsize, double* determinant)  {
     int n = actualsize;
     *determinant = 1.0;
 
-    printf("\n\nR matrix before inversion:\n");
-    for(int i=0; i<n; i++) {
-        for(int j=0; j<n; j++) {
-            printf("%.2f ",data[i*n+j]);
+    if(0) {
+        printf("\n\nR matrix before inversion:\n");
+        for(int i=0; i<n; i++) {
+            for(int j=0; j<n; j++) {
+                printf("%.2f ",data[i*n+j]);
+            }
+            printf("\n");
         }
-        printf("\n");
     }
     
   if (actualsize <= 0) return;  // sanity check
@@ -74,12 +76,14 @@ void invert(float* data, int actualsize, double* determinant)  {
       data[j*maxsize+i] = sum;
       }
       
-      printf("\n\nR matrix after inversion:\n");
-      for(int i=0; i<n; i++) {
-          for(int j=0; j<n; j++) {
-              printf("%.2f ",data[i*n+j]);
+      if(0) {
+          printf("\n\nR matrix after inversion:\n");
+          for(int i=0; i<n; i++) {
+              for(int j=0; j<n; j++) {
+                  printf("%.2f ",data[i*n+j]);
+              }
+              printf("\n");
           }
-          printf("\n");
       }
  }
 

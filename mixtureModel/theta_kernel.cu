@@ -109,12 +109,12 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
     if(tid == 0) {
         total_variance = 0.0;
         for(int i=0; i<num_dimensions;i++) {
-            //printf("%f ",variances[tid]);
+            ////printf("%f ",variances[tid]);
             total_variance += variances[i];
         }
-        //printf("\nTotal variance: %f\n",total_variance);
+        ////printf("\nTotal variance: %f\n",total_variance);
         *avgvar = total_variance / (float) num_dimensions;
-        //printf("Average Variance: %f\n",*avgvar);
+        ////printf("Average Variance: %f\n",*avgvar);
     }
 }
 
@@ -142,12 +142,12 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     
     /*
     if(tid == 0) {
-        printf("\n\nR matrix before LU decomposition:\n");
+        //printf("\n\nR matrix before LU decomposition:\n");
         for(int f=0; f<n; f++) {
             for(int g=0; g<n; g++) {
-                printf("%.2f ",matrix[f*n+g]);
+                //printf("%.2f ",matrix[f*n+g]);
             }
-            printf("\n");
+            //printf("\n");
         }
     }*/
     
@@ -160,8 +160,8 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     
         if(max_row_vals[row] == 0.0) {
             // Singular matrix!
-            printf("Singular matrix!\n");
-            exit(1);
+            //printf("Singular matrix!\n");
+            //exit(1);
             *determinant = 0.0;
             return 1;
         }
@@ -212,14 +212,14 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
         
         /*
         if(tid == 0) {
-            printf("\n\nMatrix after %dth iteration of LU decomposition:\n",j);
+            //printf("\n\nMatrix after %dth iteration of LU decomposition:\n",j);
             for(int f=0; f<n; f++) {
                 for(int g=0; g<n; g++) {
-                    printf("%.2f ",matrix[f*n+g]);
+                    //printf("%.2f ",matrix[f*n+g]);
                 }
-                printf("\n");
+                //printf("\n");
             }
-            printf("imax: %d\n",imax);
+            //printf("imax: %d\n",imax);
         }*/
         
         if(j != imax && tid < n) {
@@ -257,14 +257,14 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     
     
     if(tid == 0) {
-        printf("\n\nR Matrix after LU decomposition:\n");
+        //printf("\n\nR Matrix after LU decomposition:\n");
         for(int f=0; f<n; f++) {
             for(int g=0; g<n; g++) {
-                printf("%.2f ",matrix[f*n+g]);
+                //printf("%.2f ",matrix[f*n+g]);
             }
-            printf("\n");
+            //printf("\n");
         }
-        printf("imax: %d\n",imax);
+        //printf("imax: %d\n",imax);
     }
     
     // Compute determinant (product of 'U' diagonal entries)
@@ -272,7 +272,7 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     //       May need to keep track of mantissa and exponent separately and normalize it after each multiplication
     for(int j=0;j<n;j++) {
         if(tid == 0) {
-            //printf("determinant: %E\n",*determinant);
+            ////printf("determinant: %E\n",*determinant);
         }
         *determinant *= matrix[j*n+j];
     }
@@ -335,12 +335,12 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
     __syncthreads();
     
     if(tid == 0) {
-        printf("\n\nR-inverse:\n");
+        //printf("\n\nR-inverse:\n");
         for(int f=0; f<n; f++) {
             for(int g=0; g<n; g++) {
-                printf("%.2f ",matrix[f*n+g]);
+                //printf("%.2f ",matrix[f*n+g]);
             }
-            printf("\n");
+            //printf("\n");
         }
     }
     
@@ -409,9 +409,9 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         //if(determinant < 1e-30) {
         //    determinant = 1e-30;
         //}
-        printf("Log(%E): %f\n",determinant,log(determinant));
+        //printf("Log(%E): %f\n",determinant,log(determinant));
         clusters[tid].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
-        printf("Constant: %f\n",clusters[tid].constant);
+        //printf("Constant: %f\n",clusters[tid].constant);
     }
 }
 */
@@ -430,8 +430,6 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     const unsigned int tid = threadIdx.x;
     // access number of threads in this block
     const unsigned int num_threads = blockDim.x;
-    // Cluster Id, what cluster this thread block is working on
-    //const unsigned int cid = blockIdx.x;
 
     // shared memory
     __shared__ float means[NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
@@ -446,7 +444,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     // Compute the average variance
     averageVariance(g_idata, means, num_dimensions, num_events, &avgvar);
     
-    //printf("Average Variance: %f\n",avgvar);
+    ////printf("Average Variance: %f\n",avgvar);
     
     // Initialize covariances
     __shared__ float covs[NUM_DIMENSIONS*NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
@@ -470,6 +468,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             }
             covs[i] = covs[i] / (float) num_events;
             covs[i] = covs[i] - means[row]*means[col];
+            __syncthreads();
     }
     
     __syncthreads();    
@@ -504,11 +503,11 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     
     if(tid == 0) {
         for(int c=0; c<num_clusters;c++) {
-            printf("Cluster[%d] Seeded means: ",c);
+            //printf("Cluster[%d] Seeded means: ",c);
             for(int i=0; i<num_dimensions;i++) {
-                printf("%.2f ",clusters[c].means[i]);
+                //printf("%.2f ",clusters[c].means[i]);
             }
-            printf("\n");
+            //printf("\n");
         }
     }
     
@@ -541,14 +540,14 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
             // this does the loglike() function
             for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
-                    //printf("fcs_data[%d]: %f, clusters[%d].means[%d]: %f\n",pixel*num_dimensions+j,fcs_data[pixel*num_dimensions+j],c,j,clusters[c].means[j]);
-                    //printf("diff1: %f, diff2: %f, Rinv: %f\n",(fcs_data[pixel*num_dimensions+i]-clusters[c].means[i]),(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j]),clusters[c].Rinv[i*num_dimensions+j]);
+                    ////printf("fcs_data[%d]: %f, clusters[%d].means[%d]: %f\n",pixel*num_dimensions+j,fcs_data[pixel*num_dimensions+j],c,j,clusters[c].means[j]);
+                    ////printf("diff1: %f, diff2: %f, Rinv: %f\n",(fcs_data[pixel*num_dimensions+i]-clusters[c].means[i]),(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j]),clusters[c].Rinv[i*num_dimensions+j]);
                     like += (fcs_data[pixel*num_dimensions+i]-clusters[c].means[i])*(fcs_data[pixel*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
             }
-            //printf("constant: %f\n",clusters[c].constant);
+            ////printf("constant: %f\n",clusters[c].constant);
             temp = -0.5*like+clusters[c].constant;
-            //printf("loglike() of cluster[%d] pixel# %d: %f\n",c,pixel,temp);
+            ////printf("loglike() of cluster[%d] pixel# %d: %f\n",c,pixel,temp);
             clusters[c].p[pixel] = temp;
             
             // Keep track of the maximum likelihood
@@ -561,22 +560,22 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
             //max_likelihood = fmaxf(max_likelihood,clusters[c].p[pixel]);
         }
         
-        //printf("maximum_likelihood for pixel %d is %f\n",pixel,max_likelihood);
+        ////printf("maximum_likelihood for pixel %d is %f\n",pixel,max_likelihood);
         denominator_sum = 0.0;
         for(int c=0; c<num_clusters; c++) {
-            //printf("Clusters[%d].pi: %f\n",c,clusters[c].pi);
-            //printf("Clusters[%d].p[%d] before exp(): %f\n",c,pixel,clusters[c].p[pixel]);
+            ////printf("Clusters[%d].pi: %f\n",c,clusters[c].pi);
+            ////printf("Clusters[%d].p[%d] before exp(): %f\n",c,pixel,clusters[c].p[pixel]);
             // ????: for some reason if I don't use a temporary variable here I get NaN results in clusters[c].pixel[pixel]
             // possible compiler optimization bug? or is just something goofy with the printing and the actual value would be fine on a real card?
             //temp[threadIdx.x] = exp(clusters[c].p[pixel]-max_likelihoods[threadIdx.x])*clusters[c].pi;
             //clusters[c].p[pixel] = temp[threadIdx.x];
             temp = exp(clusters[c].p[pixel]-max_likelihood)*clusters[c].pi;
-            //printf("Thread %d: Clusters[%d].p[%d]: %f\n",threadIdx.x,c,pixel,clusters[c].p[pixel]);
+            ////printf("Thread %d: Clusters[%d].p[%d]: %f\n",threadIdx.x,c,pixel,clusters[c].p[pixel]);
             denominator_sum += temp;
             clusters[c].p[pixel] = temp;
         }
         
-        //printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
+        ////printf("Denominator_sum: %f\n",denominator_sums[threadIdx.x]);
         
         total_likelihoods[threadIdx.x] += log(denominator_sum) + max_likelihood;
         
@@ -585,7 +584,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
             //temp[threadIdx.x] = clusters[c].p[pixel];
             //clusters[c].p[pixel] = temp[threadIdx.x] / denominator_sums[threadIdx.x];
             clusters[c].p[pixel] /= denominator_sum;
-            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
+            ////printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
         }
     }
     
@@ -673,12 +672,12 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         __syncthreads();
         
         if(tid == 0) {
-            printf("clusters.[%d].N: %.2f\n",c,clusters[c].N);
-            printf("clusters.[%d].means: ",c);
+            //printf("clusters.[%d].N: %.2f\n",c,clusters[c].N);
+            //printf("clusters.[%d].means: ",c);
             for(int i=0;i<num_dimensions;i++) {
-                printf("%.2f ",clusters[c].means[i]);
+                //printf("%.2f ",clusters[c].means[i]);
             }
-            printf("\n");
+            //printf("\n");
         }
 
         __syncthreads();

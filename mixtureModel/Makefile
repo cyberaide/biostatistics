@@ -40,6 +40,7 @@ CUFILES		:= gaussian.cu
 # CUDA dependency files
 CU_DEPS		:= \
 	theta_kernel.cu \
+    gaussian.h
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= readData.cpp \

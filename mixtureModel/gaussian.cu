@@ -257,7 +257,7 @@ runTest( int argc, char** argv)
     // execute the kernel
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, num_clusters, num_events);
     printf("Finished seed_clusters kernel\n"); 
-    double determinant;
+    double determinant = 1.0;
         
     // Compute new constants and invert matrix
     // copy clusters from the device
@@ -270,7 +270,6 @@ runTest( int argc, char** argv)
 
         // invert the matrix
         printf("Inverting matrix...\n");
-        //invert_matrix(temp_clusters[i].Rinv,num_dimensions,&determinant);
         invert(clusters[i].R,num_dimensions,&determinant);
         
         // compute the new constant
@@ -299,15 +298,20 @@ runTest( int argc, char** argv)
     // do initial regrouping
     printf("Invoking regroup kernel\n");
     regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+    // check if kernel execution generated and error
+    CUT_CHECK_ERROR("Kernel execution failed");
     CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
     printf("Gaussian.cu: likelihood = %f\n",likelihood);
 
     float change = epsilon*2;
     
-    while(change > epsilon) {
+    while(fabs(change) > epsilon) {
         old_likelihood = likelihood;
         printf("Invoking reestimate_parameters kernel\n");
         reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+        
+        // check if kernel execution generated and error
+        CUT_CHECK_ERROR("Kernel execution failed");
         
         // Compute new constants and invert matrix
         // copy clusters from the device
@@ -336,14 +340,16 @@ runTest( int argc, char** argv)
         
         printf("Invoking regroup kernel\n");
         regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+        
+        // check if kernel execution generated and error
+        CUT_CHECK_ERROR("Kernel execution failed");
+        
         CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
         printf("likelihood = %f\n",likelihood);
         change = likelihood - old_likelihood;
         printf("Change in likelihood: %f\n",change);
     }
 
-    // check if kernel execution generated and error
-    CUT_CHECK_ERROR("Kernel execution failed");
     
     // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
