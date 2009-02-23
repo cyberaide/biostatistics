@@ -16,7 +16,7 @@ void invert(float* data, int actualsize, double* determinant)  {
     int n = actualsize;
     *determinant = 1.0;
 
-    if(0) {
+    if(1) {
         printf("\n\nR matrix before inversion:\n");
         for(int i=0; i<n; i++) {
             for(int j=0; j<n; j++) {
@@ -76,7 +76,7 @@ void invert(float* data, int actualsize, double* determinant)  {
       data[j*maxsize+i] = sum;
       }
       
-      if(0) {
+      if(1) {
           printf("\n\nR matrix after inversion:\n");
           for(int i=0; i<n; i++) {
               for(int j=0; j<n; j++) {

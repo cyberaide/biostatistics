@@ -271,6 +271,7 @@ runTest( int argc, char** argv)
         // invert the matrix
         printf("Inverting matrix...\n");
         invert(clusters[i].R,num_dimensions,&determinant);
+        //invert_matrix(clusters[i].R,num_dimensions,&determinant);
         
         // compute the new constant
         temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
@@ -305,7 +306,7 @@ runTest( int argc, char** argv)
 
     float change = epsilon*2;
     
-    while(fabs(change) > epsilon) {
+    while(change > epsilon) {
         old_likelihood = likelihood;
         printf("Invoking reestimate_parameters kernel\n");
         reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
@@ -321,10 +322,19 @@ runTest( int argc, char** argv)
         for(int i=0; i<num_clusters; i++) {
             // copy the R matrix from the device
             CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+        
+            // copy the means matrix from the device
+            CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+            printf("cluster[%d].means: ",i);
+            for(int j=0; j<num_dimensions; j++) {
+                printf("%.2f ",clusters[i].means[j]);
+            }
+            printf("\n");
 
             // invert the matrix
             printf("Inverting matrix...\n");
             invert(clusters[i].R,num_dimensions,&determinant);
+            //invert_matrix(clusters[i].R,num_dimensions,&determinant);
             
             // compute the new constant
             temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
@@ -350,7 +360,8 @@ runTest( int argc, char** argv)
         printf("Change in likelihood: %f\n",change);
     }
 
-    
+    printf("\n\nSolution coverged or began to diverge. Printing solution.\n");
+ 
     // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
     // copy all of the arrays from the structs
