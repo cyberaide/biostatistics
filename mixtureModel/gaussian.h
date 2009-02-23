@@ -8,7 +8,7 @@
 #define MAX_CLUSTERS	64
 #define PI  3.141593
 #define NUM_THREADS 128
-#define NUM_DIMENSIONS 21
+#define NUM_DIMENSIONS 2
 
 typedef struct 
 {

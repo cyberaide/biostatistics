@@ -198,8 +198,8 @@ ludcmp(double **a,int n,int *indx,double *d)
             dum=vv[i]*fabs(sum);
             //printf("sum: %f, dum: %f, big: %f\n",sum,dum,big);
             //printf("dum-big: %E\n",dum-big);
-            if(dum >= big)
-            //if ( (dum-big) >= 0.0 || fabs(dum-big) < 1e-3) 
+            //if(dum >= big)
+            if ( (dum-big) >= 0.0 || fabs(dum-big) < 1e-3) 
             {
                 big=dum;
                 imax=i;

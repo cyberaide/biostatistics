@@ -266,6 +266,7 @@ static void seed(struct ClassSig *Sig, int nbands, double Rmin, int option)
          printf("Seeded means: ");
        for(b1=0; b1<nbands; b1++) {
          Sig->SubSig[i].means[b1] = Sig->ClassData.x[(int)(i*period)][b1];
+         //Sig->SubSig[i].means[b1] = mean[b1];
          printf("%.2f ",Sig->SubSig[i].means[b1]);
        }
        printf("\n");
@@ -328,7 +329,7 @@ static double refine_clusters(
 
        ll_new = regroup(Sig,nbands);
        change = ll_new-ll_old;
-       printf("Likelihood change: %f\n",change);
+       printf("New LL: %f\tOld LL: %f\tLikelihood change: %f\n",ll_new,ll_old,change);
        repeat = change>epsilon;
      } while(repeat);
 
@@ -457,8 +458,10 @@ static double regroup(struct ClassSig *Sig, int nbands)
      }
      likelihood += log(subsum) + maxlike;
 
-     for(i=0; i<Sig->nsubclasses; i++)
+     for(i=0; i<Sig->nsubclasses; i++) {
        Data->p[s][i] /= subsum;
+       //printf("Probability that pixel #%d is in cluster #%d: %f\n",s,i,Data->p[s][i]);
+     }
    }
    //printf("likelihood: %f\n",likelihood);
    return(likelihood);
