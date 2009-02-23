@@ -120,7 +120,7 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
                 return 4;
             }
         } else {
-            *target_num_clusters = 1;
+            *target_num_clusters = 0;
         }
         
         // Clean up so the EPA is happy
@@ -178,16 +178,24 @@ int
 runTest( int argc, char** argv) 
 {
     
-    int original_num_clusters, desired_num_clusters;
+    int original_num_clusters, desired_num_clusters, stop_number;
     
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
-    
-    printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,desired_num_clusters);
     
     // Don't continue if we had a problem with the program arguments
     if(error) {
         return 1;
     }
+    
+    
+    if(desired_num_clusters == 0) {
+        stop_number = 1;
+    } else {
+        stop_number = desired_num_clusters;
+    }
+    
+    printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,desired_num_clusters);
+    
     
     int num_dimensions;
     int num_events;
@@ -216,7 +224,7 @@ runTest( int argc, char** argv)
         //printf("\n");
     }
     
-    unsigned int num_threads = num_dimensions*num_dimensions;
+    unsigned int num_threads = max(num_dimensions*num_dimensions,original_num_clusters);
     if(num_threads > NUM_THREADS) {
         num_threads = NUM_THREADS;
     }
@@ -285,7 +293,7 @@ runTest( int argc, char** argv)
     
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     
-    double max_rissanen, rissanen;
+    double min_rissanen, rissanen;
     
     // allocate device memory for FCS data
     float* d_fcs_data;
@@ -304,29 +312,29 @@ runTest( int argc, char** argv)
         
     // Compute new constants and invert matrix
     // copy clusters from the device
-    printf("Copying cluster from device...");
+    //printf("Copying cluster from device...");
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
-    printf("done.\n");
+    //printf("done.\n");
     for(int i=0; i<original_num_clusters; i++) {
         // copy the R matrix from the device
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
 
         // invert the matrix
-        printf("Inverting matrix...\n");
+        //printf("Inverting matrix...\n");
         invert(clusters[i].R,num_dimensions,&determinant);
         //invert_matrix(clusters[i].R,num_dimensions,&determinant);
         
         // compute the new constant
         temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
-        printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
+        //printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
         
         // copy the R matrix back to the device
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].Rinv, clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
     }
     // copy cluster structures back to device
-    printf("Copying cluster structures to device...");
+    //printf("Copying cluster structures to device...");
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
-    printf("done.\n");
+    //printf("done.\n");
     
     // Calculate an epsilon value
     int ndata_points = num_events*num_dimensions;
@@ -344,21 +352,23 @@ runTest( int argc, char** argv)
     int min_c1, min_c2;
     int ideal_num_clusters;
      
-    for(int num_clusters=original_num_clusters; num_clusters >= desired_num_clusters; num_clusters--) {
+    for(int num_clusters=original_num_clusters; num_clusters >= stop_number; num_clusters--) {
         /*************** EM ALGORITHM *****************************/
         // do initial regrouping
-        printf("Invoking regroup kernel\n");
+        //printf("Invoking regroup kernel\n");
         regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
         // check if kernel execution generated and error
         CUT_CHECK_ERROR("Kernel execution failed");
         CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
-        printf("Gaussian.cu: likelihood = %f\n",likelihood);
+        //printf("Gaussian.cu: likelihood = %f\n",likelihood);
 
         float change = epsilon*2;
+        
+        printf("Performing EM algorthm on %d clusters.\n",num_clusters);
     
         while(change > epsilon) {
             old_likelihood = likelihood;
-            printf("Invoking reestimate_parameters kernel\n");
+            printf("Invoking reestimate_parameters kernel with %d threads\n",num_threads);
             reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
         
             // check if kernel execution generated and error
@@ -366,39 +376,42 @@ runTest( int argc, char** argv)
         
             // Compute new constants and invert matrix
             // copy clusters from the device
-            printf("Copying cluster from device...");
+            //printf("Copying cluster from device...");
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
-            printf("done.\n");
+            //printf("done.\n");
             for(int i=0; i<num_clusters; i++) {
                 // copy the R matrix from the device
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
-        
+                
                 // copy the means matrix from the device
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
                 printf("cluster[%d].means: ",i);
                 for(int j=0; j<num_dimensions; j++) {
-                    printf("%.2f ",clusters[i].means[j]);
+                    printf("%.2f ",temp_clusters[i].means[j]);
                 }
+                printf("\n");
+                printf("cluster[%d].N: %f\n",i,temp_clusters[i].N);
+                printf("clusters[%d].pi: %.2f\n",i,temp_clusters[i].pi);
                 printf("\n");
 
                 // invert the matrix
-                printf("Inverting matrix...\n");
+                //printf("Inverting matrix...\n");
                 invert(clusters[i].R,num_dimensions,&determinant);
                 //invert_matrix(clusters[i].R,num_dimensions,&determinant);
             
                 // compute the new constant
                 temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
-                printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
+                //printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
             
                 // copy the R matrix back to the device
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].Rinv, clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
             }
             // copy cluster structures back to device
-            printf("Copying cluster structures to device...");
+            //printf("Copying cluster structures to device...");
             CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
-            printf("done.\n");
+            //printf("done.\n");
         
-            printf("Invoking regroup kernel\n");
+            //printf("Invoking regroup kernel\n");
             regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
         
             // check if kernel execution generated and error
@@ -421,12 +434,16 @@ runTest( int argc, char** argv)
             clusters[i].pi = temp_clusters[i].pi;
             clusters[i].constant = temp_clusters[i].constant;
         }
-        
+        printf("likelihood: %f\n",likelihood);
         // Calculate Rissanen Score
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
         printf("\nRissanen Score: %f\n",rissanen);
-        if((num_clusters == desired_num_clusters && num_clusters != 1) || num_clusters == original_num_clusters || rissanen > max_rissanen) {
-            max_rissanen = rissanen;
+        
+        // Save the cluster data the first time through, so we have a base rissanen score and result
+        // Save te cluster data if the solution is better and the user didn't specify a desired number
+        // If the num_clusters equals the desired number, stop
+        if(num_clusters == original_num_clusters || (rissanen < min_rissanen && desired_num_clusters == 0) || (num_clusters == desired_num_clusters)) {
+            min_rissanen = rissanen;
             ideal_num_clusters = num_clusters;
             // Save the cluster configuration somewhere
             for(int i=0; i<num_clusters;i++) {
@@ -442,7 +459,7 @@ runTest( int argc, char** argv)
         /**************** Reduce GMM Order ********************/
         
         // Don't want to reduce order on the last iteration
-        if(num_clusters > desired_num_clusters) {
+        if(num_clusters > stop_number) {
             
             
             // For all combinations of subclasses...
@@ -473,6 +490,7 @@ runTest( int argc, char** argv)
         
     }
     printf("\n\nSolution coverged or began to diverge. Printing solution.\n");
+    printf("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
  
     /*
     // copy clusters from the device

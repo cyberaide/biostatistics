@@ -39,6 +39,8 @@
 
 #include "alloc_util.h"
 
+#define VERBOSE 0
+
 
 static double double_abs(double x);
 
@@ -68,24 +70,27 @@ int clust_invert(
         int  i,j,f,g;
         double  d_man;
         int d_exp;
-        
-        printf("\n\nR matrix before LU decomposition:\n");
-        for(i=0; i<n; i++) {
-            for(j=0; j<n; j++) {
-                printf("%.2f ",a[i][j]);
-            }
-            printf("\n");
-        }
-
-        d_exp = 0;
-        if(ludcmp(a,n,indx,&d_man)) {
-            printf("Determinant mantissa after LU decomposition: %f\n",d_man);
-            printf("\n\nR matrix after LU decomposition:\n");
+        if(VERBOSE) {
+            printf("\n\nR matrix before LU decomposition:\n");
             for(i=0; i<n; i++) {
                 for(j=0; j<n; j++) {
                     printf("%.2f ",a[i][j]);
                 }
                 printf("\n");
+            }
+        }
+
+        d_exp = 0;
+        if(ludcmp(a,n,indx,&d_man)) {
+            if(VERBOSE) {
+                printf("Determinant mantissa after LU decomposition: %f\n",d_man);
+                printf("\n\nR matrix after LU decomposition:\n");
+                for(i=0; i<n; i++) {
+                    for(j=0; j<n; j++) {
+                        printf("%.2f ",a[i][j]);
+                    }
+                    printf("\n");
+                }
             }
             
           for(j=0; j<n; j++) {
@@ -102,8 +107,9 @@ int clust_invert(
           
           *det_man = d_man;
           *det_exp = d_exp;
-          
-          printf("det: %fE%d\n",d_man,d_exp);
+          if(VERBOSE) {
+              printf("det: %fE%d\n",d_man,d_exp);
+          }
           
           for(j=0; j<n; j++) {
             for(i=0; i<n; i++) col[i]=0.0;
@@ -115,12 +121,14 @@ int clust_invert(
           for(i=0; i<n; i++)
           for(j=0; j<n; j++) a[i][j]=y[i][j];
           
-          printf("\n\nMatrix at end of clust_invert function:\n");
-          for(f=0; f<n; f++) {
-              for(g=0; g<n; g++) {
-                  printf("%.2f ",a[f][g]);
+          if(VERBOSE) {
+              printf("\n\nMatrix at end of clust_invert function:\n");
+              for(f=0; f<n; f++) {
+                  for(g=0; g<n; g++) {
+                      printf("%.2f ",a[f][g]);
+                  }
+                  printf("\n");
               }
-              printf("\n");
           }
           return(1);
         }

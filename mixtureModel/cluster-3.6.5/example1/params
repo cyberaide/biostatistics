@@ -5,10 +5,24 @@ class:
  classtitle: test class signature
  classtype: 1
  subclass:
-  pi: 1
-  means: 0.914774 0.225027
+  pi: 0.251277
+  means: 4.93728 1.87944
   covar:
-    9.10738 5.13815
-    5.13815 4.77293
+    1.74372 0.551446
+    0.551446 0.566673
+ endsubclass:
+ subclass:
+  pi: 0.432597
+  means: -2.01698 -2.04399
+  covar:
+    0.989347 -0.216861
+    -0.216861 0.919683
+ endsubclass:
+ subclass:
+  pi: 0.316126
+  means: 1.72933 2.01498
+  covar:
+    0.782764 0.26114
+    0.26114 0.964424
  endsubclass:
 endclass:

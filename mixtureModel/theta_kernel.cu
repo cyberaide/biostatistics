@@ -350,6 +350,7 @@ __device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
 
 __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __shared__ float sum;
+    
     // TODO: could maybe use a parallel reduction..but the # of elements is really small
     // What is better: having thread 0 compute a shared sum and sync, or just have each one compute the sum?
     if(threadIdx.x == 0) {
@@ -359,7 +360,6 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
         }
     }
     
-    // Other threads need to wait for thread 0 to do the sum
     __syncthreads();
     
     if(threadIdx.x < num_clusters) {
@@ -368,7 +368,10 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
         } else {
             clusters[threadIdx.x].pi = 0.0;
         }
+        //printf("After normalizing in Normailze_pi(), clusters[%d].pi=%f\n",threadIdx.x,clusters[threadIdx.x].pi);
     }
+    
+    __syncthreads();
 }
 
 /*
@@ -443,9 +446,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     
     // Compute the average variance
     averageVariance(g_idata, means, num_dimensions, num_events, &avgvar);
-    
-    ////printf("Average Variance: %f\n",avgvar);
-    
+        
     // Initialize covariances
     __shared__ float covs[NUM_DIMENSIONS*NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
     __shared__ int num_elements;
@@ -468,7 +469,6 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             }
             covs[i] = covs[i] / (float) num_events;
             covs[i] = covs[i] - means[row]*means[col];
-            __syncthreads();
     }
     
     __syncthreads();    
@@ -503,16 +503,15 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     
     if(tid == 0) {
         for(int c=0; c<num_clusters;c++) {
-            //printf("Cluster[%d] Seeded means: ",c);
+            printf("Cluster[%d] Seeded means: ",c);
             for(int i=0; i<num_dimensions;i++) {
-                //printf("%.2f ",clusters[c].means[i]);
+                printf("%.2f ",clusters[c].means[i]);
             }
-            //printf("\n");
+            printf("\n");
         }
     }
     
-    // Compute matrix inverses and constants for each cluster
-    //compute_constants(clusters,num_clusters,num_dimensions);
+    __syncthreads();
     
     normalize_pi(clusters,num_clusters);
     
@@ -603,21 +602,21 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
 
 __global__ void
 reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
-    // Figure out # of elements each thread should add up
-    int num_elements_per_thread = num_events / blockDim.x;
-    int start_index = threadIdx.x * num_elements_per_thread;
-    int end_index;
-    // handle the end block so that we add left-over elements too
-    if(threadIdx.x == blockDim.x -1) {
-        end_index = num_events;
-    } else {
-        end_index = start_index + num_elements_per_thread;
-    }
-    
     // Number of elements in the covariance matrix
     const int num_elements = num_dimensions*num_dimensions;
     const int tid = threadIdx.x;
     const int num_threads = blockDim.x;
+    
+    // Figure out # of elements each thread should add up
+    int num_elements_per_thread = num_events / num_threads;
+    int start_index = tid * num_elements_per_thread;
+    int end_index;
+    // handle the end block so that we add left-over elements too
+    if(threadIdx.x == (num_threads-1)) {
+        end_index = num_events;
+    } else {
+        end_index = start_index + num_elements_per_thread;
+    }
 
     __shared__ float temp_sums[NUM_THREADS];
     
@@ -632,13 +631,15 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         __syncthreads();
         
         // Let the first thread add up all the intermediate sums
+        
         if(tid == 0) {
             clusters[c].N = 0.0;
             for(int j=0; j<num_threads; j++) {
                 clusters[c].N += temp_sums[j];
             }
+            printf("clusters[%d].N = %f\n",c,clusters[c].N);
         }
-        
+            
         __syncthreads();
         
         // Set PI to the # of expected items, and then normalize it later
