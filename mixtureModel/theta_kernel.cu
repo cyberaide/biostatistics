@@ -503,11 +503,11 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     
     if(tid == 0) {
         for(int c=0; c<num_clusters;c++) {
-            printf("Cluster[%d] Seeded means: ",c);
+            //printf("Cluster[%d] Seeded means: ",c);
             for(int i=0; i<num_dimensions;i++) {
-                printf("%.2f ",clusters[c].means[i]);
+                //printf("%.2f ",clusters[c].means[i]);
             }
-            printf("\n");
+            //printf("\n");
         }
     }
     
@@ -637,7 +637,7 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             for(int j=0; j<num_threads; j++) {
                 clusters[c].N += temp_sums[j];
             }
-            printf("clusters[%d].N = %f\n",c,clusters[c].N);
+            //printf("clusters[%d].N = %f\n",c,clusters[c].N);
         }
             
         __syncthreads();

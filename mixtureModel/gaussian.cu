@@ -52,6 +52,8 @@
 // includes, kernels
 #include <theta_kernel.cu>
 
+#define VERBOSE 0
+
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 int runTest( int argc, char** argv);
@@ -304,10 +306,15 @@ runTest( int argc, char** argv)
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
     
-    printf("Invoking seed_clusters kernel\n");
+    if(VERBOSE) {
+        printf("Invoking seed_clusters kernel...");
+    }
     // execute the kernel
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
-    printf("Finished seed_clusters kernel\n"); 
+    cudaThreadSynchronize();
+    if(VERBOSE) {
+        printf("done.\n"); 
+    }
     double determinant = 1.0;
         
     // Compute new constants and invert matrix
@@ -342,8 +349,11 @@ runTest( int argc, char** argv)
     float likelihood, old_likelihood;
     
     epsilon = epsilon*1;
-    printf("Gaussian.cu: epsilon = %f\n",epsilon);
-    
+
+    if(VERBOSE) {
+        printf("Gaussian.cu: epsilon = %f\n",epsilon);
+    }
+
     float* d_likelihood;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_likelihood, sizeof(float)));
     
@@ -355,8 +365,12 @@ runTest( int argc, char** argv)
     for(int num_clusters=original_num_clusters; num_clusters >= stop_number; num_clusters--) {
         /*************** EM ALGORITHM *****************************/
         // do initial regrouping
-        //printf("Invoking regroup kernel\n");
+        if(VERBOSE) {
+            printf("Invoking regroup kernel...");
+        }
         regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+        cudaThreadSynchronize();
+        printf("done.\n");
         // check if kernel execution generated and error
         CUT_CHECK_ERROR("Kernel execution failed");
         CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
@@ -365,12 +379,18 @@ runTest( int argc, char** argv)
         float change = epsilon*2;
         
         printf("Performing EM algorthm on %d clusters.\n",num_clusters);
-    
+        
         while(change > epsilon) {
             old_likelihood = likelihood;
-            printf("Invoking reestimate_parameters kernel with %d threads\n",num_threads);
+            if(VERBOSE) {
+                printf("Invoking reestimate_parameters kernel...",num_threads);
+            }
             reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
-        
+            cudaThreadSynchronize();
+            if(VERBOSE) {
+                printf("done.\n");
+            }
+
             // check if kernel execution generated and error
             CUT_CHECK_ERROR("Kernel execution failed");
         
@@ -385,14 +405,17 @@ runTest( int argc, char** argv)
                 
                 // copy the means matrix from the device
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-                printf("cluster[%d].means: ",i);
-                for(int j=0; j<num_dimensions; j++) {
-                    printf("%.2f ",temp_clusters[i].means[j]);
+                
+                if(VERBOSE) {
+                    printf("cluster[%d].means: ",i);
+                    for(int j=0; j<num_dimensions; j++) {
+                        printf("%.2f ",clusters[i].means[j]);
+                    }
+                    printf("\n");
+                    printf("cluster[%d].N: %f\n",i,temp_clusters[i].N);
+                    printf("clusters[%d].pi: %.2f\n",i,temp_clusters[i].pi);
+                    printf("\n");
                 }
-                printf("\n");
-                printf("cluster[%d].N: %f\n",i,temp_clusters[i].N);
-                printf("clusters[%d].pi: %.2f\n",i,temp_clusters[i].pi);
-                printf("\n");
 
                 // invert the matrix
                 //printf("Inverting matrix...\n");
@@ -418,9 +441,11 @@ runTest( int argc, char** argv)
             CUT_CHECK_ERROR("Kernel execution failed");
         
             CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
-            printf("likelihood = %f\n",likelihood);
             change = likelihood - old_likelihood;
-            printf("Change in likelihood: %f\n",change);
+            if(VERBOSE) {
+                printf("likelihood = %f\n",likelihood);
+                printf("Change in likelihood: %f\n",change);
+            }
         }
         
         // copy clusters from the device
@@ -434,7 +459,6 @@ runTest( int argc, char** argv)
             clusters[i].pi = temp_clusters[i].pi;
             clusters[i].constant = temp_clusters[i].constant;
         }
-        printf("likelihood: %f\n",likelihood);
         // Calculate Rissanen Score
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
         printf("\nRissanen Score: %f\n",rissanen);
