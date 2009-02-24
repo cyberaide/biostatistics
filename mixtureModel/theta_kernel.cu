@@ -119,233 +119,88 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
 }
 
 
-__device__ int invert_RMatrix(float* matrix, int n, float* determinant) {
-    const int tid = threadIdx.x;
-    const int num_threads = blockDim.x;
+__device__ void invert(float* data, int actualsize, float* determinant)  {
+    int maxsize = actualsize;
+    int n = actualsize;
     
-    int ii;
-    
-    // Do an LU decomposition on the matrix...
-    //  Find max value of every row
-    __shared__ float max_row_vals[NUM_THREADS];
-    __shared__ float temp_sums[NUM_THREADS];
-    __shared__ int imax;
-    __shared__ int indx[NUM_DIMENSIONS];
-    __shared__ float col[NUM_THREADS];
-    
-    // Temporary matrix
-    __shared__ float y[NUM_DIMENSIONS*NUM_DIMENSIONS];
-    
-    double det = 1.0;
-    
+    if(threadIdx.x == 0) {
     *determinant = 1.0;
-    
-    /*
-    if(tid == 0) {
-        //printf("\n\nR matrix before LU decomposition:\n");
-        for(int f=0; f<n; f++) {
-            for(int g=0; g<n; g++) {
-                //printf("%.2f ",matrix[f*n+g]);
+
+#if EMU
+    if(VERBOSE) {
+        printf("\n\nR matrix before inversion:\n");
+        for(int i=0; i<n; i++) {
+            for(int j=0; j<n; j++) {
+                printf("%.2f ",data[i*n+j]);
             }
-            //printf("\n");
-        }
-    }*/
-    
-    int row = tid;
-    max_row_vals[row] = 0.0;
-    if(tid < n) {
-        for(int col=0; col<n; col++) {
-            max_row_vals[row] = fmaxf(max_row_vals[row],fabs(matrix[row*n+col])); 
-        }
-    
-        if(max_row_vals[row] == 0.0) {
-            // Singular matrix!
-            //printf("Singular matrix!\n");
-            //exit(1);
-            *determinant = 0.0;
-            return 1;
-        }
-        max_row_vals[row] = 1.0 / max_row_vals[row];
-    }
-    
-    __syncthreads();
-    
-    float sum;
-    float big,tmp;
-    //  Do the meat of the LU decomposition, O(n^3)
-    for(int j=0; j<n; j++) {
-        if(tid < j) {
-            sum = matrix[tid*n+j];
-            for(int k=0;k<tid;k++) {
-                sum -= matrix[tid*n+k]*matrix[k*n+j];
-            }
-            matrix[tid*n+j] = sum;
-        }
-        
-        temp_sums[tid] = 0.0;
-        if(tid >= j && tid < n) {
-            sum = matrix[tid*n+j];
-            for(int k=0;k<j;k++) {
-                sum -= matrix[tid*n+k]*matrix[k*n+j];
-            }
-            matrix[tid*n+j] = sum;
-            
-            temp_sums[tid] = max_row_vals[tid]*fabs(sum);
-        }
-        
-        __syncthreads();
-        
-        if(tid == 0) {
-            big = 0.0;
-            imax = 0;
-            tmp = 0.0;
-            for(int i=0;i<n;i++) {
-                if((tmp = temp_sums[i]) >= big) {
-                    big = tmp;
-                    imax = i;
-                }
-            }
-            indx[j] = imax;
-        }
-        
-        __syncthreads();
-        
-        /*
-        if(tid == 0) {
-            //printf("\n\nMatrix after %dth iteration of LU decomposition:\n",j);
-            for(int f=0; f<n; f++) {
-                for(int g=0; g<n; g++) {
-                    //printf("%.2f ",matrix[f*n+g]);
-                }
-                //printf("\n");
-            }
-            //printf("imax: %d\n",imax);
-        }*/
-        
-        if(j != imax && tid < n) {
-            tmp = matrix[imax*n+tid];
-            matrix[imax*n+tid] = matrix[j*n+tid];
-            matrix[j*n+tid] = tmp;
-            if(tid == 0) {
-                max_row_vals[imax] = max_row_vals[j];
-                *determinant = -(*determinant);
-                det = -det;
-            }
-        }
-        
-        __syncthreads();
-        
-        // Make sure none of the diagonals become 0 due to floating point error
-        if(tid < n) {
-            if(matrix[tid*n+tid] >= 0.0 && matrix[tid*n+tid] <= 1e-10) {
-                matrix[tid*n+tid] = 1e-10;
-            }
-            if(matrix[tid*n+tid] <= 0.0 && matrix[tid*n+tid] >= -1e-10) {
-                matrix[tid*n+tid] = -1e-10;
-            }
-        }
-        
-        __syncthreads();
-        
-        if(j != n-1 && tid <n && tid >= (j+1)) {
-            matrix[tid*n+j] /= matrix[j*n+j];
-        }
-        
-        __syncthreads();
-    }
-    // END of LU Decomposition port
-    
-    
-    if(tid == 0) {
-        //printf("\n\nR Matrix after LU decomposition:\n");
-        for(int f=0; f<n; f++) {
-            for(int g=0; g<n; g++) {
-                //printf("%.2f ",matrix[f*n+g]);
-            }
-            //printf("\n");
-        }
-        //printf("imax: %d\n",imax);
-    }
-    
-    // Compute determinant (product of 'U' diagonal entries)
-    // TODO: Determinant can become so small that it loses its value in a floating point number
-    //       May need to keep track of mantissa and exponent separately and normalize it after each multiplication
-    for(int j=0;j<n;j++) {
-        if(tid == 0) {
-            ////printf("determinant: %E\n",*determinant);
-        }
-        *determinant *= matrix[j*n+j];
-    }
-    
-    for(int j=0;j<n;j++) {
-        if(tid < n) {
-            col[tid] = 0.0;
-        }
-        __syncthreads();
-        if(tid == 0) {
-            col[j] = 1.0;
-        }
-        __syncthreads();
-        // Backsubstitute
-        // TODO: need to parallelize this
-        if(tid == 0) {
-            ii = -1;
-            for(int i=0;i<n;i++) {
-                sum = col[indx[i]];
-                col[indx[i]] = col[i];
-                if(ii >= 0) {
-                    for(int j=ii;j<i;j++) {
-                        sum -= matrix[i*n+j]*col[j];
-                    }
-                } else if(sum) {
-                    ii = i;
-                }
-                col[i] = sum;
-            }
-            for(int i=n-1; i>=0; i--) {
-                sum = col[i];
-                for(int j=i+1;j<n;j++) {
-                    sum -= matrix[i*n+j]*col[j];
-                }
-                col[i] = sum / matrix[i*n+i];
-            }
-            
-            for(int i=0; i<n; i++) {
-                y[i*n+j] = col[i];
-            }
-        }
-        
-        __syncthreads();
-        
-        // Copy to temp matrix
-        //if(tid < n) {
-        //    y[tid*n+j] = col[tid];
-        //}
-        
-        __syncthreads();
-    }
-    
-    __syncthreads();
-    
-    // Copy from temporary matrix back to original one
-    for(int i=tid; i<n*n; i+= num_threads) {
-        matrix[i] = y[i];
-    }
-    
-    __syncthreads();
-    
-    if(tid == 0) {
-        //printf("\n\nR-inverse:\n");
-        for(int f=0; f<n; f++) {
-            for(int g=0; g<n; g++) {
-                //printf("%.2f ",matrix[f*n+g]);
-            }
-            //printf("\n");
+            printf("\n");
         }
     }
+#endif
     
-    return 1;
-}
+  if (actualsize <= 0) return;  // sanity check
+  if (actualsize == 1) return;  // must be of dimension >= 2
+  for (int i=1; i < actualsize; i++) data[i] /= data[0]; // normalize row 0
+  for (int i=1; i < actualsize; i++)  { 
+    for (int j=i; j < actualsize; j++)  { // do a column of L
+      float sum = 0.0;
+      for (int k = 0; k < i; k++)  
+          sum += data[j*maxsize+k] * data[k*maxsize+i];
+      data[j*maxsize+i] -= sum;
+      }
+    if (i == actualsize-1) continue;
+    for (int j=i+1; j < actualsize; j++)  {  // do a row of U
+      float sum = 0.0;
+      for (int k = 0; k < i; k++)
+          sum += data[i*maxsize+k]*data[k*maxsize+j];
+      data[i*maxsize+j] = 
+         (data[i*maxsize+j]-sum) / data[i*maxsize+i];
+      }
+    }
+    
+    for(int i=0; i<actualsize; i++) {
+        *determinant *= data[i*n+i];
+    }
+    
+  for ( int i = 0; i < actualsize; i++ )  // invert L
+    for ( int j = i; j < actualsize; j++ )  {
+      float x = 1.0;
+      if ( i != j ) {
+        x = 0.0;
+        for ( int k = i; k < j; k++ ) 
+            x -= data[j*maxsize+k]*data[k*maxsize+i];
+        }
+      data[j*maxsize+i] = x / data[j*maxsize+j];
+      }
+  for ( int i = 0; i < actualsize; i++ )   // invert U
+    for ( int j = i; j < actualsize; j++ )  {
+      if ( i == j ) continue;
+      float sum = 0.0;
+      for ( int k = i; k < j; k++ )
+          sum += data[k*maxsize+j]*( (i==k) ? 1.0 : data[i*maxsize+k] );
+      data[i*maxsize+j] = -sum;
+      }
+  for ( int i = 0; i < actualsize; i++ )   // final inversion
+    for ( int j = 0; j < actualsize; j++ )  {
+      float sum = 0.0;
+      for ( int k = ((i>j)?i:j); k < actualsize; k++ )  
+          sum += ((j==k)?1.0:data[j*maxsize+k])*data[k*maxsize+i];
+      data[j*maxsize+i] = sum;
+      }
+      
+#if EMU
+      if(VERBOSE) {
+          printf("\n\nR matrix after inversion:\n");
+          for(int i=0; i<n; i++) {
+              for(int j=0; j<n; j++) {
+                  printf("%.2f ",data[i*n+j]);
+              }
+              printf("\n");
+          }
+      }
+#endif
+    }
+ }
 
 
 __device__ void normalize_pi(cluster* clusters, int num_clusters) {
@@ -374,12 +229,15 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
     __syncthreads();
 }
 
-/*
+
 __device__ void compute_constants(cluster* clusters, int num_clusters, int num_dimensions) {
-    float determinant;
     const int tid = threadIdx.x;
     const int num_threads = blockDim.x;
     const int num_elements = num_dimensions*num_dimensions;
+    
+    __shared__ float determinant_arg;
+    
+    float determinant;
     
     __shared__ float matrix[21*21]; // TODO: Make num_dimensions a #define constant
     
@@ -392,9 +250,11 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         
         __syncthreads(); // Not sure if this is neccesary..
 
-        invert_RMatrix(matrix,num_dimensions,&determinant);
+        invert(matrix,num_dimensions,&determinant_arg);
 
         __syncthreads(); // Not sure if this is neccesary..
+        
+        determinant = determinant_arg;
         
         // Copy the matrx from shared memory back into the cluster memory
         for(int i=tid; i<num_elements; i+= num_threads) {
@@ -402,22 +262,16 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         }
         
         __syncthreads();
-    }
-    
-    // Compute the constant
-    if(tid < num_clusters) {
-        // TODO: determinant's are sometimes coming out as 0 and causing big problems
-        // I guess that's why the cluster code managed the mantissa and exp separate...bleh
-        determinant = fabs(determinant);
-        //if(determinant < 1e-30) {
-        //    determinant = 1e-30;
-        //}
-        //printf("Log(%E): %f\n",determinant,log(determinant));
-        clusters[tid].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
-        //printf("Constant: %f\n",clusters[tid].constant);
+        
+        // Compute the constant
+        if(tid == 0) {
+            determinant = fabs(determinant);
+            //printf("Log(%E): %f\n",determinant,log(determinant));
+            clusters[c].constant = -num_dimensions*0.5*log(2*PI) - 0.5*log(determinant);
+            //printf("Constant: %f\n",clusters[tid].constant);
+        }
     }
 }
-*/
 
 ////////////////////////////////////////////////////////////////////////////////
 //! Simple test kernel for device functionality
@@ -510,6 +364,10 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             //printf("\n");
         }
     }
+    
+    __syncthreads();
+    
+    compute_constants(clusters,num_clusters,num_dimensions);
     
     __syncthreads();
     
@@ -707,7 +565,9 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     __syncthreads();
     
     // Compute constant and R-inverses again
-    //compute_constants(clusters,num_clusters,num_dimensions);
+    compute_constants(clusters,num_clusters,num_dimensions);
+        
+    __syncthreads();
         
     normalize_pi(clusters,num_clusters);
     

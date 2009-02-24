@@ -52,8 +52,6 @@
 // includes, kernels
 #include <theta_kernel.cu>
 
-#define VERBOSE 0
-
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 int runTest( int argc, char** argv);
@@ -196,7 +194,7 @@ runTest( int argc, char** argv)
         stop_number = desired_num_clusters;
     }
     
-    printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,desired_num_clusters);
+    printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
     
     
     int num_dimensions;
@@ -322,26 +320,6 @@ runTest( int argc, char** argv)
     //printf("Copying cluster from device...");
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
     //printf("done.\n");
-    for(int i=0; i<original_num_clusters; i++) {
-        // copy the R matrix from the device
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
-
-        // invert the matrix
-        //printf("Inverting matrix...\n");
-        invert(clusters[i].R,num_dimensions,&determinant);
-        //invert_matrix(clusters[i].R,num_dimensions,&determinant);
-        
-        // compute the new constant
-        temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
-        //printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
-        
-        // copy the R matrix back to the device
-        CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].Rinv, clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
-    }
-    // copy cluster structures back to device
-    //printf("Copying cluster structures to device...");
-    CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
-    //printf("done.\n");
     
     // Calculate an epsilon value
     int ndata_points = num_events*num_dimensions;
@@ -393,46 +371,6 @@ runTest( int argc, char** argv)
 
             // check if kernel execution generated and error
             CUT_CHECK_ERROR("Kernel execution failed");
-        
-            // Compute new constants and invert matrix
-            // copy clusters from the device
-            //printf("Copying cluster from device...");
-            CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
-            //printf("done.\n");
-            for(int i=0; i<num_clusters; i++) {
-                // copy the R matrix from the device
-                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
-                
-                // copy the means matrix from the device
-                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-                
-                if(VERBOSE) {
-                    printf("cluster[%d].means: ",i);
-                    for(int j=0; j<num_dimensions; j++) {
-                        printf("%.2f ",clusters[i].means[j]);
-                    }
-                    printf("\n");
-                    printf("cluster[%d].N: %f\n",i,temp_clusters[i].N);
-                    printf("clusters[%d].pi: %.2f\n",i,temp_clusters[i].pi);
-                    printf("\n");
-                }
-
-                // invert the matrix
-                //printf("Inverting matrix...\n");
-                invert(clusters[i].R,num_dimensions,&determinant);
-                //invert_matrix(clusters[i].R,num_dimensions,&determinant);
-            
-                // compute the new constant
-                temp_clusters[i].constant = (-num_dimensions)*0.5*log(2*3.14159)-0.5*log(fabs(determinant));
-                //printf("Determinant: %E, new constant: %f\n",fabs(determinant),temp_clusters[i].constant);
-            
-                // copy the R matrix back to the device
-                CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].Rinv, clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
-            }
-            // copy cluster structures back to device
-            //printf("Copying cluster structures to device...");
-            CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*num_clusters,cudaMemcpyHostToDevice));
-            //printf("done.\n");
         
             //printf("Invoking regroup kernel\n");
             regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);

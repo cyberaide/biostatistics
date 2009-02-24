@@ -1,7 +1,10 @@
-#include "invert_matrix.h"
 #include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
+
+#include "invert_matrix.h"
+#include "gaussian.h"
+
 
 static float double_abs(float x);
 

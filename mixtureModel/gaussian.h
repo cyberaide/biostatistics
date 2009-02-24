@@ -10,6 +10,9 @@
 #define NUM_THREADS 128
 #define NUM_DIMENSIONS 21
 
+#define VERBOSE 1
+#define EMU 0
+
 typedef struct 
 {
     float N;        // expected # of pixels in cluster
