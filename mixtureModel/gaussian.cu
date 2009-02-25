@@ -177,7 +177,6 @@ void printCluster(cluster c, int num_dimensions) {
 int
 runTest( int argc, char** argv) 
 {
-    
     int original_num_clusters, desired_num_clusters, stop_number;
     
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
@@ -339,6 +338,8 @@ runTest( int argc, char** argv)
     float distance, min_distance = 0.0;
     int min_c1, min_c2;
     int ideal_num_clusters;
+    float* d_c;
+    CUDA_SAFE_CALL(cudaMalloc((void**) &d_c, sizeof(float)));
      
     for(int num_clusters=original_num_clusters; num_clusters >= stop_number; num_clusters--) {
         /*************** EM ALGORITHM *****************************/
@@ -362,6 +363,7 @@ runTest( int argc, char** argv)
             old_likelihood = likelihood;
             if(VERBOSE) {
                 printf("Invoking reestimate_parameters kernel...",num_threads);
+                fflush(stdout);
             }
             reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
@@ -372,8 +374,15 @@ runTest( int argc, char** argv)
             // check if kernel execution generated and error
             CUT_CHECK_ERROR("Kernel execution failed");
         
-            //printf("Invoking regroup kernel\n");
+            if(VERBOSE) {
+                printf("Invoking regroup kernel...");
+                fflush(stdout);
+            }
             regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+            cudaThreadSynchronize();
+            if(VERBOSE) {
+                printf("done.\n");
+            }
         
             // check if kernel execution generated and error
             CUT_CHECK_ERROR("Kernel execution failed");
