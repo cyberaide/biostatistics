@@ -9,7 +9,7 @@
 #define PI  3.141593
 #define	NUM_BLOCKS 24
 #define NUM_THREADS 128
-#define NUM_DIMENSIONS 21
+#define NUM_DIMENSIONS 10
 
 #define VERBOSE 1
 #define EMU 0
@@ -24,7 +24,6 @@ typedef struct
     float avgvar;    // average variance
     float constant; // Normalizing constant
     float *p;       // Probability that each pixel belongs to this cluster
-    float *w;       // Weight for pixels in cluster
 } cluster;
 
 int validateArguments(int argc, char** argv, int* num_clusters, FILE** infile, FILE** outfile);

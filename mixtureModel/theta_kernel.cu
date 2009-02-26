@@ -53,11 +53,9 @@
  */ 
 __device__ void spectralMean(float* fcs_data, int num_dimensions, int num_events, float* means) {
     // access thread id
-    const unsigned int tid = threadIdx.x;
+    int tid = threadIdx.x;
     // access number of threads in this block
-    const unsigned int num_threads = blockDim.x;
-    // Cluster Id, what cluster this thread block is working on
-    //const unsigned int cid = blockIdx.x;
+    int num_threads = blockDim.x;
 
     if(tid < num_dimensions) {
         means[tid] = 0.0;
@@ -65,8 +63,10 @@ __device__ void spectralMean(float* fcs_data, int num_dimensions, int num_events
 
     __syncthreads();
 
+    int num_data_points = num_events*num_dimensions;
+
     // Sum up all the values for the dimension
-    for(unsigned int i=tid; i < num_events*num_dimensions; i+= num_dimensions) {
+    for(int i=tid; i < num_data_points; i+= num_dimensions) {
         if(tid < num_dimensions) {
             means[tid] += fcs_data[i];
         }  
@@ -82,9 +82,9 @@ __device__ void spectralMean(float* fcs_data, int num_dimensions, int num_events
 
 __device__ void averageVariance(float* fcs_data, float* means, int num_dimensions, int num_events, float* avgvar) {
     // access thread id
-    const unsigned int tid = threadIdx.x;
+    int tid = threadIdx.x;
     // access number of threads
-    const unsigned int num_threads = blockDim.x;
+    int num_threads = blockDim.x;
     
     __shared__ float variances[NUM_DIMENSIONS];
     __shared__ float total_variance;
@@ -239,7 +239,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     
     float determinant;
     
-    __shared__ float matrix[21*21]; // TODO: Make num_dimensions a #define constant
+    __shared__ float matrix[NUM_DIMENSIONS*NUM_DIMENSIONS];
     
     // Invert the matrix for every cluster
     for(int c=blockIdx.x; c < num_clusters; c+=NUM_BLOCKS) {
@@ -290,7 +290,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     const unsigned int num_threads = blockDim.x;
 
     // shared memory
-    __shared__ float means[NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
+    __shared__ float means[NUM_DIMENSIONS];
     
     // Compute the means
     spectralMean(g_idata, num_dimensions, num_events, means);
@@ -365,16 +365,6 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             //printf("\n");
         }
     }
-    
-    __syncthreads();
-    
-    compute_constants(clusters,num_clusters,num_dimensions);
-    
-    __syncthreads();
-    
-    normalize_pi(clusters,num_clusters);
-    
-    __syncthreads();
 }
 
 __global__ void
@@ -514,11 +504,6 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         // Set PI to the # of expected items, and then normalize it later
         clusters[c].pi = clusters[c].N;
     }
-    //__syncthreads();    
-    
-    //normalize_pi(clusters,num_clusters);
-    
-    //__syncthreads();
     
     float mean_sum;   
     float cov_sum = 0.0;
@@ -558,18 +543,6 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             }
         }
         __syncthreads();
-#if EMU        
-        if(tid == 0) {
-            //printf("clusters.[%d].N: %.2f\n",c,clusters[c].N);
-            //printf("clusters.[%d].means: ",c);
-            for(int i=0;i<num_dimensions;i++) {
-                //printf("%.2f ",clusters[c].means[i]);
-            }
-            //printf("\n");
-        }
-
-        __syncthreads();
-#endif   
 
         // Compute the covariance matrix of the data
         for(int i=tid; i < num_elements; i+= num_threads) {
@@ -577,9 +550,11 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             cov_sum = 0.0;
             row = (i) / num_dimensions;
             col = (i) % num_dimensions;
+            data_index = 0;
 
             for(int j=0; j < num_events; j++) {
-                cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*clust->p[j]; 
+                cov_sum += (fcs_data[data_index+row]-means[row])*(fcs_data[data_index+col]-means[col])*clust->p[j]; 
+                data_index += num_dimensions;
             }
             clust->R[i] = cov_sum / clust->N;
         }
@@ -591,17 +566,6 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             clust->R[tid*num_dimensions+tid] += clust->avgvar;
         }
     }
-    
-    /*
-    __syncthreads();
-      
-    // Compute constant and R-inverses again
-    compute_constants(clusters,num_clusters,num_dimensions);
-    
-    __syncthreads();
-    
-    normalize_pi(clusters,num_clusters);
-    */
 }
 
 __global__ void

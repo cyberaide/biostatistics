@@ -187,7 +187,6 @@ runTest( int argc, char** argv)
         return 1;
     }
     
-    
     if(desired_num_clusters == 0) {
         stop_number = 1;
     } else {
@@ -252,7 +251,6 @@ runTest( int argc, char** argv)
         clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
         clusters[i].constant = 0.0;
         clusters[i].p = (float*) malloc(sizeof(float)*num_events);
-        clusters[i].w = (float*) malloc(sizeof(float)*num_events);
     }
     // Used as a temporary space for combining clusters in reduce_order
     cluster* scratch_cluster = (cluster*)malloc(sizeof(cluster));
@@ -265,7 +263,6 @@ runTest( int argc, char** argv)
     scratch_cluster->Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
     scratch_cluster->constant = 0.0;
     scratch_cluster->p = (float*) malloc(sizeof(float)*num_events);
-    scratch_cluster->w = (float*) malloc(sizeof(float)*num_events);
     // Declare another set of clusters for saving the results
     // Here we're only concerned with the statistics of the cluster, so we don't need to malloc all the arrays
     cluster* saved_clusters = (cluster*)malloc(sizeof(cluster)*original_num_clusters);
@@ -297,8 +294,6 @@ runTest( int argc, char** argv)
         if(!temp_clusters[i].Rinv) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].p),sizeof(float)*num_events));
         if(!temp_clusters[i].p) printf("ERROR: Could not allocate memory.\n");
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].w),sizeof(float)*num_events));
-        if(!temp_clusters[i].w) printf("ERROR: Could not allocate memory.\n");
     }
     cluster* d_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*original_num_clusters));
@@ -337,11 +332,8 @@ runTest( int argc, char** argv)
     
     double determinant = 1.0;
         
-    // Compute new constants and invert matrix
     // copy clusters from the device
-    //printf("Copying cluster from device...");
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
-    //printf("done.\n");
     
     // Calculate an epsilon value
     int ndata_points = num_events*num_dimensions;
@@ -501,23 +493,34 @@ runTest( int argc, char** argv)
             for(int i=min_c2; i < num_clusters-1; i++) {
                 copy_cluster(&(clusters[i]),&(clusters[i+1]),num_dimensions);
             }
-            
+
+            // Copy the clusters back to the device
+            for(int i=0; i<num_clusters-1; i++) {
+                CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].means, clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyHostToDevice));
+                CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].R, clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
+                CUDA_SAFE_CALL(cudaMemcpy(temp_clusters[i].Rinv, clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
+                temp_clusters[i].N = clusters[i].N;
+                temp_clusters[i].pi = clusters[i].pi;
+                temp_clusters[i].constant = clusters[i].constant;
+            }
+            CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*(num_clusters-1),cudaMemcpyHostToDevice));
         }
         
     }
     printf("\n\nSolution coverged or began to diverge. Printing solution.\n");
     printf("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
  
-    /*
+    
     // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
+    
+    /*
     // copy all of the arrays from the structs
     for(int i=0; i<num_clusters; i++) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].w, temp_clusters[i].w, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
         clusters[i].N = temp_clusters[i].N;
         clusters[i].pi = temp_clusters[i].pi;
         clusters[i].constant = temp_clusters[i].constant;
@@ -540,7 +543,6 @@ runTest( int argc, char** argv)
         free(clusters[i].R);
         free(clusters[i].Rinv);
         free(clusters[i].p);
-        free(clusters[i].w);
     }    
     free(clusters);
     for(int i=0; i<original_num_clusters; i++) {
@@ -554,14 +556,17 @@ runTest( int argc, char** argv)
     free(scratch_cluster->R);
     free(scratch_cluster->Rinv);
     free(scratch_cluster);
-    
+   
+    free(likelihoods);
+    CUDA_SAFE_CALL(cudaFree(d_likelihoods));
+ 
     CUDA_SAFE_CALL(cudaFree(d_fcs_data));
+
     for(int i=0; i<original_num_clusters; i++) {
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].means));
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].R));
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].Rinv));
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].p));
-        CUDA_SAFE_CALL(cudaFree(temp_clusters[i].w));
     }
     free(temp_clusters);
     CUDA_SAFE_CALL(cudaFree(d_clusters));
