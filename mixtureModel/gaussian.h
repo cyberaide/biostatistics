@@ -8,8 +8,8 @@
 #define MAX_CLUSTERS	64
 #define PI  3.141593
 #define	NUM_BLOCKS 24
-#define NUM_THREADS 128
-#define NUM_DIMENSIONS 10
+#define NUM_THREADS 64
+#define NUM_DIMENSIONS 21
 
 #define VERBOSE 1
 #define EMU 0

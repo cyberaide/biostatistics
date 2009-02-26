@@ -285,9 +285,9 @@ __global__ void
 seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_clusters, int num_events) 
 {
     // access thread id
-    const unsigned int tid = threadIdx.x;
+    int tid = threadIdx.x;
     // access number of threads in this block
-    const unsigned int num_threads = blockDim.x;
+    int num_threads = blockDim.x;
 
     // shared memory
     __shared__ float means[NUM_DIMENSIONS];
@@ -304,7 +304,8 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
         
     // Initialize covariances
     __shared__ float covs[NUM_DIMENSIONS*NUM_DIMENSIONS]; // TODO: setup #define for the number of dimensions
-    __shared__ int num_elements;
+    
+    int num_elements;
     int row, col;
         
     // Number of elements in the covariance matrix
@@ -324,8 +325,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             }
             covs[i] = covs[i] / (float) num_events;
             covs[i] = covs[i] - means[row]*means[col];
-    }
-    
+    } 
     __syncthreads();    
     
     // Calculate a seed value for the means

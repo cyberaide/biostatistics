@@ -212,9 +212,12 @@ runTest( int argc, char** argv)
     int num_dimensions;
     int num_events;
     
-    // Read FCS data    
+    // Read FCS data   
+    printf("Parsing input file...");
+    fflush(stdout); 
     float* fcs_data = readData(argv[2],&num_dimensions,&num_events);
-    
+    printf("done\n");    
+
     if(!fcs_data) {
         printf("Error parsing input file. This could be due to an empty file ");
         printf("or an inconsistent number of dimensions. Aborting.\n");
@@ -235,7 +238,10 @@ runTest( int argc, char** argv)
         }
         //printf("\n");
     }
-    
+   
+    // Can't have any more than NxN threads or covariance calculations get messed up
+    // Need at least as many threads as the # of starting clusters
+    // But we can't have too many threads of there isn't enough shared memory 
     unsigned int num_threads = max(num_dimensions*num_dimensions,original_num_clusters);
     if(num_threads > NUM_THREADS) {
         num_threads = NUM_THREADS;
@@ -243,6 +249,7 @@ runTest( int argc, char** argv)
 
     // Setup the cluster data structures on host
     cluster* clusters = (cluster*)malloc(sizeof(cluster)*original_num_clusters);
+    if(!clusters) { printf("ERROR: Could not allocate memory for clusters.\n"); return 1; }
     for(int i=0; i<original_num_clusters;i++) {
         clusters[i].N = 0.0;
         clusters[i].pi = 0.0;
@@ -254,6 +261,7 @@ runTest( int argc, char** argv)
     }
     // Used as a temporary space for combining clusters in reduce_order
     cluster* scratch_cluster = (cluster*)malloc(sizeof(cluster));
+    if(!scratch_cluster) { printf("ERROR: Could not allocate memory for clusters.\n"); return 1; }
     scratch_cluster->N = 0.0;
     scratch_cluster->pi = 0.0;
     scratch_cluster->N = 0.0;
@@ -266,6 +274,7 @@ runTest( int argc, char** argv)
     // Declare another set of clusters for saving the results
     // Here we're only concerned with the statistics of the cluster, so we don't need to malloc all the arrays
     cluster* saved_clusters = (cluster*)malloc(sizeof(cluster)*original_num_clusters);
+    if(!saved_clusters) { printf("ERROR: Could not allocate memory for clusters.\n"); return 1; }
     for(int i=0; i<original_num_clusters;i++) {
         saved_clusters[i].N = 0.0;
         saved_clusters[i].pi = 0.0;
@@ -273,7 +282,11 @@ runTest( int argc, char** argv)
         saved_clusters[i].R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
         saved_clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
     }
-    
+   
+    if(VERBOSE) {
+        printf("Finished allocating memory on host for clusters.\n");
+    }
+ 
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
@@ -298,6 +311,10 @@ runTest( int argc, char** argv)
     cluster* d_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*original_num_clusters));
     
+    if(VERBOSE) {
+        printf("Finished allocating memory on device for clusters.\n");
+    }
+
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     
     double min_rissanen, rissanen;
@@ -305,14 +322,25 @@ runTest( int argc, char** argv)
     // allocate device memory for FCS data
     float* d_fcs_data;
     CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data, mem_size));
+    if(VERBOSE) {
+        printf("Finished allocating memory on device for FCS data.\n");
+    }
     // copy FCS to device
     CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data, fcs_data, mem_size,cudaMemcpyHostToDevice) );
 
+    if(VERBOSE) {
+        printf("Finished copying FCS data to device.\n");
+    }
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
     
     if(VERBOSE) {
+        printf("Finished copying cluster data to device.\n");
+    }
+    
+    if(VERBOSE) {
         printf("Invoking seed_clusters kernel...");
+        fflush(stdout);
     }
     // execute the kernel
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
