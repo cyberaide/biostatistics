@@ -242,7 +242,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     __shared__ float matrix[21*21]; // TODO: Make num_dimensions a #define constant
     
     // Invert the matrix for every cluster
-    for(int c=0; c < num_clusters; c++) {
+    for(int c=blockIdx.x; c < num_clusters; c+=NUM_BLOCKS) {
         // Copy the R matrix into shared memory for doing the matrix inversion
         for(int i=tid; i<num_elements; i+= num_threads ) {
             matrix[i] = clusters[c].R[i];
@@ -387,14 +387,27 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     __shared__ float total_likelihoods[NUM_THREADS];
     
     const int num_threads = blockDim.x;
+    int num_pixels_per_block = num_events / NUM_BLOCKS;  
     const int tid = threadIdx.x;
+    
+    int start_index;
+    int end_index;
+    start_index = blockIdx.x * num_pixels_per_block + tid;
+    
+    if(blockIdx.x == NUM_BLOCKS-1) {
+        end_index = num_events;
+    } else {
+        end_index = (blockIdx.x+1) * num_pixels_per_block;
+    }
+    
+    //printf("Block Index: %d, Thread Index: %d, start_index: %d, end_index: %d\n",blockIdx.x,tid,start_index,end_index);
 
     int data_index;
     
     total_likelihoods[tid] = 0.0;
     
     // Compute likelihood for every event, for every cluster
-    for(int pixel=tid; pixel<num_events; pixel += num_threads) {
+    for(int pixel=start_index; pixel<end_index; pixel += num_threads) {
         
         data_index = pixel*num_dimensions;
         // compute likelihood of pixel in cluster 'c'
@@ -436,6 +449,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     
     total_likelihoods[tid] = thread_likelihood;
 
+    
     float retval = 0.0;
     
     __syncthreads();
@@ -445,7 +459,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
         for(int i=0; i<num_threads; i++) {
             retval += total_likelihoods[i];
         }
-        *likelihood = retval;
+        likelihood[blockIdx.x] = retval;
     }
 }
 
@@ -472,12 +486,11 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     }
 
     __shared__ float temp_sums[NUM_THREADS];
-   
     __shared__ float temp_means[NUM_THREADS][NUM_DIMENSIONS];
     __shared__ float means[NUM_DIMENSIONS];
  
     // Compute new N
-    for(int c=0; c<num_clusters; c++) {
+    for(int c=blockIdx.x; c<num_clusters; c += NUM_BLOCKS) {
         temp_sums[tid] = 0.0;
         // Break all the events accross the threads, add up probabilities
         for(int s=start_index; s<end_index; s++) {
@@ -513,10 +526,11 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
    
     cluster* clust;
     // Compute means and covariances for each subcluster
-    for(int c=0; c<num_clusters; c++) {
+    for(int c=blockIdx.x; c<num_clusters; c += NUM_BLOCKS) {
         clust = &(clusters[c]);
         // Compute means
-        // Sum up all the weighted values
+        
+        // Sum up all the weighted values with different threads
         for(int d=0; d<num_dimensions; d++) {
             mean_sum = 0.0;
             for(int s=start_index; s<end_index; s++) {
@@ -526,6 +540,7 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         }
 
         __syncthreads();
+        // Reduce the result to get the final means
         if(tid == 0) {
             for(int d=0; d<num_dimensions; d++) {
                 temp_sums[d] = 0.0;
@@ -576,17 +591,28 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
             clust->R[tid*num_dimensions+tid] += clust->avgvar;
         }
     }
-  
-    __syncthreads();
     
+    /*
+    __syncthreads();
+      
     // Compute constant and R-inverses again
     compute_constants(clusters,num_clusters,num_dimensions);
-        
-    __syncthreads();
-        
-    normalize_pi(clusters,num_clusters);
     
     __syncthreads();
+    
+    normalize_pi(clusters,num_clusters);
+    */
+}
+
+__global__ void
+constants_kernel(cluster* clusters, int num_clusters, int num_dimensions) {
+    compute_constants(clusters,num_clusters,num_dimensions);
+    
+    __syncthreads();
+    
+    if(blockIdx.x == 0) {
+        normalize_pi(clusters,num_clusters);
+    }
 }
 
 /*

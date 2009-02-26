@@ -68,6 +68,7 @@ void add_clusters(cluster* cluster1, cluster* cluster2, cluster* temp_cluster, i
 ////////////////////////////////////////////////////////////////////////////////
 int
 main( int argc, char** argv) {
+
     runTest( argc, argv);
 
     //CUT_EXIT(argc, argv);
@@ -194,8 +195,21 @@ runTest( int argc, char** argv)
     }
     
     printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
-    
-    
+   
+    int GPUCount;
+    int device = 0;
+
+    CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
+
+    if (GPUCount > 1) {
+        device = 0;
+        CUDA_SAFE_CALL(cudaSetDevice(device));
+    }
+
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    printf("\nUsing device - %s\n\n", prop.name);
+
     int num_dimensions;
     int num_events;
     
@@ -211,7 +225,7 @@ runTest( int argc, char** argv)
     printf("Number of events: %d\n",num_events);
     printf("Number of dimensions: %d\n\n",num_dimensions);
     
-    CUT_DEVICE_INIT(argc, argv);
+    //CUT_DEVICE_INIT(argc, argv);
 
     
     // print the input
@@ -263,7 +277,6 @@ runTest( int argc, char** argv)
         saved_clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
     }
     
-    
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
     CUT_SAFE_CALL( cutStartTimer( timer));
@@ -312,6 +325,16 @@ runTest( int argc, char** argv)
     if(VERBOSE) {
         printf("done.\n"); 
     }
+    if(VERBOSE) {
+        printf("Invoking constants kernel...",num_threads);
+        fflush(stdout);
+    }
+    constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
+    cudaThreadSynchronize();
+    if(VERBOSE) {
+        printf("done.\n");
+    }
+    
     double determinant = 1.0;
         
     // Compute new constants and invert matrix
@@ -331,8 +354,10 @@ runTest( int argc, char** argv)
         printf("Gaussian.cu: epsilon = %f\n",epsilon);
     }
 
-    float* d_likelihood;
-    CUDA_SAFE_CALL(cudaMalloc((void**) &d_likelihood, sizeof(float)));
+    // Used to hold the result from regroup kernel
+    float* likelihoods = (float*) malloc(sizeof(float)*NUM_BLOCKS);
+    float* d_likelihoods;
+    CUDA_SAFE_CALL(cudaMalloc((void**) &d_likelihoods, sizeof(float)*NUM_BLOCKS));
     
     // Variables for GMM reduce order
     float distance, min_distance = 0.0;
@@ -347,12 +372,16 @@ runTest( int argc, char** argv)
         if(VERBOSE) {
             printf("Invoking regroup kernel...");
         }
-        regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+        regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
         printf("done.\n");
         // check if kernel execution generated and error
         CUT_CHECK_ERROR("Kernel execution failed");
-        CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+        likelihood = 0.0;
+        for(int i=0;i<NUM_BLOCKS;i++) {
+            likelihood += likelihoods[i]; 
+        }
         //printf("Gaussian.cu: likelihood = %f\n",likelihood);
 
         float change = epsilon*2;
@@ -365,7 +394,17 @@ runTest( int argc, char** argv)
                 printf("Invoking reestimate_parameters kernel...",num_threads);
                 fflush(stdout);
             }
-            reestimate_parameters<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+            reestimate_parameters<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+            cudaThreadSynchronize();
+            if(VERBOSE) {
+                printf("done.\n");
+            }
+            
+            if(VERBOSE) {
+                printf("Invoking constants kernel...",num_threads);
+                fflush(stdout);
+            }
+            constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
             if(VERBOSE) {
                 printf("done.\n");
@@ -378,7 +417,7 @@ runTest( int argc, char** argv)
                 printf("Invoking regroup kernel...");
                 fflush(stdout);
             }
-            regroup<<<1, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihood);
+            regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
             if(VERBOSE) {
                 printf("done.\n");
@@ -387,7 +426,13 @@ runTest( int argc, char** argv)
             // check if kernel execution generated and error
             CUT_CHECK_ERROR("Kernel execution failed");
         
-            CUDA_SAFE_CALL(cudaMemcpy(&likelihood,d_likelihood,sizeof(float),cudaMemcpyDeviceToHost));
+            CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+            likelihood = 0.0;
+            for(int i=0;i<NUM_BLOCKS;i++) {
+                //printf("Block #%d likelihood: ",likelihoods[i]);
+                likelihood += likelihoods[i]; 
+            }
+            
             change = likelihood - old_likelihood;
             if(VERBOSE) {
                 printf("likelihood = %f\n",likelihood);
