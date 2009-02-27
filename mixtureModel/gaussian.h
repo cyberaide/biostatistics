@@ -11,7 +11,7 @@
 #define NUM_THREADS 64
 #define NUM_DIMENSIONS 21
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define EMU 0
 
 typedef struct 

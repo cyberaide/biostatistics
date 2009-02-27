@@ -1,0 +1,97 @@
+Data clustering with Gaussian Mixture Models using Expectation Maximization and CUDA accelleration
+
+Written by: 
+    Andrew Pangborn
+    02/2009
+
+At the Rochester Institute of Technology Cyberinfrastructure Lab
+
+Assisted by: 
+    Gregor von Lasewski - RIT
+    James Cavenuagh - University of Rochester
+    Douglas Roberts - RIT
+    Jeremy Espenshade - RIT
+    
+This program is based heavily on the 'Cluster' application:
+https://engineering.purdue.edu/~bouman/software/cluster/
+written by Charles A. Bouman et al.
+
+
+
+INSTALLATION:
+
+The program is a Nvidia CUDA project
+This folder must exist in the NVIDIA_CUDA_SDK project folder
+
+The following instructions assume that the nvidia cuda driver and SDK have already been installed
+These instructions also assume the SDK is installed to the default location on a linux machine
+(NVIDIA_CUDA_SDK in user's the home directory)
+
+For example...
+
+~/NVIDIA_CUDA_SDK/projects/mixtureModel
+~/NVIDIA_CUDA_SDK/projects/mixtureModel/README
+~/NVIDIA_CUDA_SDK/projects/mixtureModel/LICENSE
+
+
+First make sure the nvidia 'common' library has been compiled
+
+    cd ~/NVIDIA_CUDA_SDK/common
+    make
+
+Then simply go to the mixtureModel folder and compile the project
+
+    cd ~/NVIDIA_CUDA_SDK/projects/mixtureModel
+    make
+
+The binary, called 'gaussian', gets placed in
+
+    ~/NVIDIA_CUDA_SDK/bin/linux/release/
+
+It may be convenience to make a symbolic link to the relase directory in the project folder
+
+    cd ~/NVIDIA_CUDA_SDK/projects/mixtureModel
+    ln -s ../../bin/linux/release bin
+
+
+
+USAGE:
+
+the program is a command-line application, called 'gaussian'
+    
+From the mixtureModel folder, assuming the 'bin' symbolic link was created as shown above,
+    
+$ ./bin/gaussian 
+Usage: ./bin/gaussian num_clusters infile outfile [target_num_clusters]
+     num_clusters: The number of starting clusters
+     infile: ASCII space-delimited FCS data file
+     outfile: Clustering results output file
+     target_num_clusters: A desired number of clusters. Must be less than or equal to num_clusters
+
+The user must specify the number of clusters to start the algorithm with. This is somewhat arbitrary,
+but it must be greater than the number of expected or desired clusters.
+The algorithm begins with this number, and iteratively combines clusters together until it reaches
+'target_num_clusters' or 1 (if unspecified). The cluster configuration with the best Rissanen score
+is recorded to the 'outfile'.
+
+The input file, 'infile', should be an ASCII text file with floating point values.
+Each line of the file is interpretted as a vector, or flow cymtometry event.
+The number of dimensions does not need to be specified, however it must be 
+consistent throughout the file.
+Newlines should occur only after all values of each vector.
+
+i.e. for a 4-dimensional data set
+
+1.0 2.0 3.0 4.0
+5.0 5.5 6.6 7.7
+8.8 9.9 0.5 2.2
+
+The output file, 'outfile', is where the cluster parameters will be recorded.
+
+Finally the 'target_num_clusters' is an optional parameter. This forces the 
+algorithm to use that number of clusters for its final configuration regardless
+ of the rissanen scores. It will also stop iteratively combining clusters once
+it reaches this number.
+
+Example: 
+$ ./bin/gaussian 10 combo.d2.space combo.d2.space.output
