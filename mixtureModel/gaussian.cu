@@ -98,8 +98,6 @@ main( int argc, char** argv) {
     cluster* scratch_cluster = (cluster*)malloc(sizeof(cluster));
     scratch_cluster->N = 0.0;
     scratch_cluster->pi = 0.0;
-    scratch_cluster->N = 0.0;
-    scratch_cluster->pi = 0.0;
     scratch_cluster->means = (float*) malloc(sizeof(float)*num_dimensions);
     scratch_cluster->R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
     scratch_cluster->Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
@@ -118,9 +116,7 @@ main( int argc, char** argv) {
         saved_clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
     }
    
-    if(VERBOSE) {
-        printf("Finished allocating memory on host for clusters.\n");
-    }
+    DEBUG("Finished allocating memory on host for clusters.\n");
  
     unsigned int timer = 0;
     CUT_SAFE_CALL( cutCreateTimer( &timer));
@@ -146,9 +142,7 @@ main( int argc, char** argv) {
     cluster* d_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*original_num_clusters));
     
-    if(VERBOSE) {
-        printf("Finished allocating memory on device for clusters.\n");
-    }
+    DEBUG("Finished allocating memory on device for clusters.\n");
 
     unsigned int mem_size = num_dimensions*num_events*sizeof(float);
     
@@ -157,45 +151,30 @@ main( int argc, char** argv) {
     // allocate device memory for FCS data
     float* d_fcs_data;
     CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data, mem_size));
-    if(VERBOSE) {
-        printf("Finished allocating memory on device for FCS data.\n");
-    }
+    DEBUG("Finished allocating memory on device for clusters.\n");
     // copy FCS to device
     CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data, fcs_data, mem_size,cudaMemcpyHostToDevice) );
 
-    if(VERBOSE) {
-        printf("Finished copying FCS data to device.\n");
-    }
+    DEBUG("Finished copying FCS data to device.\n");
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
     
-    if(VERBOSE) {
-        printf("Finished copying cluster data to device.\n");
-    }
+    DEBUG("Finished copying cluster data to device.\n");
    
     //////////////// Initialization done, starting kernels //////////////// 
-    if(VERBOSE) {
-        printf("Invoking seed_clusters kernel...");
-        fflush(stdout);
-    }
+    DEBUG("Invoking seed_clusters kernel...");
+    fflush(stdout);
 
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
-    if(VERBOSE) {
-        printf("done.\n"); 
-    }
-    if(VERBOSE) {
-        printf("Invoking constants kernel...",num_threads);
-        fflush(stdout);
-    }
+    DEBUG("done.\n"); 
+    DEBUG("Invoking constants kernel...",num_threads);
     // Computes the R matrix inverses, and the gaussian constant
     constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
-    if(VERBOSE) {
-        printf("done.\n");
-    }
+    DEBUG("done.\n");
     
     // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
@@ -205,9 +184,7 @@ main( int argc, char** argv) {
     float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
     float likelihood, old_likelihood;
     
-    if(VERBOSE) {
-        printf("Gaussian.cu: epsilon = %f\n",epsilon);
-    }
+    DEBUG("Gaussian.cu: epsilon = %f\n",epsilon);
 
     // Used to hold the result from regroup kernel
     float* likelihoods = (float*) malloc(sizeof(float)*NUM_BLOCKS);
@@ -229,15 +206,10 @@ main( int argc, char** argv) {
         // for each event and each cluster. Each event is independent,
         // so the events are distributed to different blocks 
         // (and hence different multiprocessors)
-        if(VERBOSE) {
-            printf("Invoking regroup kernel...");
-            fflush(stdout);
-        }
+        DEBUG("Invoking regroup kernel...");
         regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
-        if(VERBOSE) {
-            printf("done.\n");
-        }
+        DEBUG("done.\n");
         // check if kernel execution generated an error
         CUT_CHECK_ERROR("Kernel execution failed");
 
@@ -250,48 +222,34 @@ main( int argc, char** argv) {
 
         float change = epsilon*2;
         
-        printf("Performing EM algorthm on %d clusters.\n",num_clusters);
+        PRINT("Performing EM algorithm on %d clusters.\n",num_clusters);
         // This is the iterative loop for the EM algorithm.
         // It re-estimates parameters, re-computes constants, and then regroups the events
         // These steps keep repeating until the change in likelihood is less than some epsilon        
         while(fabs(change) > epsilon) {
             old_likelihood = likelihood;
-            if(VERBOSE) {
-                printf("Invoking reestimate_parameters kernel...",num_threads);
-                fflush(stdout);
-            }
+            
+            DEBUG("Invoking reestimate_parameters kernel...",num_threads);
 
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
             reestimate_parameters<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
-            if(VERBOSE) {
-                printf("done.\n");
-            }
+            DEBUG("done.\n");
             
-            if(VERBOSE) {
-                printf("Invoking constants kernel...",num_threads);
-                fflush(stdout);
-            }
+            DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
-            if(VERBOSE) {
-                printf("done.\n");
-            }
+            DEBUG("done.\n");
 
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
         
-            if(VERBOSE) {
-                printf("Invoking regroup kernel...");
-                fflush(stdout);
-            }
+            DEBUG("Invoking regroup kernel...");
             // Compute new cluster membership probabilities for all the events
             regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
-            if(VERBOSE) {
-                printf("done.\n");
-            }
+            DEBUG("done.\n");
         
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
@@ -303,10 +261,8 @@ main( int argc, char** argv) {
             }
             
             change = likelihood - old_likelihood;
-            if(VERBOSE) {
-                printf("likelihood = %f\n",likelihood);
-                printf("Change in likelihood: %f\n",change);
-            }
+            DEBUG("likelihood = %f\n",likelihood);
+            DEBUG("Change in likelihood: %f\n",change);
         }
         
         // copy clusters from the device
@@ -322,7 +278,7 @@ main( int argc, char** argv) {
         }
         // Calculate Rissanen Score
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
-        printf("\nRissanen Score: %f\n",rissanen);
+        PRINT("\nRissanen Score: %f\n",rissanen);
         
         // Save the cluster data the first time through, so we have a base rissanen score and result
         // Save the cluster data if the solution is better and the user didn't specify a desired number
@@ -361,7 +317,7 @@ main( int argc, char** argv) {
                 }
             }
 
-            printf("\nMinimum distance between (%d,%d). Combining clusters\n",min_c1,min_c2);
+            PRINT("\nMinimum distance between (%d,%d). Combining clusters\n",min_c1,min_c2);
             // Add the two clusters with min distance together
             add_clusters(&(clusters[min_c1]),&(clusters[min_c2]),scratch_cluster,num_dimensions);
             // Copy new combined cluster into the main group of clusters, compact them
@@ -384,8 +340,7 @@ main( int argc, char** argv) {
         }
         
     }
-    printf("\n\nSolution coverged or began to diverge. Printing solution.\n");
-    printf("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
+    PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
  
     
     // copy clusters from the device
@@ -405,7 +360,7 @@ main( int argc, char** argv) {
     */
     
     CUT_SAFE_CALL(cutStopTimer(timer));
-    printf( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
+    PRINT( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
     
@@ -417,10 +372,12 @@ main( int argc, char** argv) {
 
     // Print the clusters with the lowest rissanen score to the console and output file
     for(int c=0; c<ideal_num_clusters; c++) {
-        // Output the final cluster stats to the console
-        printf("-----------------------    Cluster #%d  ------------------------------\n",c);
-        printCluster(&(saved_clusters[c]),num_dimensions);
-        printf("\n\n");
+        if(ENABLE_PRINT) {
+            // Output the final cluster stats to the console
+            PRINT("-----------------------    Cluster #%d  ------------------------------\n",c);
+            printCluster(&(saved_clusters[c]),num_dimensions);
+            PRINT("\n\n");
+        }
 
         // Output the final cluster stats to the output file        
         fprintf(outf,"-----------------------    Cluster #%d  ------------------------------\n",c);

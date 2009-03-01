@@ -8,11 +8,38 @@
 #define MAX_CLUSTERS	64
 #define PI  3.141593
 #define	NUM_BLOCKS 24
-#define NUM_THREADS 64
+#define NUM_THREADS 128
 #define NUM_DIMENSIONS 21
 
-#define VERBOSE 0
+// Prints verbose output during the algorithm
+// Enables the DEBUG macro
+#define ENABLE_DEBUG 0
+
+// Used to enable regular print outs (such as the Rissanen scores, clustering results)
+// This should be enabled for general use and disabled for performance evaluations only
+#define ENABLE_PRINT 1
+
+// Used to enable EMUPRINT macro, this can only be used when compiled for
+// in emulation mode. It is used to print out during cuda kernels
 #define EMU 0
+
+#if ENABLE_DEBUG
+#define DEBUG(fmt,args...) printf(fmt, ##args)
+#else
+#define DEBUG(fmt,args...)
+#endif
+
+#if ENABLE_PRINT
+#define PRINT(fmt,args...) printf(fmt, ##args)
+#else
+#define PRINT(fmt,args...)
+#endif
+
+#ifdef EMU
+#define EMUPRINT(fmt,args...) printf(fmt, ##args)
+#else
+#define EMUPRINT(fmt,args...)
+#endif
 
 typedef struct 
 {
