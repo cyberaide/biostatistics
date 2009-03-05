@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <time.h> // for clock(), clock_t, CLOCKS_PER_SEC
 
 // includes, project
 #include <cutil.h>
@@ -27,7 +28,38 @@ void add_clusters(cluster* cluster1, cluster* cluster2, cluster* temp_cluster, i
 int
 main( int argc, char** argv) {
     int original_num_clusters, desired_num_clusters, stop_number;
+    
+    // For profiling input parsing
+    clock_t input_start, input_end;
+    
+    // For profiling the regroup kernel
+    clock_t regroup_start, regroup_end, regroup_total;
+    int regroup_iterations = 0;
+    
+    // for profiling the reestimate_parameters kernel
+    clock_t params_start, params_end, params_total;
+    int params_iterations = 0;
+    
+    // for profiling the constants kernel
+    clock_t constants_start, constants_end, constants_total;
+    int constants_iterations = 0;
+    
+    // for profiling the GMM order reduction
+    clock_t reduce_start, reduce_end, reduce_total;
+    int reduce_iterations = 0;
+    
+    regroup_total = regroup_iterations = 0;
+    params_total = params_iterations = 0;
+    constants_total = constants_iterations = 0;
+    reduce_total = reduce_iterations = 0;
+    
+    // Keep track of total time
+    unsigned int timer = 0;
+    CUT_SAFE_CALL( cutCreateTimer( &timer));
+    CUT_SAFE_CALL( cutStartTimer( timer));
    
+    input_start = clock();
+    
     // Validate the command-line arguments, parse # of clusters, etc 
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
     
@@ -48,10 +80,8 @@ main( int argc, char** argv) {
     int num_events;
     
     // Read FCS data   
-    printf("Parsing input file...");
-    fflush(stdout); 
-    float* fcs_data = readData(argv[2],&num_dimensions,&num_events);
-    printf("done\n");    
+    PRINT("Parsing input file...");
+    float* fcs_data = readData(argv[2],&num_dimensions,&num_events);    
 
     if(!fcs_data) {
         printf("Error parsing input file. This could be due to an empty file ");
@@ -59,12 +89,14 @@ main( int argc, char** argv) {
         return 1;
     }
     
-    printf("Number of events: %d\n",num_events);
-    printf("Number of dimensions: %d\n\n",num_dimensions);
+    input_end = clock();
     
-    printf("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
+    PRINT("Number of events: %d\n",num_events);
+    PRINT("Number of dimensions: %d\n\n",num_dimensions);
+    
+    PRINT("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
    
-    // Set the device to run on... 0 for GTX 260, 1 for Tesla C870
+    // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
     int GPUCount;
     int device = 0;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
@@ -74,7 +106,7 @@ main( int argc, char** argv) {
     }
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device);
-    printf("\nUsing device - %s\n\n", prop.name);
+    PRINT("\nUsing device - %s\n\n", prop.name);
     
     int num_threads = NUM_THREADS;
 
@@ -117,10 +149,6 @@ main( int argc, char** argv) {
     }
    
     DEBUG("Finished allocating memory on host for clusters.\n");
- 
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
     
     // Setup the cluster data structures on device
     // First allocate structures on the host, CUDA malloc the arrays
@@ -207,8 +235,12 @@ main( int argc, char** argv) {
         // so the events are distributed to different blocks 
         // (and hence different multiprocessors)
         DEBUG("Invoking regroup kernel...");
+        regroup_start = clock();
         regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
+        regroup_end = clock();
+        regroup_total += regroup_end - regroup_start;
+        regroup_iterations++;
         DEBUG("done.\n");
         // check if kernel execution generated an error
         CUT_CHECK_ERROR("Kernel execution failed");
@@ -231,24 +263,36 @@ main( int argc, char** argv) {
             
             DEBUG("Invoking reestimate_parameters kernel...",num_threads);
 
+            params_start = clock();
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
             reestimate_parameters<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
+            params_end = clock();
+            params_total += params_end - params_start;
+            params_iterations++;
             DEBUG("done.\n");
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
+            constants_start = clock();
             constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
+            constants_end = clock();
+            constants_total += constants_end - constants_start;
+            constants_iterations++;
             DEBUG("done.\n");
 
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
         
             DEBUG("Invoking regroup kernel...");
+            regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
             regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
+            regroup_end = clock();
+            regroup_total += regroup_end - regroup_start;
+            regroup_iterations++;
             DEBUG("done.\n");
         
             // check if kernel execution generated an error
@@ -280,6 +324,7 @@ main( int argc, char** argv) {
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
         PRINT("\nRissanen Score: %f\n",rissanen);
         
+        
         // Save the cluster data the first time through, so we have a base rissanen score and result
         // Save the cluster data if the solution is better and the user didn't specify a desired number
         // If the num_clusters equals the desired number, stop
@@ -298,7 +343,7 @@ main( int argc, char** argv) {
 
         
         /**************** Reduce GMM Order ********************/
-        
+        reduce_start = clock();
         // Don't want to reduce order on the last iteration
         if(num_clusters > stop_number) {
             
@@ -338,7 +383,9 @@ main( int argc, char** argv) {
             }
             CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*(num_clusters-1),cudaMemcpyHostToDevice));
         }
-        
+        reduce_end = clock();
+        reduce_total += reduce_end - reduce_start;
+        reduce_iterations++;
     }
     PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
  
@@ -385,6 +432,15 @@ main( int argc, char** argv) {
         fprintf(outf,"\n\n");
     }
     fclose(outf);
+    
+    // Print profiling information
+    printf("Program Component\tTotal Time\t\tIterations\tTime Per Iteration\n");
+    printf("Input Parsing:\t\t%f\t\t%d\t\t%f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
+    printf("Regroup Kernel:\t\t%f\t\t%d\t\t%f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    printf("Re-estimate Kernel:\t%f\t\t%d\t\t%f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    printf("Constants Kernel:\t%f\t\t%d\t\t%f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
+    printf("GMM Order Reduction:\t%f\t\t%d\t\t%f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
+    
     // cleanup memory
     free(fcs_data);
     for(int i=0; i<original_num_clusters; i++) {
