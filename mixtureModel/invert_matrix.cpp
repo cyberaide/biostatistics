@@ -27,15 +27,13 @@ void invert_cpu(float* data, int actualsize, float* determinant)  {
     int n = actualsize;
     *determinant = 1.0;
 
-    if(VERBOSE) {
-        printf("\n\nR matrix before inversion:\n");
+        DEBUG("\n\nR matrix before inversion:\n");
         for(int i=0; i<n; i++) {
             for(int j=0; j<n; j++) {
-                printf("%.2f ",data[i*n+j]);
+                DEBUG("%.2f ",data[i*n+j]);
             }
-            printf("\n");
+            DEBUG("\n");
         }
-    }
     
   if (actualsize <= 0) return;  // sanity check
   if (actualsize == 1) return;  // must be of dimension >= 2
@@ -87,15 +85,13 @@ void invert_cpu(float* data, int actualsize, float* determinant)  {
       data[j*maxsize+i] = sum;
       }
       
-      if(VERBOSE) {
-          printf("\n\nR matrix after inversion:\n");
+          DEBUG("\n\nR matrix after inversion:\n");
           for(int i=0; i<n; i++) {
               for(int j=0; j<n; j++) {
-                  printf("%.2f ",data[i*n+j]);
+                  DEBUG("%.2f ",data[i*n+j]);
               }
-              printf("\n");
+              DEBUG("\n");
           }
-      }
  }
 
 

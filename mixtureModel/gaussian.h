@@ -17,7 +17,7 @@
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only
-#define ENABLE_PRINT 0
+#define ENABLE_PRINT 1
 
 // Used to enable EMUPRINT macro, this can only be used when compiled for
 // in emulation mode. It is used to print out during cuda kernels

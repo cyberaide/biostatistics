@@ -38,7 +38,7 @@
  * Device code.
  */
 
-#define COVARIANCE_DYNAMIC_RANGE 1E5
+#define COVARIANCE_DYNAMIC_RANGE 1E3
 
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
@@ -123,84 +123,78 @@ __device__ void invert(float* data, int actualsize, float* determinant)  {
     int n = actualsize;
     
     if(threadIdx.x == 0) {
-    *determinant = 1.0;
+        *determinant = 1.0;
 
 #if EMU
-    if(VERBOSE) {
-        printf("\n\nR matrix before inversion:\n");
-        for(int i=0; i<n; i++) {
-            for(int j=0; j<n; j++) {
-                printf("%.2f ",data[i*n+j]);
+            EMUPRINT("\n\nR matrix before inversion:\n");
+            for(int i=0; i<n; i++) {
+                for(int j=0; j<n; j++) {
+                    EMUPRINT("%.2f ",data[i*n+j]);
+                }
+                EMUPRINT("\n");
             }
-            printf("\n");
-        }
-    }
 #endif
-    
-  if (actualsize <= 0) return;  // sanity check
-  if (actualsize == 1) return;  // must be of dimension >= 2
-  for (int i=1; i < actualsize; i++) data[i] /= data[0]; // normalize row 0
-  for (int i=1; i < actualsize; i++)  { 
-    for (int j=i; j < actualsize; j++)  { // do a column of L
-      float sum = 0.0;
-      for (int k = 0; k < i; k++)  
-          sum += data[j*maxsize+k] * data[k*maxsize+i];
-      data[j*maxsize+i] -= sum;
-      }
-    if (i == actualsize-1) continue;
-    for (int j=i+1; j < actualsize; j++)  {  // do a row of U
-      float sum = 0.0;
-      for (int k = 0; k < i; k++)
-          sum += data[i*maxsize+k]*data[k*maxsize+j];
-      data[i*maxsize+j] = 
-         (data[i*maxsize+j]-sum) / data[i*maxsize+i];
-      }
-    }
-    
-    for(int i=0; i<actualsize; i++) {
-        *determinant *= data[i*n+i];
-    }
+        
+      if (actualsize <= 0) return;  // sanity check
+      if (actualsize == 1) return;  // must be of dimension >= 2
+      for (int i=1; i < actualsize; i++) data[i] /= data[0]; // normalize row 0
+      for (int i=1; i < actualsize; i++)  { 
+        for (int j=i; j < actualsize; j++)  { // do a column of L
+          float sum = 0.0;
+          for (int k = 0; k < i; k++)  
+              sum += data[j*maxsize+k] * data[k*maxsize+i];
+          data[j*maxsize+i] -= sum;
+          }
+        if (i == actualsize-1) continue;
+        for (int j=i+1; j < actualsize; j++)  {  // do a row of U
+          float sum = 0.0;
+          for (int k = 0; k < i; k++)
+              sum += data[i*maxsize+k]*data[k*maxsize+j];
+          data[i*maxsize+j] = 
+             (data[i*maxsize+j]-sum) / data[i*maxsize+i];
+          }
+        }
+        
+        for(int i=0; i<actualsize; i++) {
+            *determinant *= data[i*n+i];
+        }
 #if EMU
-    if(VERBOSE) {
-        printf("Determinant: %E\n",*determinant);
-    }
+            EMUPRINT("Determinant: %E\n",*determinant);
 #endif
-    
-  for ( int i = 0; i < actualsize; i++ )  // invert L
-    for ( int j = i; j < actualsize; j++ )  {
-      float x = 1.0;
-      if ( i != j ) {
-        x = 0.0;
-        for ( int k = i; k < j; k++ ) 
-            x -= data[j*maxsize+k]*data[k*maxsize+i];
-        }
-      data[j*maxsize+i] = x / data[j*maxsize+j];
-      }
-  for ( int i = 0; i < actualsize; i++ )   // invert U
-    for ( int j = i; j < actualsize; j++ )  {
-      if ( i == j ) continue;
-      float sum = 0.0;
-      for ( int k = i; k < j; k++ )
-          sum += data[k*maxsize+j]*( (i==k) ? 1.0 : data[i*maxsize+k] );
-      data[i*maxsize+j] = -sum;
-      }
-  for ( int i = 0; i < actualsize; i++ )   // final inversion
-    for ( int j = 0; j < actualsize; j++ )  {
-      float sum = 0.0;
-      for ( int k = ((i>j)?i:j); k < actualsize; k++ )  
-          sum += ((j==k)?1.0:data[j*maxsize+k])*data[k*maxsize+i];
-      data[j*maxsize+i] = sum;
-      }
+        
+      for ( int i = 0; i < actualsize; i++ )  // invert L
+        for ( int j = i; j < actualsize; j++ )  {
+          float x = 1.0;
+          if ( i != j ) {
+            x = 0.0;
+            for ( int k = i; k < j; k++ ) 
+                x -= data[j*maxsize+k]*data[k*maxsize+i];
+            }
+          data[j*maxsize+i] = x / data[j*maxsize+j];
+          }
+      for ( int i = 0; i < actualsize; i++ )   // invert U
+        for ( int j = i; j < actualsize; j++ )  {
+          if ( i == j ) continue;
+          float sum = 0.0;
+          for ( int k = i; k < j; k++ )
+              sum += data[k*maxsize+j]*( (i==k) ? 1.0 : data[i*maxsize+k] );
+          data[i*maxsize+j] = -sum;
+          }
+      for ( int i = 0; i < actualsize; i++ )   // final inversion
+        for ( int j = 0; j < actualsize; j++ )  {
+          float sum = 0.0;
+          for ( int k = ((i>j)?i:j); k < actualsize; k++ )  
+              sum += ((j==k)?1.0:data[j*maxsize+k])*data[k*maxsize+i];
+          data[j*maxsize+i] = sum;
+          }
       
 #if EMU
-      if(VERBOSE) {
-          printf("\n\nR matrix after inversion:\n");
-          for(int i=0; i<n; i++) {
-              for(int j=0; j<n; j++) {
-                  printf("%.2f ",data[i*n+j]);
-              }
-              printf("\n");
+      EMUPRINT("\n\nR matrix after inversion:\n");
+      for(int i=0; i<n; i++) {
+          for(int j=0; j<n; j++) {
+              EMUPRINT("%.2f ",data[i*n+j]);
           }
+          EMUPRINT("\n");
       }
 #endif
     }
@@ -313,6 +307,26 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
 
     __syncthreads();
 
+    __shared__ float std_devs[NUM_DIMENSIONS];
+    float sum;
+    float var;
+    float mean;
+
+    // Compute standard deviations for each dimension of the data
+    if(tid < num_dimensions) {    
+        sum = 0.0;
+        mean = means[tid];
+        for(int s=0; s<num_events; s++) {
+            var = (g_idata[s*num_dimensions+tid]-mean);
+            sum += var*var;
+        }
+        sum /= (float)num_events;
+        std_devs[tid] = sqrtf(sum);
+        //printf("Standard deviation: %f\n",std_devs[tid]);
+    }
+
+    __syncthreads();
+    
     // Compute the initial covariance matrix of the data
     for(int i=tid; i < num_elements; i+= num_threads) {
             // zero the value, find what row and col this thread is computing
@@ -325,6 +339,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             }
             covs[i] = covs[i] / (float) num_events;
             covs[i] = covs[i] - means[row]*means[col];
+            //covs[i] /= (std_devs[row]*std_devs[col]);
     } 
     __syncthreads();    
     
@@ -350,8 +365,9 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
             // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
             clusters[c].R[i] = covs[i] + avgvar/COVARIANCE_DYNAMIC_RANGE;
         }
-        
-        clusters[c].avgvar = avgvar / COVARIANCE_DYNAMIC_RANGE;
+        if(tid == 0) {
+            clusters[c].avgvar = avgvar / COVARIANCE_DYNAMIC_RANGE;
+        }
     }
 }
 
@@ -385,7 +401,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     total_likelihoods[tid] = 0.0;
   
 #if EMU
-    if(VERBOSE) { 
+    if(0) { 
         for(int c=0;c<num_clusters;c++) {
             if(tid==0) {
                 printf("cluster[%d].Rinv matrix:\n",c);
@@ -514,10 +530,14 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     // Synchronize because threads need to use clusters[c].N for means calculation    
     __syncthreads();
 
-    float mean_sum;   
+    float sum;
+    float mean;  
+    float var; 
     float cov_sum = 0.0;
     int row,col,data_index;
-   
+  
+    __shared__ float std_devs[NUM_DIMENSIONS];
+ 
     cluster* clust;
     // Compute means and covariances for each subcluster
     for(int c=blockIdx.x; c<num_clusters; c += NUM_BLOCKS) {
@@ -529,17 +549,38 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         //  resources badly by doing it this way. It's got alot fewer loops and potential branching
         //  than doing it like the N computation above
         if(tid < num_dimensions) {    
-            mean_sum = 0.0;
+            sum = 0.0;
             for(int s=0; s<num_events; s++) {
-                mean_sum += fcs_data[s*num_dimensions+tid]*clust->p[s];
+                sum += fcs_data[s*num_dimensions+tid]*clust->p[s];
             }
             // Divide by # of elements in the cluster
-            means[tid] = mean_sum / clust->N;
-            clust->means[tid] = means[tid];
+            if(clust->N >= 1.0) {
+                means[tid] = sum / clust->N;
+                clust->means[tid] = means[tid];
+            } else {
+                means[tid] = 0.0;
+                clust->means[tid] = 0.0;
+            }
+        }
+
+        __syncthreads();
+        
+        // Compute standard deviations for each dimension of the data
+        if(tid < num_dimensions) {    
+            sum = 0.0;
+            mean = means[tid];
+            for(int s=0; s<num_events; s++) {
+                var = (fcs_data[s*num_dimensions+tid]-mean);
+                sum += var*var;
+            }
+            sum /= (float)num_events;
+            std_devs[tid] = sqrtf(sum);
+            //printf("Standard deviation: %f\n",std_devs[tid]);
         }
 
         __syncthreads();
 
+        
         // Compute the covariance matrix of the data
         for(int i=tid; i < num_elements; i+= num_threads) {
             // zero the value, find what row and col this thread is computing
@@ -552,7 +593,12 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
                 cov_sum += (fcs_data[data_index+row]-means[row])*(fcs_data[data_index+col]-means[col])*clust->p[j]; 
                 data_index += num_dimensions;
             }
-            clust->R[i] = cov_sum / clust->N;
+            if(clust->N >= 1.0) {
+                clust->R[i] = cov_sum / clust->N;
+            } else {
+                clust->R[i] = 0.0;
+            }
+            //clust->R[i] /= (std_devs[row]*std_devs[col]);
         }
         
         __syncthreads();

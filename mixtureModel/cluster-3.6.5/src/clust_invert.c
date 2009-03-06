@@ -39,7 +39,7 @@
 
 #include "alloc_util.h"
 
-#define VERBOSE 0
+#define VERBOSE 1
 
 
 static double double_abs(double x);
