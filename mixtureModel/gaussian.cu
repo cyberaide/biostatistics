@@ -554,7 +554,7 @@ void printUsage(char** argv)
 void writeCluster(FILE* f, cluster* c, int num_dimensions) {
     fprintf(f,"Probability: %f\n", c->pi);
     fprintf(f,"N: %f\n",c->N);
-    fprintf(f,"Spectral Mean: ");
+    fprintf(f,"Means: ");
     for(int i=0; i<num_dimensions; i++){
         fprintf(f,"%.3f ",c->means[i]);
     }
@@ -581,31 +581,6 @@ void writeCluster(FILE* f, cluster* c, int num_dimensions) {
 
 void printCluster(cluster* c, int num_dimensions) {
     writeCluster(stdout,c,num_dimensions);
-    /*
-    printf("Probability: %f\n", c->pi);
-    printf("N: %f\n",c->N);
-    printf("Spectral Mean: ");
-    for(int i=0; i<num_dimensions; i++){
-        printf("%.3f ",c->means[i]);
-    }
-    printf("\n");
-
-    printf("\nR Matrix:\n");
-    for(int i=0; i<num_dimensions; i++) {
-        for(int j=0; j<num_dimensions; j++) {
-            printf("%.3f ", c->R[i*num_dimensions+j]);
-        }
-        printf("\n");
-    }
-    fflush(stdout);   
-    fprintf(f,"\nR-inverse Matrix:\n");
-    for(int i=0; i<num_dimensions; i++) {
-        for(int j=0; j<num_dimensions; j++) {
-            fprintf(f,"%.3f ", c->Rinv[i*num_dimensions+j]);
-        }
-        fprintf(f,"\n");
-    } 
-    */
 }
 
 float cluster_distance(cluster* cluster1, cluster* cluster2, cluster* temp_cluster, int num_dimensions) {

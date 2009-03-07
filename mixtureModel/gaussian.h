@@ -5,8 +5,10 @@
 #ifndef GAUSSIAN_H
 #define GAUSSIAN_H
 
-#define MAX_CLUSTERS	64
-#define PI  3.141593
+// Maxinum number of threads per block is 512, so that limits us to 512 clusters
+// Probably will run out of memory and make the computation intractable far before 512 clusters though
+#define MAX_CLUSTERS 512
+#define PI  3.1415926535897931
 #define	NUM_BLOCKS 24
 #define NUM_THREADS 128
 #define NUM_DIMENSIONS 21
