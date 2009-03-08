@@ -346,7 +346,19 @@ main( int argc, char** argv) {
         reduce_start = clock();
         // Don't want to reduce order on the last iteration
         if(num_clusters > stop_number) {
-            
+          
+
+            // First eliminate any "empty" clusters 
+            for(int i=num_clusters-1; i >= 0; i--) {
+                if(clusters[i].N < 1.0) {
+                    DEBUG("Cluster #%d has less than 1 data point in it.\n",i);
+                    for(int j=i; j < num_clusters-1; j++) {
+                        copy_cluster(&(clusters[j]),&(clusters[j+1]),num_dimensions);
+                    }
+                    num_clusters--;
+                }
+            }
+            DEBUG("Number of non-empty clusters: %d\n",num_clusters); 
             // For all combinations of subclasses...
             for(int c1=0; c1<num_clusters;c1++) {
                 for(int c2=c1+1; c2<num_clusters;c2++) {
@@ -434,12 +446,12 @@ main( int argc, char** argv) {
     fclose(outf);
     
     // Print profiling information
-    printf("Program Component\tTotal Time\t\tIterations\tTime Per Iteration\n");
-    printf("Input Parsing:\t\t%f\t\t%d\t\t%f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    printf("Regroup Kernel:\t\t%f\t\t%d\t\t%f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    printf("Re-estimate Kernel:\t%f\t\t%d\t\t%f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
-    printf("Constants Kernel:\t%f\t\t%d\t\t%f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
-    printf("GMM Order Reduction:\t%f\t\t%d\t\t%f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
+    printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
+    printf("      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
+    printf("     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    printf(" Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    printf("   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
+    printf("GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
     
     // cleanup memory
     free(fcs_data);
@@ -601,6 +613,7 @@ float cluster_distance(cluster* cluster1, cluster* cluster2, cluster* temp_clust
 void add_clusters(cluster* cluster1, cluster* cluster2, cluster* temp_cluster, int num_dimensions) {
     double wt1,wt2;
     
+ 
     wt1 = ((double) cluster1->N) / ((double)(cluster1->N + cluster2->N));
     wt2 = 1 - wt1;
     

@@ -38,7 +38,7 @@
  * Device code.
  */
 
-#define COVARIANCE_DYNAMIC_RANGE 1E5
+#define COVARIANCE_DYNAMIC_RANGE 1E3
 
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
@@ -356,6 +356,7 @@ seed_clusters( float* g_idata, cluster* clusters, int num_dimensions, int num_cl
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
         clusters[c].pi = 1.0/num_clusters;
+        clusters[c].N = (float) num_events / num_clusters;
         if(tid < num_dimensions) {
             clusters[c].means[tid] = g_idata[((int)(c*seed))*num_dimensions+tid];
             //clusters[c].means[tid] = means[tid];
@@ -452,7 +453,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
         
         // Normalizes probabilities
         for(int c=0; c<num_clusters; c++) {
-            clusters[c].p[pixel] /= denominator_sum;
+            clusters[c].p[pixel] /= (denominator_sum);
             //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
         }
     }
@@ -566,17 +567,17 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         __syncthreads();
         
         // Compute standard deviations for each dimension of the data
-        if(tid < num_dimensions) {    
-            sum = 0.0;
-            mean = means[tid];
-            for(int s=0; s<num_events; s++) {
-                var = (fcs_data[s*num_dimensions+tid]-mean);
-                sum += var*var;
-            }
-            sum /= (float)num_events;
-            std_devs[tid] = sqrtf(sum);
+        //if(tid < num_dimensions) {    
+        //    sum = 0.0;
+        //    mean = means[tid];
+        //    for(int s=0; s<num_events; s++) {
+        //        var = (fcs_data[s*num_dimensions+tid]-mean);
+        //        sum += var*var;
+        //    }
+        //    sum /= (float)num_events;
+        //    std_devs[tid] = sqrtf(sum);
             //printf("Standard deviation: %f\n",std_devs[tid]);
-        }
+        //}
 
         __syncthreads();
 
