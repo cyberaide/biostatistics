@@ -1,33 +1,34 @@
-#include <stdlib.h>
+/*#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
+#include <math.h>*/
 #include <cutil.h>
 #include <kmedoids_kernel.cu>
 #include <kmedoids_bic_kernel.cu>
 
-void initRand();
-int randInt(int max);
-int randInt(int min, int max);
-float randFloat();
-float randFloat(float min, float max);
-void chooseMedoids(float* m, float* d, int n, int* dims);
-bool contains(float* m, float p[], int n, int* dims);
-void getPoints(float* d, float p[], int* dims, int i);
 void calcVol(float results[][3], float* memb, int* out, int* dims, float min, float max, int n);
 void usage();
 
-extern "C"
-void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, char* f);
-
-extern "C"
-float* readData(char* f, int* dims);
+extern "C" void initRand();
+extern "C" float randFloat();
+extern "C" float randFloatRange(float min, float max);
+extern "C" int randInt(int max);
+extern "C" int randIntRange(int min, int max);
+extern "C" int getRandIndex(int w, int h);
+extern "C" bool contains(float* f, float p[], int n, int dims[]);
+extern "C" void setCenters(float* d, float* m, int n, int dims[]);
+extern "C" void getPoints(float* d, float p[], int dims[], int i);
+extern "C" float* readData(char* f, int* dims);
+extern "C" void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, const char* f);
+extern "C" int clusterColor(float i, int nc);
 
 int main( int argc, char** argv) {
 	if (argc != 8) {
 		usage();
 		return EXIT_FAILURE;
 	}
+
+	initRand();
 
 	int GPUCount;
 	int device = 0;
@@ -51,7 +52,11 @@ int main( int argc, char** argv) {
 	*numClusters = atoi(argv[1]);
 
 	int* dims = (int*)malloc(dimSize);
-	float* data = readData(argv[6], dims);
+	float* temp = readData(argv[6], dims);
+	float* data = (float*)malloc(sizeof(float) * dims[0] * dims[1]);
+
+	memcpy(data, temp, sizeof(float) * dims[0] * dims[1]);
+	free(temp);
 
 	dims[2] = atoi(argv[2]);
 
@@ -73,14 +78,12 @@ int main( int argc, char** argv) {
 	float* membership = (float*)malloc(sizeMemb);
 	float* BIC = (float*)malloc(bicSize);
 
-	for (int i = 0; i < *numClusters; i++) {
+	/*for (int i = 0; i < *numClusters; i++) {
 		BIC[i] = 0;
-	}
+	}*/
 
 	// allocate memory for host result
 	int* h_odata = (int*)malloc(sizeInt);
-
-	initRand();
 
 	// allocate device memory for data, medoids, and cost
 	float* d_idata;
@@ -133,7 +136,7 @@ int main( int argc, char** argv) {
 	float oldCost = 1;
 	float newCost = 0;
 
-	chooseMedoids(medoids, data, *numClusters, dims);
+	setCenters(data, medoids, *numClusters, dims);
 	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_bic, BIC, bicSize, cudaMemcpyHostToDevice));
 
@@ -143,11 +146,14 @@ int main( int argc, char** argv) {
 
 	int bestNumClusters;
 	float BICResult = -1;
+	float BICTemp;
 
 	for (int i = 1; i <= *numClusters; i++) {
-		if (BICResult == -1 || BICResult < BIC[i - 1]) {
+		BICTemp = (dims[1] * log(BIC[i - 1] / dims[1])) + (i * log(dims[1]));
+
+		if (BICResult < BICTemp) {
 			bestNumClusters = i;
-			BICResult = BIC[i - 1];
+			BICResult = BICTemp;
 		}
 	}
 
@@ -168,7 +174,7 @@ int main( int argc, char** argv) {
 
 		while (newCost < oldCost) {
 			if (choose == 1) {
-				chooseMedoids(medoids, data, *numClusters, dims);
+				setCenters(data, medoids, *numClusters, dims);
 				CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
 			}
 
@@ -188,7 +194,7 @@ int main( int argc, char** argv) {
 			oldCost = *costs;
 
 			memcpy(finalMedoids, medoids, sizeMedoid);
-			chooseMedoids(medoids, data, *numClusters, dims);
+			setCenters(data, medoids, *numClusters, dims);
 
 			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
 
@@ -259,77 +265,6 @@ int main( int argc, char** argv) {
 
     //CUT_EXIT(argc, argv);
 	return EXIT_SUCCESS;
-}
-
-void initRand() {
-    srand((unsigned)(time(0)));
-}
-
-int randInt(int max) {
-	return int(rand() % max) + 1;
-}
-
-int randInt(int min, int max) {
-    if (min > max) {
-        return max + int(rand() % (min - max));
-    }
-    else {
-        return min + int(rand() % (max - min));
-    }
-}
-
-float randFloat() {
-    return rand() / (float(RAND_MAX) + 1);
-}
-
-float randFloat(float min, float max) {
-    if (min > max) {
-        return randFloat() * (min - max) + max;
-    }
-    else {
-        return randFloat() * (max - min) + min;
-    }
-}
-
-void chooseMedoids(float* m, float* d, int n, int* dims) {
-	float temp[dims[0]];
-
-	for (int i = 0; i < n; i++) {
-		getPoints(d, temp, dims, randInt(dims[1]) - 1);
-
-		while (contains(m, temp, n, dims)) {
-			getPoints(d, temp, dims, randInt(dims[1]) - 1);
-		}
-
-		for (int j = 0; j < dims[0]; j++) {
-			m[j + i * dims[0]] = temp[j];
-		}
-	}
-}
-
-void getPoints(float* d, float p[], int* dims, int i) {
-	for (int j = 0; j < dims[0]; j++) {
-		p[j] = d[i + j * dims[1]];
-	}
-}
-
-bool contains(float* m, float p[], int n, int* dims) {
-	int count = 1;
-
-	for (int i = 0; i < n; i++) {
-		for (int j = 0; j < dims[0]; j++) {
-			if (m[i + j * dims[0]] == p[j]) {
-				count++;
-			}
-		}
-	}
-
-	if (count == dims[0]) {
-		return true;
-	}
-	else {
-		return false;
-	}
 }
 
 void calcVol(float results[][3], float* memb, int* out, int* dims, float min, float max, int n) {

@@ -24,17 +24,20 @@ __global__ void calculateBIC(float* data, float* medoids, float* g_bic, int* dim
 		float highestBIC = -1;
 		int bestNumClusters;
 
-		for (int x = 0; x < *nc; x++) {
+		for (int x = 1; x <= *nc; x++) {
 			BIC = calcBIC(data, medoids, dims, x, index);
-
+			/*printf("%f\n", BIC);
 			if (highestBIC == -1 || BIC > highestBIC) {
 				highestBIC = BIC;
 				bestNumClusters = x;
-			}
+			}*/
+
+			__syncthreads();
+			g_bic[x - 1] += BIC;
 		}
 
-		__syncthreads();
-		g_bic[bestNumClusters] += highestBIC;
+		/*__syncthreads();
+		g_bic[bestNumClusters] += highestBIC;*/
 	}
 }
 
@@ -49,10 +52,10 @@ __device__ float calcDist(int i, int x, float* d, float* m, int* d_dims) {
 }
 
 __device__ float calcBIC(float* d, float* m, int* dims, int k, int i) {
-	if (k == 0) {
+	/*if (k == 0) {
 		return 0;
 	}
-	else {
+	else {*/
 		float RSS = 0;
 		float dist = 0;
 		float currentDist = -1;
@@ -72,8 +75,9 @@ __device__ float calcBIC(float* d, float* m, int* dims, int k, int i) {
 			RSS += pow(d[i + j * dims[0]] - m[j + medoidIndex * dims[0]], 2);
 		}
 
-		return (dims[1] * log10f(RSS / dims[1])) + (k * log10f(dims[1]));
-	}
+		//return (dims[1] * log10f(RSS / dims[1])) + (k * log10f(dims[1]));
+		return RSS;
+	//}
 }
 
 #endif

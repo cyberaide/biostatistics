@@ -44,11 +44,10 @@ CU_DEPS		:= \
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= \
-	writeData.cpp \
-	readData.cpp \
-
+	clusteringutils.cpp \
 
 ################################################################################
 # Rules and targets
 
+#include clusteringutils.mk
 include ../../common/common.mk
