@@ -172,7 +172,7 @@ int main( int argc, char** argv) {
     	CUT_SAFE_CALL(cutCreateTimer(&timer));
 		CUT_SAFE_CALL(cutStartTimer(timer));*/
 
-		while (newCost < oldCost) {
+		/*while (newCost < oldCost) {
 			if (choose == 1) {
 				setCenters(data, medoids, *numClusters, dims);
 				CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, sizeMedoid, cudaMemcpyHostToDevice));
@@ -214,7 +214,7 @@ int main( int argc, char** argv) {
 			if (choose == 0) {
 				choose = 1;
 			}
-		}
+		}*/
 
 		/*CUT_SAFE_CALL(cutStopTimer(timer));
 		printf("%f\n", cutGetTimerValue(timer));

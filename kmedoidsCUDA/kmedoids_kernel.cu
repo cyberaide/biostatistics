@@ -13,7 +13,7 @@ __global__ void kmedoids(float* g_data, float* g_medoids, float* g_cost, int* g_
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	int index = i + j * d_dims[1];
 
-	__shared__ float total;
+	/*__shared__ float total;
 	total = 0;
 
 	if (index < d_dims[1]) {
@@ -21,7 +21,7 @@ __global__ void kmedoids(float* g_data, float* g_medoids, float* g_cost, int* g_
 
 		__syncthreads();
 		*g_cost += total;
-	}
+	}*/
 }
 
 __device__ float calculateCost(float* g_data, float* g_medoids, int* g_odata, int i, int* d_dims, int d_numClusters, float* d_memb, int d_det) {
