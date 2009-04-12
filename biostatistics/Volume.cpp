@@ -197,6 +197,8 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
 
 
 float MembershipValueReduced(const float* clusters, const float* events, int clusterIndex, int eventIndex, int validClusters){
+    CUT_SAFE_CALL(cutStopTimer(timer_io));    
+    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     float myClustDist = CalculateDistanceCPU(clusters, events, clusterIndex, eventIndex);
     float sum =0;
     float otherClustDist;
@@ -206,5 +208,7 @@ float MembershipValueReduced(const float* clusters, const float* events, int clu
             return 0.0;
         sum += pow((float)(myClustDist/otherClustDist),float(2/(FUZZINESS-1)));
     }
+    CUT_SAFE_CALL(cutStopTimer(timer_io));    
+    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     return 1/sum;
 }
