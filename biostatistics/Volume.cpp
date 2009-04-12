@@ -61,8 +61,6 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
 }
 
 void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){
-
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     
     float* minArray = (float*)malloc(sizeof(float)*finalClusterCount*ALL_DIMENSIONS);
     float* maxArray = (float*)malloc(sizeof(float)*finalClusterCount*ALL_DIMENSIONS);
@@ -96,8 +94,6 @@ void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCoun
         }
         density[k] = occupancy[k] / volume[k];
     }
-    
-    CUT_SAFE_CALL(cutStopTimer(timer_cpu));
 }
 
 void FindSphereCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){

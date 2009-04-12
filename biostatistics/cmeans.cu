@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
         //scanf(tmp45, "%s");
         return 1;
     }
-    
+
     float* myEvents = ParseSampleInput(argv[1]);
 #if FAKE
     free(myEvents);
@@ -109,18 +109,18 @@ int main(int argc, char* argv[])
     srand((unsigned)(time(0)));
     
     
+    float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
+    float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
+    
     CUT_SAFE_CALL(cutStopTimer(timer_io));
     CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     
     clock_t total_start;
     total_start = clock();
-        
-    float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
     
     // Select random cluster centers
     generateInitialClusters(myClusters, myEvents);
     
-    float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
     int iterations = 0;
     
     CUT_SAFE_CALL(cutStopTimer(timer_cpu));
@@ -174,6 +174,7 @@ int main(int argc, char* argv[])
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         UpdateClusterCentersGPU<<< NUM_BLOCKS, BLOCK_DIM >>>(d_C, d_E, d_nC);
+	cudaThreadSynchronize();
         CUT_SAFE_CALL(cutStopTimer(timer_gpu));
 
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
@@ -264,13 +265,13 @@ int main(int argc, char* argv[])
 #endif
 
     CUT_SAFE_CALL(cutStopTimer(timer_total));
-    
+    printf("\n\n"); 
     printf("Total Time (ms): %f\n.",cutGetTimerValue(timer_total));
     printf("I/O Time (ms): %f\n.",cutGetTimerValue(timer_io));
     printf("GPU memcpy Time (ms): %f\n.",cutGetTimerValue(timer_memcpy));
     printf("CPU processing Time (ms): %f\n.",cutGetTimerValue(timer_cpu));
     printf("GPU processing Time (ms): %f\n.",cutGetTimerValue(timer_gpu));
-
+    printf("\n\n"); 
     
     //CUT_EXIT(argc, argv);
     printf("\n\n");
@@ -457,9 +458,10 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
 
+    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     float* matrix = (float*)malloc(size);
-    
     cudaError_t error = cudaMemcpy(matrix, d_matrix, size, cudaMemcpyDeviceToHost);
+    CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
 
     CUT_SAFE_CALL(cutStopTimer(timer));
     *mdlTime = cutGetTimerValue(timer);
