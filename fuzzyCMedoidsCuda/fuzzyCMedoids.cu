@@ -30,16 +30,17 @@ int main( int argc, char** argv) {
 
 	int dimSize = 3 * sizeof(int);
 	int* det = (int*)malloc(sizeof(int));
-	int* numClusters = (int*)malloc(sizeof(int));
-	*numClusters = atoi(argv[1]);
+	//int* numClusters = (int*)malloc(sizeof(int));
+	//*numClusters = atoi(argv[1]);
+	int numClusters = atoi(argv[1]);
 
 	int* dims = (int*)malloc(dimSize);
 	float* data = readData(argv[2], dims);
 
-	int medoidSize = sizeof(float) * *numClusters * dims[0];
+	int medoidSize = sizeof(float) * numClusters * dims[0];
 	int dataSize = sizeof(float) * dims[0] * dims[1];
 	int resultSize = sizeof(int) * dims[1];
-	int membSize = sizeof(float) * *numClusters * dims[1];
+	int membSize = sizeof(float) * numClusters * dims[1];
 
 	// local
 	float* membership = (float*)malloc(membSize);
@@ -92,12 +93,41 @@ int main( int argc, char** argv) {
 
 	int blockDim = blocks * threads;
 
-	if (dim2 > blockDim) {
-		//float* data, float* medoids, int* result, int* dims, int numBlocks, int numThreads, int stepSize
-		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, blocks, threads, dims[1] / blockDim);
-	}
-	else {
-		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, blocks, threads, 0);
+	*oldCost = 1;
+	*newCost = 0;
+
+	int MAXITER = 5;
+	int iter = 0;
+
+	while (*oldCost > *newCost && iter < MAXITER) {
+		setCenters(data, medoids, numClusters, dims);
+		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
+
+		memcpy(finalMedoids, medoids, medoidSize);
+
+		if (dim2 > blockDim) {
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+		}
+		else {
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, 0);
+		}
+
+		CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
+
+		setCenters(data, medoids, numClusters, dims);
+		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
+
+		if (dim2 > blockDim) {
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+		}
+		else {
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, 0);
+		}
+
+		CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
+
+		printf("%d: %f - %f\n", iter, *oldCost, *newCost);
+		iter++;
 	}
 
 	free(dims);
@@ -106,6 +136,11 @@ int main( int argc, char** argv) {
 	free(medoids);
 	free(finalMedoids);
 	free(result);
+
+	CUDA_SAFE_CALL(cudaFree(d_data));
+	CUDA_SAFE_CALL(cudaFree(d_medoids));
+	CUDA_SAFE_CALL(cudaFree(d_result));
+	CUDA_SAFE_CALL(cudaFree(d_dims));
 
     return EXIT_SUCCESS;
 }
