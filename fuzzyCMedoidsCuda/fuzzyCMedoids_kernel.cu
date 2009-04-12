@@ -3,10 +3,10 @@
 
 #include <stdio.h>
 
-void calculateCost(float* d, float* m, int* c, int nc, int dims[], float costs[], int index);
+void calculateCost(float* d, float* m, int nc, int dims[], float costs[], int index);
 float calculateDist(int i, int x, float* d, float* m, int dims[], int n);
 
-__global__ void fuzzyCMedoids(float* data, float* medoids, int* result, int* dims, float* cost, int nc, int nb, int nt, int ss) {
+__global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cost, int nc, int nb, int nt, int ss) {
 	int start;
 	int end;
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -36,10 +36,11 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* result, int* dim
 		else {
 			end = start + ss;
 		}
-
-		for (int i = start; i < end; i++) {
-			if (start < dims[1] && end <= dims[1]) {
-				calculateCost(data, medoids, result, nc, dims, costs, i);
+		//printf("%d, %d\n", start, end);
+		if (start < dims[1] && end <= dims[1]) {
+			for (int x = start; x < end; x++) {
+				calculateCost(data, medoids, nc, dims, costs, x);
+				//printf("%d\n", x);
 			}
 		}
 	}
@@ -55,8 +56,8 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* result, int* dim
 	}
 }
 
-__device__ void calculateCost(float* d, float* m, int* c, int nc, int* dims, float costs[], int index) {
-	float cost = 0;
+__device__ void calculateCost(float* d, float* m, int nc, int* dims, float costs[], int index) {
+	//float cost = 0;
 	float dist;
 	float leastDist = -1;
 	int cluster = 0;
@@ -73,7 +74,7 @@ __device__ void calculateCost(float* d, float* m, int* c, int nc, int* dims, flo
 
 		//c[i] = cluster;
 		costs[cluster] += leastDist;
-		//printf("%d - %f\n", cluster, costs[cluster]);
+		//printf("%d\n", index);
 	//}
 
 	//return cost;

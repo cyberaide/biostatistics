@@ -17,5 +17,5 @@ extern "C" bool contains(float* f, float p[], int n, int dims[]);
 extern "C" void setCenters(float* d, float* m, int n, int dims[]);
 extern "C" void getPoints(float* d, float p[], int dims[], int i);
 extern "C" float* readData(char* f, int* dims);
-extern "C" void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, const char* f);
+extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f);
 extern "C" int clusterColor(float i, int nc);

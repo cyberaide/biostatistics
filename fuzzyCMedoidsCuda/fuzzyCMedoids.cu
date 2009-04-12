@@ -4,6 +4,7 @@
 #include <math.h>*/
 #include <cutil.h>
 #include <fuzzyCMedoids_kernel.cu>
+#include <membership_kernel.cu>
 
 void usage();
 
@@ -17,7 +18,7 @@ extern "C" bool contains(float* f, float p[], int n, int dims[]);
 extern "C" void setCenters(float* d, float* m, int n, int dims[]);
 extern "C" void getPoints(float* d, float p[], int dims[], int i);
 extern "C" float* readData(char* f, int* dims);
-extern "C" void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, const char* f);
+extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f);
 extern "C" int clusterColor(float i, int nc);
 
 int main( int argc, char** argv) {
@@ -39,7 +40,6 @@ int main( int argc, char** argv) {
 
 	int medoidSize = sizeof(float) * numClusters * dims[0];
 	int dataSize = sizeof(float) * dims[0] * dims[1];
-	int resultSize = sizeof(int) * dims[1];
 	int membSize = sizeof(float) * numClusters * dims[1];
 
 	// local
@@ -48,7 +48,6 @@ int main( int argc, char** argv) {
 	float* finalMedoids = (float*)malloc(medoidSize);
 	float* oldCost = (float*)malloc(sizeof(float));
 	float* newCost = (float*)malloc(sizeof(float));
-	int* result = (int*)malloc(resultSize);
 
 	// cuda
 	float* d_data;
@@ -56,20 +55,15 @@ int main( int argc, char** argv) {
 	float* d_medoids;
 	float* d_cost;
 	int* d_dims;
-	int* d_result;
 
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_dims, dimSize));
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_data, dataSize));
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_medoids, medoidSize));
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_memb, membSize));
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_result, resultSize));
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_cost, sizeof(float)));
 
 	CUDA_SAFE_CALL(cudaMemcpy(d_dims, dims, dimSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
-
-	//CUDA_SAFE_CALL(cudaMalloc((void**) &d_matrixC, dataSize));
-	//CUDA_SAFE_CALL(cudaMemcpy(d_matrixA, matrixA, dataSize, cudaMemcpyHostToDevice));
 
 	int blocks = dims[1];
 	int threads = dims[1];
@@ -106,10 +100,10 @@ int main( int argc, char** argv) {
 		memcpy(finalMedoids, medoids, medoidSize);
 
 		if (dim2 > blockDim) {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
 		}
 		else {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, 0);
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
 		}
 
 		CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
@@ -118,10 +112,10 @@ int main( int argc, char** argv) {
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
 		if (dim2 > blockDim) {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
 		}
 		else {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_result, d_dims, d_cost, numClusters, blocks, threads, 0);
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
 		}
 
 		CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
@@ -130,16 +124,27 @@ int main( int argc, char** argv) {
 		iter++;
 	}
 
+	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
+
+	if (dim2 > blockDim) {
+		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
+	}
+	else {
+		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, 0);
+	}
+
+	CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
+
+	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
+
 	free(dims);
 	free(data);
 	free(membership);
 	free(medoids);
 	free(finalMedoids);
-	free(result);
 
 	CUDA_SAFE_CALL(cudaFree(d_data));
 	CUDA_SAFE_CALL(cudaFree(d_medoids));
-	CUDA_SAFE_CALL(cudaFree(d_result));
 	CUDA_SAFE_CALL(cudaFree(d_dims));
 
     return EXIT_SUCCESS;
