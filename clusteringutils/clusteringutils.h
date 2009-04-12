@@ -21,18 +21,18 @@
 
 using namespace std;
 
-void initRand();
-float randFloat();
-float randFloatRange(float min, float max);
-int randInt(int max);
-int randIntRange(int min, int max);
-int getRandIndex(int w, int h);
-bool contains(float* f, float p[], int n, int dims[]);
-void setCenters(float* d, float* m, int n, int dims[]);
-void getPoints(float* d, float p[], int dims[], int i);
-float* readData(char* f, int* dims);
-void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, const char* f);
-int clusterColor(float i, int nc);
+extern "C" void initRand();
+extern "C" float randFloat();
+extern "C" float randFloatRange(float min, float max);
+extern "C" int randInt(int max);
+extern "C" int randIntRange(int min, int max);
+extern "C" int getRandIndex(int w, int h);
+extern "C" bool contains(float* f, float p[], int n, int dims[]);
+extern "C" void setCenters(float* d, float* m, int n, int dims[]);
+extern "C" void getPoints(float* d, float p[], int dims[], int i);
+extern "C" float* readData(char* f, int* dims);
+extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f);
+extern "C" int clusterColor(float i, int nc);
 
 void initRand() {
 	srand((unsigned)(time(0)));
@@ -165,26 +165,24 @@ float* readData(char* f, int* dims) {
 	return data;
 }
 
-void writeData(float* d, float* m, int* c, int* dims, int nc, float* memb, const char* f) {
+void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f) {
 	ofstream file;
-	int precision = 12;
+	int precision = 15;
 
 	file.open(f);
 
 	file << "Data: last " << nc << " columns indicate cluster membership." << endl << endl;
 
 	for (int i = 0; i < dims[1]; i++) {
-		if (c[i] >= 0 && c[i] <= nc) {
-			for (int j = 0; j < dims[0]; j++) {
-				file << fixed << setprecision(precision) << d[i + j * dims[1]] << " ";
-			}
-
-			for (int j = 0; j < nc; j++) {
-				file << fixed << setprecision(precision) << memb[j + i * nc] << " ";
-			}
-
-			file << endl;
+		for (int j = 0; j < dims[0]; j++) {
+			file << fixed << setprecision(precision) << d[i + j * dims[1]] << " ";
 		}
+
+		for (int j = 0; j < nc; j++) {
+			file << fixed << setprecision(precision) << memb[j + i * nc] << " ";
+		}
+
+		file << endl;
 	}
 
 	int identity[nc][nc];
