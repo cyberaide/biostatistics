@@ -10,7 +10,7 @@
 #include <time.h>
 #include "../clusteringutils/clusteringutils.h"
 
-float calculateCost(float* d, float* m, int* c, int nc, int dims[], int det);
+float calculateCost(float* d, float* m, int nc, int dims[]);
 void calculateMembership(float* data, float* medoids, float* memb, int dims[], int numClusters, int m);
 float calculateDist(int i, int x, float* d, float* m, int dims[], int n);
 void usage();
@@ -33,7 +33,6 @@ int main(int argc, char** argv) {
 	int oldCost = 1;
 	int newCost = 0;
 	int sizeMedoids = sizeof(float) * numClusters * dims[0];
-	int sizeResult = sizeof(int) * dims[1];
 	int sizeMemb = sizeof(float) * numClusters * dims[1];
 	int MAXITER = 5;
 	int iter = 0;
@@ -41,40 +40,35 @@ int main(int argc, char** argv) {
 	float* medoids = (float*)malloc(sizeMedoids);
 	float* finalMedoids = (float*)malloc(sizeMedoids);
 	float* membership = (float*)malloc(sizeMemb);
-	int* clusters = (int*)malloc(sizeResult);
-	int* tempClusters = (int*)malloc(sizeResult);
 
 	while (oldCost > newCost && iter < MAXITER) {
 		setCenters(data, medoids, numClusters, dims);
-		oldCost = calculateCost(data, medoids, clusters, numClusters, dims, 0);
+		oldCost = calculateCost(data, medoids, numClusters, dims);
 
 		memcpy(finalMedoids, medoids, sizeMedoids);
 
 		setCenters(data, medoids, numClusters, dims);
-		newCost = calculateCost(data, medoids, tempClusters, numClusters, dims, 0);
+		newCost = calculateCost(data, medoids, numClusters, dims);
 
 		cout << iter << ": " << oldCost << " - " << newCost << endl;
 		iter++;
 	}
 
 	calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
-	writeData(data, finalMedoids, clusters, dims, numClusters, membership, "output.dat");
+	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
 
 	free(data);
 	free(medoids);
 	free(finalMedoids);
 	free(membership);
-	free(clusters);
-	free(tempClusters);
 
 	return EXIT_SUCCESS;
 }
 
-float calculateCost(float* d, float* m, int* c, int nc, int dims[], int det) {
+float calculateCost(float* d, float* m, int nc, int dims[]) {
 	float cost = 0;
 	float dist;
 	float leastDist = -1;
-	int cluster = 0;
 
 	for (int i = 0; i < dims[1]; i++) {
 		for (int j = 0; j < nc; j++) {
@@ -82,11 +76,9 @@ float calculateCost(float* d, float* m, int* c, int nc, int dims[], int det) {
 
 			if (leastDist == -1 || dist < leastDist) {
 				leastDist = dist;
-				cluster = j;
 			}
 		}
 
-		c[i] = cluster;
 		cost += leastDist;
 	}
 
