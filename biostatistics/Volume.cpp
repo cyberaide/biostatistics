@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "cmeans.h"
 #include <float.h>
 #include <iostream>
