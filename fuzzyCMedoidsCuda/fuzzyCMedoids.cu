@@ -27,6 +27,8 @@ int main( int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
+	CUT_DEVICE_INIT(argc, argv);
+
 	initRand();
 
 	int dimSize = 3 * sizeof(int);
@@ -68,7 +70,7 @@ int main( int argc, char** argv) {
 		threads = 512;
 	}
 
-	int blockDim = blocks * threads;
+	int blockDim = blocks * threads;CUT_DEVICE_INIT(argc, argv);
 
 	//printf("%d, %d, %d, %d\n", blocks, threads, blockDim, dims[1] / blockDim);
 
@@ -88,12 +90,12 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	/*unsigned int timer = 0;
+	unsigned int timer = 0;
 	CUT_SAFE_CALL( cutCreateTimer( &timer));
-	CUT_SAFE_CALL( cutStartTimer( timer));*/
+	CUT_SAFE_CALL( cutStartTimer( timer));
 
-	while (*oldCost > *newCost && iter < MAXITER) {
-	//while (iter < MAXITER) {
+	//while (*oldCost > *newCost && iter < MAXITER) {
+	while (iter < MAXITER) {
 		*oldCost = 0;
 		*newCost = 0;
 
@@ -124,9 +126,9 @@ int main( int argc, char** argv) {
 
 	calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
 
-	/*CUT_SAFE_CALL( cutStopTimer( timer));
+	CUT_SAFE_CALL( cutStopTimer( timer));
 	printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
-	CUT_SAFE_CALL( cutDeleteTimer( timer));*/
+	CUT_SAFE_CALL( cutDeleteTimer( timer));
 
 	CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
@@ -144,7 +146,7 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaFree(d_dims));
 	CUDA_SAFE_CALL(cudaFree(d_memb));
 
-    return EXIT_SUCCESS;
+    return EXIT_SUCCESS;CUT_DEVICE_INIT(argc, argv);
 }
 
 void usage() {
