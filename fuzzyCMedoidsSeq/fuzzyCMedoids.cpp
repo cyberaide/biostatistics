@@ -44,11 +44,11 @@ int main(int argc, char** argv) {
 
 	clock_t start, end;
 
-	for (int i = 0; i < 20; i++) {
+	for (int i = 0; i < 10; i++) {
 		start = clock();
 
 		//while (oldCost > newCost && iter < MAXITER) {
-		while (iter < MAXITER) {
+		//while (iter < MAXITER) {
 			setCenters(data, medoids, numClusters, dims);
 			oldCost = calculateCost(data, medoids, numClusters, dims);
 
@@ -58,8 +58,8 @@ int main(int argc, char** argv) {
 			newCost = calculateCost(data, medoids, numClusters, dims);
 
 			//cout << iter << ": " << oldCost << " - " << newCost << endl;
-			iter++;
-		}
+			//iter++;
+		//}
 
 		calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
 
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
 
 		oldCost = 1;
 		newCost = 0;
-		iter = 0;
+		//iter = 0;
 	}
 
 	cout << "Saving output file." << endl;
