@@ -90,47 +90,53 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	unsigned int timer = 0;
-	CUT_SAFE_CALL( cutCreateTimer( &timer));
-	CUT_SAFE_CALL( cutStartTimer( timer));
+	for (int i = 0; i < 20; i++) {
+		unsigned int timer = 0;
+		CUT_SAFE_CALL( cutCreateTimer( &timer));
+		CUT_SAFE_CALL( cutStartTimer( timer));
 
-	//while (*oldCost > *newCost && iter < MAXITER) {
-	while (iter < MAXITER) {
-		*oldCost = 0;
+		//while (*oldCost > *newCost && iter < MAXITER) {
+		while (iter < MAXITER) {
+			*oldCost = 0;
+			*newCost = 0;
+
+			CUDA_SAFE_CALL(cudaMemcpy(d_cost, oldCost, sizeof(float), cudaMemcpyHostToDevice));
+
+			setCenters(data, medoids, numClusters, dims);
+			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
+
+			memcpy(finalMedoids, medoids, medoidSize);
+
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+
+			CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
+			CUDA_SAFE_CALL(cudaMemcpy(d_cost, newCost, sizeof(float), cudaMemcpyHostToDevice));
+
+			setCenters(data, medoids, numClusters, dims);
+			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
+
+			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
+
+			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
+
+			printf("%d: %f - %f\n", iter, *oldCost, *newCost);
+			iter++;
+		}
+
+		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
+
+		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
+
+		CUT_SAFE_CALL( cutStopTimer( timer));
+		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
+		printf("%f\n", cutGetTimerValue( timer));
+		CUT_SAFE_CALL( cutDeleteTimer( timer));
+
+		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
+
+		*oldCost = 1;
 		*newCost = 0;
-
-		CUDA_SAFE_CALL(cudaMemcpy(d_cost, oldCost, sizeof(float), cudaMemcpyHostToDevice));
-
-		setCenters(data, medoids, numClusters, dims);
-		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
-
-		memcpy(finalMedoids, medoids, medoidSize);
-
-		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-
-		CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
-		CUDA_SAFE_CALL(cudaMemcpy(d_cost, newCost, sizeof(float), cudaMemcpyHostToDevice));
-
-		setCenters(data, medoids, numClusters, dims);
-		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
-
-		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-
-		CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
-
-		printf("%d: %f - %f\n", iter, *oldCost, *newCost);
-		iter++;
 	}
-
-	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
-
-	calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
-
-	CUT_SAFE_CALL( cutStopTimer( timer));
-	printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
-	CUT_SAFE_CALL( cutDeleteTimer( timer));
-
-	CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
 	printf("Saving output file.\n");
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
