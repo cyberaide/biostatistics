@@ -119,7 +119,7 @@ int main( int argc, char** argv) {
 
 			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
-			printf("%d: %f - %f\n", iter, *oldCost, *newCost);
+			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
 			iter++;
 		}
 
