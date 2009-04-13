@@ -44,26 +44,32 @@ int main(int argc, char** argv) {
 
 	clock_t start, end;
 
-	start = clock();
+	for (int i = 0; i < 20; i++) {
+		start = clock();
 
-	//while (oldCost > newCost && iter < MAXITER) {
-	while (iter < MAXITER) {
-		setCenters(data, medoids, numClusters, dims);
-		oldCost = calculateCost(data, medoids, numClusters, dims);
+		//while (oldCost > newCost && iter < MAXITER) {
+		while (iter < MAXITER) {
+			setCenters(data, medoids, numClusters, dims);
+			oldCost = calculateCost(data, medoids, numClusters, dims);
 
-		memcpy(finalMedoids, medoids, sizeMedoids);
+			memcpy(finalMedoids, medoids, sizeMedoids);
 
-		setCenters(data, medoids, numClusters, dims);
-		newCost = calculateCost(data, medoids, numClusters, dims);
+			setCenters(data, medoids, numClusters, dims);
+			newCost = calculateCost(data, medoids, numClusters, dims);
 
-		cout << iter << ": " << oldCost << " - " << newCost << endl;
-		iter++;
+			cout << iter << ": " << oldCost << " - " << newCost << endl;
+			iter++;
+		}
+
+		calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
+
+		end = clock();
+		//cout << endl << "Processing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;
+		cout << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << endl;
+
+		oldCost = 1;
+		newCost = 0;
 	}
-
-	calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
-
-	end = clock();
-	cout << "\nProcessing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;
 
 	cout << "Saving output file." << endl;
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
