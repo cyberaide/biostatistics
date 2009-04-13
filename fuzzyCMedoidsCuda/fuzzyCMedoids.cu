@@ -56,15 +56,6 @@ int main( int argc, char** argv) {
 	float* d_cost;
 	int* d_dims;
 
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_dims, dimSize));
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_data, dataSize));
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_medoids, medoidSize));
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_memb, membSize));
-	CUDA_SAFE_CALL(cudaMalloc((void**) &d_cost, sizeof(float)));
-
-	CUDA_SAFE_CALL(cudaMemcpy(d_dims, dims, dimSize, cudaMemcpyHostToDevice));
-	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
-
 	int blocks = dims[1];
 	int threads = dims[1];
 	int dim2 = dims[0] * dims[1];
@@ -93,30 +84,45 @@ int main( int argc, char** argv) {
 	int MAXITER = 5;
 	int iter = 0;
 
-	while (*oldCost > *newCost && iter < MAXITER) {
+	CUDA_SAFE_CALL(cudaMalloc((void**) &d_dims, dimSize));
+	CUDA_SAFE_CALL(cudaMalloc((void**) &d_data, dataSize));
+	CUDA_SAFE_CALL(cudaMalloc((void**) &d_medoids, medoidSize));
+	CUDA_SAFE_CALL(cudaMalloc((void**) &d_memb, membSize));
+	CUDA_SAFE_CALL(cudaMalloc((void**) &d_cost, sizeof(float)));
+
+	CUDA_SAFE_CALL(cudaMemcpy(d_dims, dims, dimSize, cudaMemcpyHostToDevice));
+	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
+	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
+
+	unsigned int timer = 0;
+	CUT_SAFE_CALL( cutCreateTimer( &timer));
+	CUT_SAFE_CALL( cutStartTimer( timer));
+
+	//while (*oldCost > *newCost && iter < MAXITER) {
+	while (iter < MAXITER) {
 		setCenters(data, medoids, numClusters, dims);
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
 		memcpy(finalMedoids, medoids, medoidSize);
 
-		if (dim2 > blockDim) {
+		//if (dim2 > blockDim) {
 			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-		}
+		/*}
 		else {
 			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
-		}
+		}*/
 
 		CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
 		setCenters(data, medoids, numClusters, dims);
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
-		if (dim2 > blockDim) {
+		//if (dim2 > blockDim) {
 			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-		}
+		/*}
 		else {
 			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
-		}
+		}*/
 
 		CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -126,15 +132,20 @@ int main( int argc, char** argv) {
 
 	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-	if (dim2 > blockDim) {
+	//if (dim2 > blockDim) {
 		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
-	}
+	/*}
 	else {
 		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, 0);
-	}
+	}*/
+
+	CUT_SAFE_CALL( cutStopTimer( timer));
+	printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
+	CUT_SAFE_CALL( cutDeleteTimer( timer));
 
 	CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
+	printf("Saving output file.\n");
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
 
 	free(dims);
@@ -151,12 +162,14 @@ int main( int argc, char** argv) {
 }
 
 void usage() {
-	printf("Usage: kmedoidsCUDA <# clusters> <distance metric> <vol type> <vol min> <vol max> <input file> <output file>\n\n");
+	printf("Usage: ./fuzzyCMedoids <clusters> <input file>\n");
+
+	/*printf("Usage: kmedoidsCUDA <# clusters> <distance metric> <vol type> <vol min> <vol max> <input file> <output file>\n\n");
 	printf("Distance Metric:\n");
 	printf("\tEuclidean = 0\n");
 	printf("\tMahattan  = 1\n");
 	printf("\tMaximum   = 2\n");
 	printf("Volume Type:\n");
 	printf("\tBox     = 0\n");
-	printf("\tSphere  = 1\n");
+	printf("\tSphere  = 1\n");*/
 }
