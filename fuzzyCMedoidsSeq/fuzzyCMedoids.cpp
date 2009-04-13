@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
 		//while (iter < MAXITER) {
 			setCenters(data, medoids, numClusters, dims);
 			oldCost = calculateCost(data, medoids, numClusters, dims);
-
+			//asdf
 			memcpy(finalMedoids, medoids, sizeMedoids);
 
 			setCenters(data, medoids, numClusters, dims);
