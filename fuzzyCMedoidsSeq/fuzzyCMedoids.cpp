@@ -5,8 +5,8 @@
  *      Author: doug
  */
 
-#include <sys/time.h>
-#include <sys/resource.h>
+//#include <sys/time.h>
+//#include <sys/resource.h>
 #include <time.h>
 #include "../clusteringutils/clusteringutils.h"
 
@@ -41,7 +41,12 @@ int main(int argc, char** argv) {
 	float* finalMedoids = (float*)malloc(sizeMedoids);
 	float* membership = (float*)malloc(sizeMemb);
 
-	while (oldCost > newCost && iter < MAXITER) {
+	clock_t start, end;
+
+	start = clock();
+
+	//while (oldCost > newCost && iter < MAXITER) {
+	while (iter < MAXITER) {
 		setCenters(data, medoids, numClusters, dims);
 		oldCost = calculateCost(data, medoids, numClusters, dims);
 
@@ -55,6 +60,13 @@ int main(int argc, char** argv) {
 	}
 
 	calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
+
+	end = clock();
+
+	//*(float)1e3
+	cout << "\nProcessing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;
+
+	cout << "Saving output file." << endl;
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
 
 	free(data);
