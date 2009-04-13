@@ -15,11 +15,9 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cos
 	__shared__ float costs[200];
 
 	if (threadIdx.x == 0) {
-		*cost = 0;
-
-		/*for (int i = 0; i < 200; i++) {
+		for (int i = 0; i < nc; i++) {
 			costs[i] = 0;
-		}*/
+		}
 	}
 
 	__syncthreads();
@@ -48,8 +46,8 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cos
 
 	if (threadIdx.x == 0) {
 		if (start < dims[1] && end <= dims[1]) {
-			for (int i = 0; i < nc; i++) {
-				*cost += costs[i];
+			for (int x = 0; x < nc; x++) {
+				*cost += costs[x];
 			}
 		}
 	}
@@ -69,7 +67,6 @@ __device__ void calculateCost(float* d, float* m, int nc, int* dims, float costs
 		}
 	}
 
-	__syncthreads();
 	costs[cluster] += leastDist;
 }
 

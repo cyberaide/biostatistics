@@ -42,7 +42,7 @@ int main( int argc, char** argv) {
 	int dataSize = sizeof(float) * dims[0] * dims[1];
 	int membSize = sizeof(float) * numClusters * dims[1];
 
-	// local
+	// host
 	float* membership = (float*)malloc(membSize);
 	float* medoids = (float*)malloc(medoidSize);
 	float* finalMedoids = (float*)malloc(medoidSize);
@@ -56,27 +56,21 @@ int main( int argc, char** argv) {
 	float* d_cost;
 	int* d_dims;
 
-	int blocks = dims[1];
-	int threads = dims[1];
-	int dim2 = dims[0] * dims[1];
+	int blocks = numClusters;
+	int threads = (int)sqrt(dims[1]);
+	//int threads = 512;
 
 	if (blocks > 22) {
-		blocks == (int)sqrt(dims[1]);
-
-		if (blocks > 22) {
-			blocks = 22;
-		}
+		blocks = 22;
 	}
 
 	if (threads > 512) {
-		threads = (int)sqrt(dims[1]);
-
-		if (threads > 512) {
-			threads = 512;
-		}
+		threads = 512;
 	}
 
 	int blockDim = blocks * threads;
+
+	//printf("%d, %d, %d, %d\n", blocks, threads, blockDim, dims[1] / blockDim);
 
 	*oldCost = 1;
 	*newCost = 0;
@@ -94,35 +88,31 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	unsigned int timer = 0;
+	/*unsigned int timer = 0;
 	CUT_SAFE_CALL( cutCreateTimer( &timer));
-	CUT_SAFE_CALL( cutStartTimer( timer));
+	CUT_SAFE_CALL( cutStartTimer( timer));*/
 
-	//while (*oldCost > *newCost && iter < MAXITER) {
-	while (iter < MAXITER) {
+	while (*oldCost > *newCost && iter < MAXITER) {
+	//while (iter < MAXITER) {
+		*oldCost = 0;
+		*newCost = 0;
+
+		CUDA_SAFE_CALL(cudaMemcpy(d_cost, oldCost, sizeof(float), cudaMemcpyHostToDevice));
+
 		setCenters(data, medoids, numClusters, dims);
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
 		memcpy(finalMedoids, medoids, medoidSize);
 
-		//if (dim2 > blockDim) {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-		/*}
-		else {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
-		}*/
+		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
 
 		CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
+		CUDA_SAFE_CALL(cudaMemcpy(d_cost, newCost, sizeof(float), cudaMemcpyHostToDevice));
 
 		setCenters(data, medoids, numClusters, dims);
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
-		//if (dim2 > blockDim) {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
-		/*}
-		else {
-			fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, 0);
-		}*/
+		fuzzyCMedoids<<<blocks, threads>>>(d_data, d_medoids, d_dims, d_cost, numClusters, blocks, threads, dims[1] / blockDim);
 
 		CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -132,16 +122,11 @@ int main( int argc, char** argv) {
 
 	CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-	//if (dim2 > blockDim) {
-		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
-	/*}
-	else {
-		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, 0);
-	}*/
+	calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
 
-	CUT_SAFE_CALL( cutStopTimer( timer));
+	/*CUT_SAFE_CALL( cutStopTimer( timer));
 	printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
-	CUT_SAFE_CALL( cutDeleteTimer( timer));
+	CUT_SAFE_CALL( cutDeleteTimer( timer));*/
 
 	CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
@@ -157,6 +142,7 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaFree(d_data));
 	CUDA_SAFE_CALL(cudaFree(d_medoids));
 	CUDA_SAFE_CALL(cudaFree(d_dims));
+	CUDA_SAFE_CALL(cudaFree(d_memb));
 
     return EXIT_SUCCESS;
 }
