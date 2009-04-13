@@ -146,7 +146,7 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaFree(d_dims));
 	CUDA_SAFE_CALL(cudaFree(d_memb));
 
-    return EXIT_SUCCESS;CUT_DEVICE_INIT(argc, argv);
+    return EXIT_SUCCESS;
 }
 
 void usage() {
