@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
 			setCenters(data, medoids, numClusters, dims);
 			newCost = calculateCost(data, medoids, numClusters, dims);
 
-			cout << iter << ": " << oldCost << " - " << newCost << endl;
+			//cout << iter << ": " << oldCost << " - " << newCost << endl;
 			iter++;
 		}
 
