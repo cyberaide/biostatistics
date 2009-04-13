@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
 
 		oldCost = 1;
 		newCost = 0;
+		iter = 0;
 	}
 
 	cout << "Saving output file." << endl;
