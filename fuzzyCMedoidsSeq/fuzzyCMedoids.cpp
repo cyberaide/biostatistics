@@ -8,6 +8,7 @@
 //#include <sys/time.h>
 //#include <sys/resource.h>
 #include <time.h>
+//#include "../../common/inc/cutil.h"
 #include "../clusteringutils/clusteringutils.h"
 
 float calculateCost(float* d, float* m, int nc, int dims[]);
@@ -41,12 +42,12 @@ int main(int argc, char** argv) {
 	float* finalMedoids = (float*)malloc(sizeMedoids);
 	float* membership = (float*)malloc(sizeMemb);
 
-	clock_t start, end;
+	/*clock_t start, end;
 
-	start = clock();
+	start = clock();*/
 
-	//while (oldCost > newCost && iter < MAXITER) {
-	while (iter < MAXITER) {
+	while (oldCost > newCost && iter < MAXITER) {
+	//while (iter < MAXITER) {
 		setCenters(data, medoids, numClusters, dims);
 		oldCost = calculateCost(data, medoids, numClusters, dims);
 
@@ -61,10 +62,8 @@ int main(int argc, char** argv) {
 
 	calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
 
-	end = clock();
-
-	//*(float)1e3
-	cout << "\nProcessing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;
+	/*end = clock();
+	cout << "\nProcessing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;*/
 
 	cout << "Saving output file." << endl;
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
@@ -79,7 +78,7 @@ int main(int argc, char** argv) {
 
 float calculateCost(float* d, float* m, int nc, int dims[]) {
 	float cost = 0;
-	float dist;
+	float dist = 0;
 	float leastDist = -1;
 
 	for (int i = 0; i < dims[1]; i++) {
@@ -92,6 +91,7 @@ float calculateCost(float* d, float* m, int nc, int dims[]) {
 		}
 
 		cost += leastDist;
+		leastDist = -1;
 	}
 
 	return cost;
