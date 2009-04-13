@@ -58,7 +58,7 @@ int main( int argc, char** argv) {
 	float* d_cost;
 	int* d_dims;
 
-	int blocks = numClusters;
+	int blocks = 4;
 	int threads = (int)sqrt(dims[1]);
 	//int threads = 512;
 
