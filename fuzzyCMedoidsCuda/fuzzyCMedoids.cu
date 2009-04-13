@@ -90,13 +90,13 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	for (int i = 0; i < 20; i++) {
+	for (int i = 0; i < 10; i++) {
 		unsigned int timer = 0;
 		CUT_SAFE_CALL( cutCreateTimer( &timer));
 		CUT_SAFE_CALL( cutStartTimer( timer));
 
 		//while (*oldCost > *newCost && iter < MAXITER) {
-		while (iter < MAXITER) {
+		//while (iter < MAXITER) {
 			*oldCost = 0;
 			*newCost = 0;
 
@@ -120,8 +120,8 @@ int main( int argc, char** argv) {
 			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
 			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
-			iter++;
-		}
+			//iter++;
+		//}
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
@@ -136,7 +136,7 @@ int main( int argc, char** argv) {
 
 		*oldCost = 1;
 		*newCost = 0;
-		iter = 0;
+		//iter = 0;
 	}
 
 	printf("Saving output file.\n");
