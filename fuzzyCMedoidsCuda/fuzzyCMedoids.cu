@@ -127,12 +127,12 @@ int main( int argc, char** argv) {
 
 		calcMembership<<<blocks, threads>>>(d_data, d_medoids, d_memb, d_dims, numClusters, blocks, threads, dims[1] / blockDim);
 
+		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
+
 		CUT_SAFE_CALL( cutStopTimer( timer));
 		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
 		printf("%f\n", cutGetTimerValue( timer));
 		CUT_SAFE_CALL( cutDeleteTimer( timer));
-
-		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
 		*oldCost = 1;
 		*newCost = 0;
