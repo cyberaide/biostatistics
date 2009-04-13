@@ -3,8 +3,8 @@
 
 #include <stdio.h>
 
-void calculateCost(float* d, float* m, int nc, int dims[], float costs[], int index);
-float calculateDist(int i, int x, float* d, float* m, int dims[], int n);
+__device__ void calculateCost(float* d, float* m, int nc, int dims[], float costs[], int index);
+__device__ float calculateDist(int i, int x, float* d, float* m, int dims[], int n);
 
 __global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cost, int nc, int nb, int nt, int ss) {
 	int start;

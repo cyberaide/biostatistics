@@ -8,7 +8,7 @@
 #ifndef MEMBERSHIP_KERNEL_CU_
 #define MEMBERSHIP_KERNEL_CU_
 
-void calculateMembership(float* d, float* md, float* mb,  int* dims, int nc, int m, int index);
+__device__ void calculateMembership(float* d, float* md, float* mb,  int* dims, int nc, int m, int index);
 
 __global__ void calcMembership(float* data, float* medoids, float* memb, int* dims, int nc, int nb, int nt, int ss) {
 	int start;
