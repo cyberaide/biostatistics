@@ -23,7 +23,7 @@ extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, co
 extern "C" int clusterColor(float i, int nc);
 
 int main( int argc, char** argv) {
-	if (argc != 3) {
+	if (argc != 2) {
 		usage();
 		return EXIT_FAILURE;
 	}
@@ -33,10 +33,10 @@ int main( int argc, char** argv) {
 	initRand();
 
 	int dimSize = 2 * sizeof(int);
-	int numClusters = atoi(argv[1]);
+	int numClusters = NUM_CLUSTERS;
 
 	int* dims = (int*)malloc(dimSize);
-	float* data = readData(argv[2], dims);
+	float* data = readData(argv[1], dims);
 
 	int medoidSize = sizeof(float) * numClusters * dims[0];
 	int dataSize = sizeof(float) * dims[0] * dims[1];
@@ -152,7 +152,7 @@ int main( int argc, char** argv) {
 }
 
 void usage() {
-	printf("Usage: ./fuzzyCMedoids <clusters> <input file>\n");
+	printf("Usage: ./fuzzyCMedoids <input file>\n");
 
 	/*printf("Usage: kmedoidsCUDA <# clusters> <distance metric> <vol type> <vol min> <vol max> <input file> <output file>\n\n");
 	printf("Distance Metric:\n");
