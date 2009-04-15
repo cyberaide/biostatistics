@@ -120,7 +120,7 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-		calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
+		//calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
 
 		cudaThreadSynchronize();
 		CUT_SAFE_CALL( cutStopTimer( timer));
@@ -136,7 +136,7 @@ int main( int argc, char** argv) {
 	}
 
 	printf("Saving output file.\n");
-	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
+	//writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
 
 	free(dims);
 	free(data);
