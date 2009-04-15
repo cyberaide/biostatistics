@@ -64,9 +64,8 @@ int main(int argc, char** argv) {
 		calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
 
 		end = clock();
-		//cout << endl << "Processing time: " << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << " (ms)" << endl;
-		cout << ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3 << endl;
-
+		//printf("Processing time: %f (ms)\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
+		printf("%f\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
 		oldCost = 1;
 		newCost = 0;
 		//iter = 0;
