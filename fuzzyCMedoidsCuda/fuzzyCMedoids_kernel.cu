@@ -2,21 +2,22 @@
 #define _FUZZYCMEDOIDS_KERNEL_H_
 
 #include <stdio.h>
+#include "cmedoids.h"
 
-__device__ void calculateCost(float* d, float* m, int nc, int dims[], float costs[], int index);
-__device__ float calculateDist(int i, int x, float* d, float* m, int dims[], int n);
+__device__ void calculateCost(float* d, float* m, float* costs, int index);
+__device__ float calculateDist(int i, int x, float* d, float* m);
 
-__global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cost, int nc, int nb, int nt, int ss) {
+__global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
 	int start;
 	int end;
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-	__shared__ float costs[200];
+	__shared__ float costs[NUM_CLUSTERS];
 
 	if (threadIdx.x == 0) {
-		for (int i = 0; i < nc; i++) {
-			costs[i] = 0;
+		for (int z = 0; z < NUM_CLUSTERS; z++) {
+			costs[z] = 0;
 		}
 	}
 
@@ -26,18 +27,18 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cos
 		start = i + j * dims[1];
 	}
 	else {*/
-		start = (i + j * dims[1]) * ss;
+		start = (i + j * NUM_DATA_POINTS) * STEP_SIZE;
 
-		if (blockIdx.x == (nb - 1) && threadIdx.x == (nt - 1)) {
-			end = dims[1];
+		if (blockIdx.x == (NUM_BLOCKS - 1) && threadIdx.x == (NUM_THREADS - 1)) {
+			end = NUM_DATA_POINTS;
 		}
 		else {
-			end = start + ss;
+			end = start + STEP_SIZE;
 		}
 
-		if (start < dims[1] && end <= dims[1]) {
+		if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
 			for (int x = start; x < end; x++) {
-				calculateCost(data, medoids, nc, dims, costs, x);
+				calculateCost(data, medoids, costs, x);
 			}
 		}
 	//}
@@ -45,21 +46,19 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, int* dims, float* cos
 	__syncthreads();
 
 	if (threadIdx.x == 0) {
-		if (start < dims[1] && end <= dims[1]) {
-			for (int x = 0; x < nc; x++) {
-				*cost += costs[x];
-			}
+		for (int x = 0; x < NUM_CLUSTERS; x++) {
+			*cost += costs[x];
 		}
 	}
 }
 
-__device__ void calculateCost(float* d, float* m, int nc, int* dims, float costs[], int index) {
+__device__ void calculateCost(float* d, float* m, float* costs, int index) {
 	float dist;
 	float leastDist = -1;
 	int cluster = 0;
 
-	for (int j = 0; j < nc; j++) {
-		dist = calculateDist(index, j, d, m, dims, nc);
+	for (int j = 0; j < NUM_CLUSTERS; j++) {
+		dist = calculateDist(index, j, d, m);
 
 		if (leastDist == -1 || dist < leastDist) {
 			leastDist = dist;
@@ -70,11 +69,11 @@ __device__ void calculateCost(float* d, float* m, int nc, int* dims, float costs
 	costs[cluster] += leastDist;
 }
 
-__device__ float calculateDist(int i, int x, float* d, float* m, int dims[], int n) {
+__device__ float calculateDist(int i, int x, float* d, float* m) {
 	float sum = 0;
 
-	for (int j = 0; j < dims[0]; j++) {
-		sum += pow(d[i + j * dims[1]] - m[j + x * dims[0]], 2);
+	for (int j = 0; j < NUM_DIMENSIONS; j++) {
+		sum += pow(d[i + j * NUM_DIMENSIONS] - m[j + x * NUM_DIMENSIONS], 2);
 	}
 
 	return sqrt(sum);
