@@ -120,7 +120,7 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-		calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
+		//calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
 
 		cudaThreadSynchronize();
 		CUT_SAFE_CALL( cutStopTimer( timer));
