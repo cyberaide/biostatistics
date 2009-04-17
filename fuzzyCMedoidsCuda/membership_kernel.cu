@@ -26,12 +26,12 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 	}
 
 	if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
-		for (int x = 0; x < NUM_DATA_POINTS; x++) {
+		for (int x = start; x < end; x++) {
 			calculateMembership(data, medoids, memb, 2, x);
 		}
 	}
 
-	//__syncthreads();
+	__syncthreads();
 }
 
 __device__ void calculateMembership(float* d, float* md, float* mb, int m, int index) {
@@ -41,14 +41,12 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 	float base;
 
 	for (int j = 0; j < NUM_CLUSTERS; j++) {
-		//base = calculateDist(index, j, d, md);
-		//numerator = pow(base, exp);
-		numerator = calculateDist(index, j, d, md);
+		base = calculateDist(index, j, d, md);
+		numerator = pow(base, exp);
 
 		for (int x = 0; x < NUM_CLUSTERS; x++) {
-			//base = calculateDist(index, x, d, md);
-			//denominator += pow(base, exp);
-			denominator += calculateDist(index, x, d, md);
+			base = calculateDist(index, x, d, md);
+			denominator += pow(base, exp);
 		}
 
 		mb[j + index * NUM_CLUSTERS] = numerator / denominator;

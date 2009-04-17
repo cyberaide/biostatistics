@@ -40,7 +40,7 @@ CUFILES		:= fuzzyCMedoids.cu
 # CUDA dependency files
 CU_DEPS		:= \
 	fuzzyCMedoids_kernel.cu \
-	#membership_kernel.cu \
+	membership_kernel.cu \
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= \

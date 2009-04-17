@@ -6,9 +6,8 @@
 
 __device__ void calculateCost(float* d, float* m, float* costs, int index);
 __device__ float calculateDist(int i, int x, float* d, float* m);
-__device__ void calculateMembership(float* d, float* md, float* mb, int m, int index);
 
-__global__ void fuzzyCMedoids(float* data, float* medoids, float* cost, float* memb, int det) {
+__global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE;
@@ -34,10 +33,6 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost, float* m
 	if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
 		for (int x = start; x < end; x++) {
 			calculateCost(data, medoids, costs, x);
-
-			if (det == 1) {
-				calculateMembership(data, medoids, memb, 2, x);
-			}
 		}
 	}
 
@@ -47,33 +42,6 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost, float* m
 		for (int x = 0; x < NUM_CLUSTERS; x++) {
 			*cost += costs[x];
 		}
-	}
-}
-
-__device__ void calculateMembership(float* d, float* md, float* mb, int m, int index) {
-	float numerator;
-	float denominator = 0;
-	float exp = 1;
-	float base;
-
-	if (m - 1 != 0) {
-		exp = 1 / (m - 1);
-	}
-
-	for (int j = 0; j < NUM_CLUSTERS; j++) {
-		base = calculateDist(index, j, d, md);
-		numerator = pow(base, exp);
-		//numerator = calculateDist(index, j, d, md);
-
-		for (int x = 0; x < NUM_CLUSTERS; x++) {
-			base = calculateDist(index, x, d, md);
-			denominator += pow(base, exp);
-			//denominator += calculateDist(index, x, d, md);
-		}
-
-		mb[j + index * NUM_CLUSTERS] = numerator / denominator;
-
-		denominator = 0;
 	}
 }
 
