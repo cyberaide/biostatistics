@@ -55,22 +55,6 @@ int main( int argc, char** argv) {
 	float* d_medoids;
 	float* d_cost;
 
-	/*int blocks = 4;
-	int threads = (int)sqrt(dims[1]);
-	//int threads = 512;
-
-	if (blocks > 22) {
-		blocks = 22;
-	}
-
-	if (threads > 512) {
-		threads = 512;
-	}
-
-	int blockDim = blocks * threads;*/
-
-	//printf("%d, %d, %d, %d\n", blocks, threads, blockDim, dims[1] / blockDim);
-
 	*oldCost = 1;
 	*newCost = 0;
 
@@ -120,7 +104,7 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-		calcMembership<<<NUM_BLOCKS, 64>>>(d_data, d_medoids, d_memb);
+		calcMembership<<<NUM_BLOCKS, 90>>>(d_data, d_medoids, d_memb);
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
