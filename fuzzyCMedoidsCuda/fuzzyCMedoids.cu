@@ -120,7 +120,7 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-		calcMembership<<<4, 512>>>(d_data, d_medoids, d_memb);
+		calcMembership<<<NUM_BLOCKS, 64>>>(d_data, d_medoids, d_memb);
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
