@@ -4,7 +4,7 @@
 #include <math.h>*/
 #include <cutil.h>
 #include <fuzzyCMedoids_kernel.cu>
-#include <membership_kernel.cu>
+//#include <membership_kernel.cu>
 #include "cmedoids.h"
 
 void usage();
@@ -102,7 +102,7 @@ int main( int argc, char** argv) {
 
 			memcpy(finalMedoids, medoids, medoidSize);
 
-			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost);
+			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost, d_memb, 1);
 
 			CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 			CUDA_SAFE_CALL(cudaMemcpy(d_cost, newCost, sizeof(float), cudaMemcpyHostToDevice));
@@ -110,7 +110,7 @@ int main( int argc, char** argv) {
 			setCenters(data, medoids, numClusters, dims);
 			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
-			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost);
+			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost, d_memb, 0);
 
 			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -118,17 +118,17 @@ int main( int argc, char** argv) {
 			//iter++;
 		//}
 
-		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
+		//CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
 		//calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
-
+		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 		cudaThreadSynchronize();
 		CUT_SAFE_CALL( cutStopTimer( timer));
 		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
 		printf("%f\n", cutGetTimerValue( timer));
 		CUT_SAFE_CALL( cutDeleteTimer( timer));
 
-		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
+		//CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
 		*oldCost = 1;
 		*newCost = 0;
@@ -136,7 +136,7 @@ int main( int argc, char** argv) {
 	}
 
 	printf("Saving output file.\n");
-	//writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
+	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
 
 	free(dims);
 	free(data);
