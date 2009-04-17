@@ -29,7 +29,6 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 
 	int mSize = NUM_CLUSTERS * NUM_DIMENSIONS;
 
-	__shared__ float costs[NUM_CLUSTERS];
 	__shared__ float ourMedoids[NUM_CLUSTERS * NUM_DIMENSIONS];
 
 	int count = 0;
