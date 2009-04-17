@@ -72,9 +72,9 @@ $STEP_SIZE = int($NUM_DATA_POINTS / ($NUM_CLUSTERS * $NUM_THREADS));
 printf "Thread Step Size = $STEP_SIZE\n";
 
 # thread data size
-$THREAD_DATA_SIZE = $NUM_THREADS * $STEP_SIZE;
-$THREAD_DATA_SIZE_LAST = $THREAD_DATA_SIZE + ($NUM_DATA_POINTS - ($THREAD_DATA_SIZE * $NUM_CLUSTERS));
-printf "Thread Data Size = $THREAD_DATA_SIZE\n";
+$BLOCK_DATA_SIZE = $NUM_DIMENSIONS * $STEP_SIZE;
+$BLOCK_DATA_SIZE_LAST = $NUM_DATA_POINTS - ($STEP_SIZE * $NUM_THREADS * $NUM_CLUSTERS);
+printf "Block Data Size = $BLOCK_DATA_SIZE\n";
 
 # distance measure
 $DIST_MEASURE = $ARGV[2];
@@ -82,7 +82,7 @@ printf "Distance Measure = $DIST_MEASURE\n";
 
 # Create header
 printf "\nCreating header file.\n\n";
-system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $THREAD_DATA_SIZE $THREAD_DATA_SIZE_LAST $DIST_MEASURE";
+system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $BLOCK_DATA_SIZE $BLOCK_DATA_SIZE_LAST $DIST_MEASURE";
 
 # run make
 printf "Cleaning and building the project.\n";
