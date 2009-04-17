@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
 
 		end = clock();
 		//printf("Processing time: %f (ms)\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
-		printf("%f\n", (((float)end - (float)start) / (float)(CLOCKS_PER_SEC))) * (float)1e3;
+		printf("%f\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
 		oldCost = 1;
 		newCost = 0;
 		//iter = 0;
