@@ -79,7 +79,7 @@ int main( int argc, char** argv) {
 			*oldCost = 0;
 			*newCost = 0;
 
-			/*CUDA_SAFE_CALL(cudaMemcpy(d_cost, oldCost, sizeof(float), cudaMemcpyHostToDevice));
+			CUDA_SAFE_CALL(cudaMemcpy(d_cost, oldCost, sizeof(float), cudaMemcpyHostToDevice));
 
 			setCenters(data, medoids, numClusters, dims);
 			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
@@ -96,7 +96,7 @@ int main( int argc, char** argv) {
 
 			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost);
 
-			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));*/
+			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
 			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
 			//iter++;
@@ -104,7 +104,7 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
-		calcMembership<<<4, NUM_THREADS>>>(d_data, d_medoids, d_memb);
+		calcMembership<<<5, NUM_THREADS>>>(d_data, d_medoids, d_memb);
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
