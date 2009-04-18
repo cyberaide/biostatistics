@@ -75,6 +75,7 @@ printf "Number of Blocks = $NUM_CLUSTERS\n";
 
 # step size
 $STEP_SIZE = int($NUM_DATA_POINTS / ($NUM_CLUSTERS * $NUM_THREADS));
+$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / (5 * $NUM_THREADS));
 printf "Thread Step Size = $STEP_SIZE\n";
 
 # distance measure
@@ -83,7 +84,7 @@ printf "Distance Measure = $DIST_MEASURE\n";
 
 # Create header
 printf "\nCreating header file.\n\n";
-system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $DIST_MEASURE";
+system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $STEP_SIZE_MEMB $DIST_MEASURE";
 
 # run make
 printf "Cleaning and building the project.\n";
