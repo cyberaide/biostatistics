@@ -14,7 +14,7 @@
 #define NUM_DATA_POINTS 100000
 #define NUM_DIMENSIONS 21
 #define STEP_SIZE 65
-#define STEP_SIZE_MEMB 400
+#define STEP_SIZE_MEMB 250
 #define DIST_MEASURE 0
 
 #endif /* CMEDOIDS_H_ */
