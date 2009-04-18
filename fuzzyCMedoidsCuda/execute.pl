@@ -46,7 +46,7 @@ printf "Number of Clusters = $NUM_CLUSTERS\n";
 
 # determine number of threads
 #my $NUM_THREADS = 384;
-$NUM_THREADS = 384;
+$NUM_THREADS = int(sqrt($NUM_DATA_POINTS));
 
 if ($NUM_THREADS > 512) {
 	$NUM_THREADS = 512;
