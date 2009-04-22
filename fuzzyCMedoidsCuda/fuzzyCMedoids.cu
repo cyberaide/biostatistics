@@ -69,7 +69,7 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	//for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 10; i++) {
 		unsigned int timer = 0;
 		CUT_SAFE_CALL( cutCreateTimer( &timer));
 		CUT_SAFE_CALL( cutStartTimer( timer));
@@ -100,7 +100,7 @@ int main( int argc, char** argv) {
 
 			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
 			//iter++;
-		//}
+		}
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
