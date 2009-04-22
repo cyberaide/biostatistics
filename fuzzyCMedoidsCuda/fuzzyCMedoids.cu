@@ -91,12 +91,12 @@ int main( int argc, char** argv) {
 			CUDA_SAFE_CALL(cudaMemcpy(oldCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 			CUDA_SAFE_CALL(cudaMemcpy(d_cost, newCost, sizeof(float), cudaMemcpyHostToDevice));
 
-			/*setCenters(data, medoids, numClusters, dims);
+			setCenters(data, medoids, numClusters, dims);
 			CUDA_SAFE_CALL(cudaMemcpy(d_medoids, medoids, medoidSize, cudaMemcpyHostToDevice));
 
 			fuzzyCMedoids<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_cost);
 
-			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));*/
+			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
 			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
 			//iter++;
