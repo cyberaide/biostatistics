@@ -34,9 +34,9 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 	}
 
 	if (start < NUM_DATA_POINTS) {
-		/*for (int x = start; x < end; x++) {
+		for (int x = start; x < end; x++) {
 			calculateMembership(data, medoids, memb, 2, x);
-		}*/
+		}
 	}
 
 	__syncthreads();
