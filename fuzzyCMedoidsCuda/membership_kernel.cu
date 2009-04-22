@@ -15,15 +15,16 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 __global__ void calcMembership(float* data, float* medoids, float* memb) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	//int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE_MEMB;
-	int start = threadIdx.x * NUM_THREADS;
+	int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE_MEMB;
+	//int start = threadIdx.x * NUM_THREADS;
 	int end = 0;
 
 	if (blockIdx.x == (NUM_BLOCKS - 1) && threadIdx.x == (NUM_THREADS - 1)) {
 		end = NUM_DATA_POINTS;
 	}
 	else {
-		end = start + NUM_THREADS;
+		//end = start + NUM_THREADS;
+		end = start + STEP_SIZE_MEMB;
 	}
 
 	if (end > NUM_DATA_POINTS) {
