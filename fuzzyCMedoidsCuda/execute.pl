@@ -46,37 +46,37 @@ printf "Number of Clusters = $NUM_CLUSTERS\n";
 
 # determine number of threads
 #my $NUM_THREADS = 384;
-$NUM_THREADS = 384;
-#$NUM_THREADS = int(sqrt($NUM_DATA_POINTS));
+#$NUM_THREADS = 384;
+$NUM_THREADS = int(sqrt($NUM_DATA_POINTS));
 
-#if ($NUM_THREADS > 512) {
-#	$NUM_THREADS = 512;
-#}
-
-if($NUM_DIMENSIONS > 8) {
-	if($NUM_DIMENSIONS <= 10){
-		$NUM_THREADS = 320;
-	}
-	elsif($NUM_DIMENSIONS <= 12){
-		$NUM_THREADS = 256;
-	}
-	elsif($NUM_DIMENSIONS <= 16){
-		$NUM_THREADS = 192;
-	}
-	elsif($NUM_DIMENSIONS <= 24){
-		$NUM_THREADS = 128;
-	}
-	else{
-		$NUM_THREADS = 64;
-	}
+if ($NUM_THREADS > 512) {
+	$NUM_THREADS = 512;
 }
+
+#if($NUM_DIMENSIONS > 8) {
+#	if($NUM_DIMENSIONS <= 10){
+#		$NUM_THREADS = 320;
+#	}
+#	elsif($NUM_DIMENSIONS <= 12){
+#		$NUM_THREADS = 256;
+#	}
+#	elsif($NUM_DIMENSIONS <= 16){
+#		$NUM_THREADS = 192;
+#	}
+#	elsif($NUM_DIMENSIONS <= 24){
+#		$NUM_THREADS = 128;
+#	}
+#	else{
+#		$NUM_THREADS = 64;
+#	}
+#}
 
 printf "Number of Threads = $NUM_THREADS\n";
 printf "Number of Blocks = $NUM_CLUSTERS\n";
 
 # step size
 $STEP_SIZE = int($NUM_DATA_POINTS / ($NUM_CLUSTERS * $NUM_THREADS));
-$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / (4 * 100));
+$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / (6 * 150));
 printf "Thread Step Size = $STEP_SIZE\n";
 
 # distance measure

@@ -15,17 +15,22 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 __global__ void calcMembership(float* data, float* medoids, float* memb) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE_MEMB;
+	//int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE_MEMB;
+	int start = threadIdx.x * NUM_THREADS;
 	int end = 0;
 
 	if (blockIdx.x == (NUM_BLOCKS - 1) && threadIdx.x == (NUM_THREADS - 1)) {
 		end = NUM_DATA_POINTS;
 	}
 	else {
-		end = start + STEP_SIZE_MEMB;
+		end = start + NUM_THREADS;
 	}
 
-	if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
+	if (end > NUM_DATA_POINTS) {
+		end = NUM_DATA_POINTS;
+	}
+
+	if (start < NUM_DATA_POINTS) {
 		for (int x = start; x < end; x++) {
 			calculateMembership(data, medoids, memb, 2, x);
 		}
@@ -37,11 +42,15 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 __device__ void calculateMembership(float* d, float* md, float* mb, int m, int index) {
 	float numerator;
 	float denominator = 0;
-	float exp = 1 / (m - 1);
+	float exp = 1;
 	float base;
 
-	for (int j = 0; j < NUM_CLUSTERS; j++) {
-		base = calculateDist(index, j, d, md);
+	if ((m - 1) != 0) {
+		exp = 1 / (m - 1);
+	}
+
+	//for (int j = 0; j < NUM_CLUSTERS; j++) {
+		base = calculateDist(index, blockIdx.x, d, md);
 		numerator = pow(base, exp);
 
 		for (int x = 0; x < NUM_CLUSTERS; x++) {
@@ -49,10 +58,9 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 			denominator += pow(base, exp);
 		}
 
-		mb[j + index * NUM_CLUSTERS] = numerator / denominator;
-
+		mb[blockIdx.x + index * NUM_CLUSTERS] = numerator / denominator;
 		denominator = 0;
-	}
+	//}
 }
 
 #endif /* MEMBERSHIP_KERNEL_CU_ */
