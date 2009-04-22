@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
 			//iter++;
 		//}
 
-		//calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
+		calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
 
 		end = clock();
 		//printf("Processing time: %f (ms)\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
