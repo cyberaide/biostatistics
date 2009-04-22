@@ -28,7 +28,7 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 		//end = start + NUM_THREADS;
 		end = start + STEP_SIZE_MEMB;
 	}
-	printf("%d: %d, %d, %d\n", blockIdx.x, threadIdx.x, start, end);
+
 	if (end > NUM_DATA_POINTS) {
 		end = NUM_DATA_POINTS;
 	}
