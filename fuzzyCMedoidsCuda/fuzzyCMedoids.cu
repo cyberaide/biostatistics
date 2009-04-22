@@ -100,7 +100,7 @@ int main( int argc, char** argv) {
 
 			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
 			//iter++;
-		}
+		//}
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
@@ -119,7 +119,7 @@ int main( int argc, char** argv) {
 		*oldCost = 1;
 		*newCost = 0;
 		//iter = 0;
-	//}
+	}
 
 	printf("Saving output file.\n");
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
