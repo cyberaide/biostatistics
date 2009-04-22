@@ -102,11 +102,11 @@ int main( int argc, char** argv) {
 			//iter++;
 		//}
 
-		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
+		/*CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
 		calcMembership<<<NUM_BLOCKS, NUM_THREADS>>>(d_data, d_medoids, d_memb);
 
-		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
+		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));*/
 
 		cudaThreadSynchronize();
 		CUT_SAFE_CALL( cutStopTimer( timer));
