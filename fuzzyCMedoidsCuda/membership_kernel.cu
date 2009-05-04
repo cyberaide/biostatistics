@@ -20,6 +20,16 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 	int start = threadIdx.x * STEP_SIZE_MEMB;
 	int end = 0;
 
+	__shared__ float ourMedoids[NUM_CLUSTERS * NUM_DIMENSIONS];
+
+	if (threadIdx.x == 0) {
+		for (int i = 0; i < NUM_CLUSTERS * NUM_DIMENSIONS; i++) {
+			ourMedoids[i] = medoids[i];
+		}
+	}
+
+	__syncthreads();
+
 	//blockIdx.x == (NUM_BLOCKS - 1) &&
 	if (threadIdx.x == (NUM_THREADS - 1)) {
 		end = NUM_DATA_POINTS;
@@ -35,7 +45,7 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 
 	if (start < NUM_DATA_POINTS) {
 		for (int x = start; x < end; x++) {
-			calculateMembership(data, medoids, memb, 2, x);
+			calculateMembership(data, ourMedoids, memb, 2, x);
 		}
 	}
 
