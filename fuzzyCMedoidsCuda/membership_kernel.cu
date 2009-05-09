@@ -13,10 +13,6 @@
 __device__ void calculateMembership(float* d, float* md, float* mb, int m, int index);
 
 __global__ void calcMembership(float* data, float* medoids, float* memb) {
-	//int i = blockIdx.x * blockDim.x + threadIdx.x;
-	//int j = blockIdx.y * blockDim.y + threadIdx.y;
-	//int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE_MEMB;
-	//int start = threadIdx.x * NUM_THREADS;
 	int start = threadIdx.x * STEP_SIZE_MEMB;
 	int end = 0;
 
@@ -30,12 +26,10 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 
 	__syncthreads();
 
-	//blockIdx.x == (NUM_BLOCKS - 1) &&
 	if (threadIdx.x == (NUM_THREADS - 1)) {
 		end = NUM_DATA_POINTS;
 	}
 	else {
-		//end = start + NUM_THREADS;
 		end = start + STEP_SIZE_MEMB;
 	}
 
@@ -49,7 +43,7 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 		}
 	}
 
-	__syncthreads();
+	//__syncthreads();
 }
 
 __device__ void calculateMembership(float* d, float* md, float* mb, int m, int index) {
