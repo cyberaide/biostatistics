@@ -76,7 +76,7 @@ printf "Number of Blocks = $NUM_CLUSTERS\n";
 
 # step size
 $STEP_SIZE = int($NUM_DATA_POINTS / ($NUM_CLUSTERS * $NUM_THREADS));
-$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / (50));
+$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / $NUM_THREADS);
 printf "Thread Step Size = $STEP_SIZE\n";
 
 # distance measure
