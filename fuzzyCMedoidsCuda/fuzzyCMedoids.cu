@@ -71,8 +71,8 @@ int main( int argc, char** argv) {
 
 	for (int i = 0; i < 10; i++) {
 		unsigned int timer = 0;
-		CUT_SAFE_CALL( cutCreateTimer( &timer));
-		CUT_SAFE_CALL( cutStartTimer( timer));
+		CUT_SAFE_CALL(cutCreateTimer(&timer));
+		CUT_SAFE_CALL(cutStartTimer(timer));
 
 		//while (*oldCost > *newCost && iter < MAXITER) {
 		//while (iter < MAXITER) {
@@ -109,10 +109,10 @@ int main( int argc, char** argv) {
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
 		cudaThreadSynchronize();
-		CUT_SAFE_CALL( cutStopTimer( timer));
-		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue( timer));
-		printf("%f\n", cutGetTimerValue( timer));
-		CUT_SAFE_CALL( cutDeleteTimer( timer));
+		CUT_SAFE_CALL( cutStopTimer(timer));
+		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue(timer));
+		printf("%f\n", cutGetTimerValue(timer));
+		CUT_SAFE_CALL( cutDeleteTimer(timer));
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
