@@ -14,6 +14,15 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
 	int end = 0;
 
 	__shared__ float costs[NUM_CLUSTERS];
+	__shared__ float ourMedoids[NUM_CLUSTERS * NUM_DIMENSIONS];
+
+	if (threadIdx.x == 0) {
+		for (int i = 0; i < NUM_CLUSTERS * NUM_DIMENSIONS; i++) {
+			ourMedoids[i] = medoids[i];
+		}
+	}
+
+	__syncthreads();
 
 	if (blockIdx.x == (NUM_BLOCKS - 1) && threadIdx.x == (NUM_THREADS - 1)) {
 		end = NUM_DATA_POINTS;
@@ -22,17 +31,17 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
 		end = start + STEP_SIZE;
 	}
 
-	if (threadIdx.x == 0) {
+	/*if (threadIdx.x == 0) {
 		for (int z = 0; z < NUM_CLUSTERS; z++) {
 			costs[z] = 0;
 		}
 	}
 
-	__syncthreads();
+	__syncthreads();*/
 
 	if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
 		for (int x = start; x < end; x++) {
-			calculateCost(data, medoids, costs, x);
+			calculateCost(data, ourMedoids, costs, x);
 		}
 	}
 
