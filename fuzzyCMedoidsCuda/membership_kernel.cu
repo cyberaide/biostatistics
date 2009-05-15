@@ -42,8 +42,6 @@ __global__ void calcMembership(float* data, float* medoids, float* memb) {
 			calculateMembership(data, ourMedoids, memb, 2, x);
 		}
 	}
-
-	//__syncthreads();
 }
 
 __device__ void calculateMembership(float* d, float* md, float* mb, int m, int index) {
