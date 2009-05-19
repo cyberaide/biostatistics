@@ -54,18 +54,16 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 		exp = 1 / (m - 1);
 	}
 
-	//for (int j = 0; j < NUM_CLUSTERS; j++) {
-		base = calculateDist(index, blockIdx.x, d, md);
-		numerator = pow(base, exp);
+	base = calculateDist(index, blockIdx.x, d, md);
+	numerator = pow(base, exp);
 
-		for (int x = 0; x < NUM_CLUSTERS; x++) {
-			base = calculateDist(index, x, d, md);
-			denominator += pow(base, exp);
-		}
+	for (int x = 0; x < NUM_CLUSTERS; x++) {
+		base = calculateDist(index, x, d, md);
+		denominator += pow(base, exp);
+	}
 
-		mb[blockIdx.x + index * NUM_CLUSTERS] = numerator / denominator;
-		denominator = 0;
-	//}
+	mb[blockIdx.x + index * NUM_CLUSTERS] = numerator / denominator;
+	denominator = 0;
 }
 
 #endif /* MEMBERSHIP_KERNEL_CU_ */
