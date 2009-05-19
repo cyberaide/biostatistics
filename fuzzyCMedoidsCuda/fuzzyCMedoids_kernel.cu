@@ -8,9 +8,8 @@ __device__ void calculateCost(float* d, float* m, float* costs, int index);
 __device__ float calculateDist(int i, int x, float* d, float* m);
 
 __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	int start = (i + j * NUM_DATA_POINTS) * STEP_SIZE;
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int start = i * STEP_SIZE;
 	int end = 0;
 
 	__shared__ float costs[NUM_CLUSTERS];
