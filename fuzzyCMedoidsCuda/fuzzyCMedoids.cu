@@ -28,7 +28,8 @@ int main( int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
-	CUT_DEVICE_INIT(argc, argv);
+	cudaSetDevice(1);
+	//CUT_DEVICE_INIT(argc, argv);
 
 	initRand();
 
