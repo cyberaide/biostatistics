@@ -7,6 +7,7 @@ NUM_DIMENSIONS=$4
 STEP_SIZE=$5
 STEP_SIZE_MEMB=$6
 DIST_MEASURE=$7
+FILE_NAME=$8
 
 cp cmedoids.in.h cmedoids.h
 perl -pi -e "s/#define NUM_CLUSTERS VALUE/#define NUM_CLUSTERS $NUM_CLUSTERS/g" cmedoids.h

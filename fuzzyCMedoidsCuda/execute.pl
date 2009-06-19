@@ -85,3 +85,7 @@ system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMEN
 printf "Cleaning and building the project.\n";
 system "make clean";
 system "make";
+
+# run the program
+printf "Excuting the main program...\n\n";
+system "../../bin/linux/release/fuzzyCMedoids $fn";
