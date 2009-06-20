@@ -1,11 +1,10 @@
-/*#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <math.h>*/
+#include <string>
 #include <cutil.h>
 #include <fuzzyCMedoids_kernel.cu>
 #include <membership_kernel.cu>
 #include "cmedoids.h"
+
+using namespace std;
 
 void usage();
 
@@ -21,6 +20,7 @@ extern "C" void getPoints(float* d, float p[], int dims[], int i);
 extern "C" float* readData(char* f, int* dims);
 extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f);
 extern "C" int clusterColor(float i, int nc);
+extern "C" string generateOutputFileName(int nc);
 
 int main( int argc, char** argv) {
 	if (argc != 2) {
@@ -69,13 +69,12 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, dataSize, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpy(d_memb, membership, membSize, cudaMemcpyHostToDevice));
 
-	for (int i = 0; i < 10; i++) {
+	/*for (int i = 0; i < 10; i++) {
 		unsigned int timer = 0;
 		CUT_SAFE_CALL(cutCreateTimer(&timer));
-		CUT_SAFE_CALL(cutStartTimer(timer));
+		CUT_SAFE_CALL(cutStartTimer(timer));*/
 
-		//while (*oldCost > *newCost && iter < MAXITER) {
-		//while (iter < MAXITER) {
+		while (*oldCost > *newCost && iter < MAXITER) {
 			*oldCost = 0;
 			*newCost = 0;
 
@@ -98,9 +97,9 @@ int main( int argc, char** argv) {
 
 			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
-			//printf("%d: %f - %f\n", iter, *oldCost, *newCost);
-			//iter++;
-		//}
+			printf("%d: %f - %f\n", iter, *oldCost, *newCost);
+			iter++;
+		}
 
 		CUDA_SAFE_CALL(cudaMemcpy(d_medoids, finalMedoids, medoidSize, cudaMemcpyHostToDevice));
 
@@ -108,21 +107,21 @@ int main( int argc, char** argv) {
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
-		cudaThreadSynchronize();
+		/*cudaThreadSynchronize();
 		CUT_SAFE_CALL( cutStopTimer(timer));
-		//printf("\nProcessing time: %f (ms)\n", cutGetTimerValue(timer));
+		printf("\nProcessing time: %f (ms)\n", cutGetTimerValue(timer));
 		printf("%f\n", cutGetTimerValue(timer));
-		CUT_SAFE_CALL( cutDeleteTimer(timer));
+		CUT_SAFE_CALL( cutDeleteTimer(timer));*/
 
 		CUDA_SAFE_CALL(cudaMemcpy(membership, d_memb, membSize, cudaMemcpyDeviceToHost));
 
-		*oldCost = 1;
+		/**oldCost = 1;
 		*newCost = 0;
 		//iter = 0;
-	}
+	}*/
 
 	printf("Saving output file.\n");
-	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
+	writeData(data, finalMedoids, dims, numClusters, membership, generateOutputFileName(numClusters).c_str());
 
 	free(dims);
 	free(data);
@@ -139,13 +138,4 @@ int main( int argc, char** argv) {
 
 void usage() {
 	printf("Usage: ./fuzzyCMedoids <input file>\n");
-
-	/*printf("Usage: kmedoidsCUDA <# clusters> <distance metric> <vol type> <vol min> <vol max> <input file> <output file>\n\n");
-	printf("Distance Metric:\n");
-	printf("\tEuclidean = 0\n");
-	printf("\tMahattan  = 1\n");
-	printf("\tMaximum   = 2\n");
-	printf("Volume Type:\n");
-	printf("\tBox     = 0\n");
-	printf("\tSphere  = 1\n");*/
 }

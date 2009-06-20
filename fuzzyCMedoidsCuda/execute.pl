@@ -12,11 +12,12 @@ if ($numArgs < $totalArgs || $numArgs > $totalArgs) {
 #        printf "$ARGV[$argnum]\n";
 #}
 
+printf "$ARGV[0] $ARGV[1] $ARGV[2] $ARGV[3]\n";
 # filename
-my $fn = $ARGV[1];
+my $fn = $ARGV[2];
 if($fn =~ m/fcs$/)
 {
-        printf "FCS file must be converted";
+        printf "FCS file must be converted\n";
         $newfn = $fn;
         #$newfn =~ s/fcs/txt/;
         $newfn = $newfn . ".dat";
@@ -74,7 +75,7 @@ $STEP_SIZE_MEMB = int($NUM_DATA_POINTS / $NUM_THREADS);
 printf "Thread Step Size = $STEP_SIZE\n";
 
 # distance measure
-$DIST_MEASURE = $ARGV[2];
+$DIST_MEASURE = $ARGV[1];
 printf "Distance Measure = $DIST_MEASURE\n";
 
 # Create header
@@ -83,9 +84,10 @@ system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMEN
 
 # run make
 printf "Cleaning and building the project.\n";
-system "make clean";
-system "make";
+system "cd ../projects/fuzzyCMedoidsCuda; make clean";
+system "cd ../projects/fuzzyCMedoidsCuda; make";
 
 # run the program
-printf "Excuting the main program...\n\n";
-system "../../bin/linux/release/fuzzyCMedoids $fn";
+$command = "../bin/linux/release/fuzzyCMedoids $fn";
+printf "Excuting $command\n\n";
+system $command;
