@@ -58,7 +58,7 @@ int main( int argc, char** argv) {
 	*oldCost = 1;
 	*newCost = 0;
 
-	int MAXITER = 5;
+	int MAXITER = 10;
 	int iter = 0;
 
 	CUDA_SAFE_CALL(cudaMalloc((void**) &d_data, dataSize));
@@ -97,7 +97,7 @@ int main( int argc, char** argv) {
 
 			CUDA_SAFE_CALL(cudaMemcpy(newCost, d_cost, sizeof(float), cudaMemcpyDeviceToHost));
 
-			printf("%d: %f - %f\n", iter, *oldCost, *newCost);
+			printf("%d: Old Cost = %f, New Cost = %f\n", iter, *oldCost, *newCost);
 			iter++;
 		}
 
@@ -120,7 +120,7 @@ int main( int argc, char** argv) {
 		//iter = 0;
 	}*/
 
-	printf("Saving output file.\n");
+	printf("\nSaving output file.\n");
 	writeData(data, finalMedoids, dims, numClusters, membership, generateOutputFileName(numClusters).c_str());
 
 	free(dims);
@@ -132,6 +132,7 @@ int main( int argc, char** argv) {
 	CUDA_SAFE_CALL(cudaFree(d_data));
 	CUDA_SAFE_CALL(cudaFree(d_medoids));
 	CUDA_SAFE_CALL(cudaFree(d_memb));
+	CUDA_SAFE_CALL(cudaFree(d_cost));
 
     return EXIT_SUCCESS;
 }

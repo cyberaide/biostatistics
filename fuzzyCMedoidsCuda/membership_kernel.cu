@@ -63,7 +63,7 @@ __device__ void calculateMembership(float* d, float* md, float* mb, int m, int i
 	}
 
 	mb[blockIdx.x + index * NUM_CLUSTERS] = numerator / denominator;
-	denominator = 0;
+	//denominator = 0;
 }
 
 #endif /* MEMBERSHIP_KERNEL_CU_ */

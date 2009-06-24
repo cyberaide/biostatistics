@@ -12,7 +12,6 @@ if ($numArgs < $totalArgs || $numArgs > $totalArgs) {
 #        printf "$ARGV[$argnum]\n";
 #}
 
-printf "$ARGV[0] $ARGV[1] $ARGV[2] $ARGV[3]\n";
 # filename
 my $fn = $ARGV[2];
 if($fn =~ m/fcs$/)
@@ -71,8 +70,11 @@ printf "Number of Blocks = $NUM_CLUSTERS\n";
 
 # step size
 $STEP_SIZE = int($NUM_DATA_POINTS / ($NUM_CLUSTERS * $NUM_THREADS));
-$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / $NUM_THREADS);
+$DIFF = int(($NUM_DATA_POINTS - ($STEP_SIZE * $NUM_CLUSTERS * $NUM_THREADS)) / $NUM_THREADS);
+$STEP_SIZE = $STEP_SIZE + $DIFF;
 printf "Thread Step Size = $STEP_SIZE\n";
+
+$STEP_SIZE_MEMB = int($NUM_DATA_POINTS / $NUM_THREADS);
 
 # distance measure
 $DIST_MEASURE = $ARGV[1];
@@ -80,7 +82,7 @@ printf "Distance Measure = $DIST_MEASURE\n";
 
 # Create header
 printf "\nCreating header file.\n\n";
-system "./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $STEP_SIZE_MEMB $DIST_MEASURE";
+system "cd ../projects/fuzzyCMedoidsCuda; ./createHeader.sh $NUM_CLUSTERS $NUM_THREADS $NUM_DATA_POINTS $NUM_DIMENSIONS $STEP_SIZE $STEP_SIZE_MEMB $DIST_MEASURE";
 
 # run make
 printf "Cleaning and building the project.\n";

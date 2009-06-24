@@ -16,22 +16,25 @@ __global__ void fuzzyCMedoids(float* data, float* medoids, float* cost) {
 	__shared__ float ourMedoids[NUM_CLUSTERS * NUM_DIMENSIONS];
 
 	if (threadIdx.x == 0) {
+		for (int i = 0; i < NUM_CLUSTERS; i++) {
+			costs[i] = 0;
+		}
+
 		for (int i = 0; i < NUM_CLUSTERS * NUM_DIMENSIONS; i++) {
 			ourMedoids[i] = medoids[i];
 		}
 	}
 
-	if (blockIdx.x == (NUM_BLOCKS - 1) && threadIdx.x == (NUM_THREADS - 1)) {
-		end = NUM_DATA_POINTS;
-	}
-	else {
-		end = start + STEP_SIZE;
-	}
-
 	__syncthreads();
 
-	if (start < NUM_DATA_POINTS && end <= NUM_DATA_POINTS) {
-		for (int x = start; x < end; x++) {
+	end = start + STEP_SIZE;
+
+	/*if (end > NUM_DATA_POINTS) {
+		end = NUM_DATA_POINTS;
+	}*/
+
+	if (start < NUM_DATA_POINTS) {
+		for (int x = start; x < end && x < NUM_DATA_POINTS; x++) {
 			calculateCost(data, ourMedoids, costs, x);
 		}
 	}
@@ -64,12 +67,38 @@ __device__ void calculateCost(float* d, float* m, float* costs, int index) {
 
 __device__ float calculateDist(int i, int x, float* d, float* m) {
 	float sum = 0;
+	float temp = 0;
 
+	// Euclidean
+#if DISTANCE_MEASURE == 0
 	for (int j = 0; j < NUM_DIMENSIONS; j++) {
-		sum += pow(d[i + j * NUM_DIMENSIONS] - m[j + x * NUM_DIMENSIONS], 2);
+		temp = d[i + j * NUM_DATA_POINTS] - m[j + x * NUM_DIMENSIONS];
+		sum += temp * temp;
 	}
 
-	return sqrt(sum);
+	sum = sqrt(sum);
+#endif
+
+	// Manhattan
+#if DISTANCE_MEASURE == 1
+	for (int j = 0; j < NUM_DIMENSIONS; j++) {
+		temp = d[i + j * NUM_DATA_POINTS] - m[j + x * NUM_DIMENSIONS];
+		sum += abs(temp);
+	}
+#endif
+
+	// Maximum
+#if DISTANCE_MEASURE == 2
+	for (int j = 0; j < NUM_DIMENSIONS; j++) {
+		temp = abs(d[i + j * NUM_DATA_POINTS] - m[j + x * NUM_DIMENSIONS]);
+
+		if (temp > sum) {
+			sum = temp;
+		}
+	}
+#endif
+
+	return sum;
 }
 
 #endif
