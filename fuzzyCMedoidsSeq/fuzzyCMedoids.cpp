@@ -42,12 +42,12 @@ int main(int argc, char** argv) {
 	float* finalMedoids = (float*)malloc(sizeMedoids);
 	float* membership = (float*)malloc(sizeMemb);
 
-	clock_t start, end;
+	/*clock_t start, end;
 
 	for (int i = 0; i < 10; i++) {
-		start = clock();
+		start = clock();*/
 
-		//while (oldCost > newCost && iter < MAXITER) {
+		while (oldCost > newCost && iter < MAXITER) {
 		//while (iter < MAXITER) {
 			setCenters(data, medoids, numClusters, dims);
 			oldCost = calculateCost(data, medoids, numClusters, dims);
@@ -57,19 +57,19 @@ int main(int argc, char** argv) {
 			setCenters(data, medoids, numClusters, dims);
 			newCost = calculateCost(data, medoids, numClusters, dims);
 
-			//cout << iter << ": " << oldCost << " - " << newCost << endl;
-			//iter++;
-		//}
+			cout << iter << ": " << oldCost << " - " << newCost << endl;
+			iter++;
+		}
 
 		calculateMembership(data, finalMedoids, membership, dims, numClusters, 2);
 
-		end = clock();
+		//end = clock();
 		//printf("Processing time: %f (ms)\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
-		printf("%f\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
+		/*printf("%f\n", ((float)(end - start) / (float)(CLOCKS_PER_SEC)) * (float)1e3);
 		oldCost = 1;
 		newCost = 0;
 		//iter = 0;
-	}
+	}*/
 
 	cout << "Saving output file." << endl;
 	writeData(data, finalMedoids, dims, numClusters, membership, "output.dat");
@@ -106,8 +106,12 @@ float calculateCost(float* d, float* m, int nc, int dims[]) {
 void calculateMembership(float* data, float* medoids, float* memb,  int dims[], int numClusters, int m) {
 	float numerator;
 	float denominator = 0;
-	float exp = 1 / (m - 1);
+	float exp = 1;
 	float base;
+
+	if ((m - 1) != 0) {
+		exp = 1 / (m - 1);
+	}
 
 	for (int i = 0; i < dims[1]; i++) {
 		for (int j = 0; j < numClusters; j++) {
