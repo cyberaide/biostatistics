@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -33,6 +34,7 @@ extern "C" void getPoints(float* d, float p[], int dims[], int i);
 extern "C" float* readData(char* f, int* dims);
 extern "C" void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f);
 extern "C" int clusterColor(float i, int nc);
+extern "C" string generateOutputFileName(int nc);
 
 void initRand() {
 	srand((unsigned)(time(0)));
@@ -167,7 +169,7 @@ float* readData(char* f, int* dims) {
 
 void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f) {
 	ofstream file;
-	int precision = 15;
+	int precision = 5;
 
 	file.open(f);
 
@@ -217,6 +219,45 @@ void writeData(float* d, float* m, int* dims, int nc, float* memb, const char* f
 
 int clusterColor(float i, int nc) {
 	return (int)((i / nc) * 256);
+}
+
+string generateOutputFileName(int nc) {
+	string output;
+	time_t rawtime;
+	struct tm *timeinfo;
+	int i;
+	char ch[50];
+
+	//output = "../../../output/output";
+	output = "../output/output";
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+
+	i = 1 + timeinfo->tm_mon;
+	sprintf(ch, "-%d", i);
+	output.append(ch);
+
+	i = timeinfo->tm_mday;
+	sprintf(ch, "-%d", i);
+	output.append(ch);
+
+	i = 1900 + timeinfo->tm_year;
+	sprintf(ch, "-%d", i);
+	output.append(ch);
+
+	i = timeinfo->tm_hour;
+	sprintf(ch, "-%d", i);
+	output.append(ch);
+
+	i = timeinfo->tm_min;
+	sprintf(ch, "-%d", i);
+	output.append(ch);
+
+	sprintf(ch, "_%d.dat", nc);
+	output.append(ch);
+
+	return output;
 }
 
 #endif /* CLUSTERINGUTILS_H_ */
