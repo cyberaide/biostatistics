@@ -146,6 +146,7 @@ main( int argc, char** argv) {
         saved_clusters[i].means = (float*) malloc(sizeof(float)*num_dimensions);
         saved_clusters[i].R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
         saved_clusters[i].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
+        saved_clusters[i].p = (float*) malloc(sizeof(float)*num_events);
     }
    
     DEBUG("Finished allocating memory on host for clusters.\n");
@@ -316,6 +317,7 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+            CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
             clusters[i].N = temp_clusters[i].N;
             clusters[i].pi = temp_clusters[i].pi;
             clusters[i].constant = temp_clusters[i].constant;
@@ -338,6 +340,7 @@ main( int argc, char** argv) {
                 memcpy(saved_clusters[i].means,clusters[i].means,sizeof(float)*num_dimensions);
                 memcpy(saved_clusters[i].R,clusters[i].R,sizeof(float)*num_dimensions*num_dimensions);
                 memcpy(saved_clusters[i].Rinv,clusters[i].Rinv,sizeof(float)*num_dimensions*num_dimensions);
+                memcpy(saved_clusters[i].p,clusters[i].p,sizeof(float)*num_events);
             }
         }
 
@@ -423,8 +426,22 @@ main( int argc, char** argv) {
     CUT_SAFE_CALL(cutDeleteTimer(timer));
     
     
-    // Open up the output file
-    FILE* outf = fopen(argv[3],"w");
+    char* result_suffix = ".results";
+    char* summary_suffix = ".summary";
+    int filenamesize1 = strlen(argv[3]) + strlen(result_suffix) + 1;
+    int filenamesize2 = strlen(argv[3]) + strlen(summary_suffix) + 1;
+    char* result_filename = (char*) malloc(filenamesize1);
+    char* summary_filename = (char*) malloc(filenamesize2);
+    strcpy(result_filename,argv[3]);
+    strcpy(summary_filename,argv[3]);
+    strcat(result_filename,result_suffix);
+    strcat(summary_filename,summary_suffix);
+    
+    PRINT("Summary filename: %s\n",summary_filename);
+    PRINT("Results filename: %s\n",result_filename);
+    
+    // Open up the output file for cluster summary
+    FILE* outf = fopen(summary_filename,"w");
     if(!outf) {
         printf("ERROR: Unable to open file '%s' for writing.\n",argv[3]);
     }
@@ -444,6 +461,22 @@ main( int argc, char** argv) {
         fprintf(outf,"\n\n");
     }
     fclose(outf);
+    
+    
+    // Open another output file for the event level clustering results
+    FILE* fresults = fopen(result_filename,"w");
+    
+    for(int i=0; i<num_events; i++) {
+        for(int d=0; d<num_dimensions; d++) {
+            fprintf(fresults,"%f ",fcs_data[i*num_dimensions+d]);
+        }
+        
+        for(int c=0; c<ideal_num_clusters; c++) {
+            fprintf(fresults,"%f ",saved_clusters[c].p[i]);
+        }
+        fprintf(fresults,"\n");
+    }
+    
     
     // Print profiling information
     printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
