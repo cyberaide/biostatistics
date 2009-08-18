@@ -467,13 +467,15 @@ main( int argc, char** argv) {
     FILE* fresults = fopen(result_filename,"w");
     
     for(int i=0; i<num_events; i++) {
-        for(int d=0; d<num_dimensions; d++) {
-            fprintf(fresults,"%f ",fcs_data[i*num_dimensions+d]);
+        for(int d=0; d<num_dimensions-1; d++) {
+            fprintf(fresults,"%f,",fcs_data[i*num_dimensions+d]);
         }
-        
-        for(int c=0; c<ideal_num_clusters; c++) {
-            fprintf(fresults,"%f ",saved_clusters[c].p[i]);
+        fprintf(fresults,"%f",fcs_data[i*num_dimensions+num_dimensions-1]);
+        fprintf(fresults,"\t");
+        for(int c=0; c<ideal_num_clusters-1; c++) {
+            fprintf(fresults,"%f,",saved_clusters[c].p[i]);
         }
+        fprintf(fresults,"%f",saved_clusters[ideal_num_clusters-1].p[i]);
         fprintf(fresults,"\n");
     }
     
