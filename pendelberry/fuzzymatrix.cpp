@@ -1,20 +1,18 @@
-/* built from dougs code */ 
 /*
- * Implement <such and such> paper P. Rousseeuw ... C MEans 1996...
+ * Implement Fuzzy clustering using scatter matrices paper P.J. Rousseeuw, L. Kaufman, E. Trauwaert 1996...
  * 
  */
 #include "clusteringutils.h"
 
 void  usage();
-void  fcmeans(Params* p);
+void  fcSmatrix(Params* p);
 void  computeCenters(Params* p);
-int   computeMembership(Params* p);
 float computeDistance(Params* p, int i, int c);
-void  computeMaxLikelihood(Params* p);
+void  computeMaxLikelihood(Params* p); //not really a void -- sets Ti (i) to 0 or returns the Event
+void  computeGeneralFormula(Params* p, float beta, float tau, const THETA); //not really a void -- sets Ti (i) to 0 or returns the  Event
 
 int main(int argc, char** argv)
 {	
-double epsilon = 0.1;	// Set a stopping criteria
 	
 	if (argc != 6) {
 		usage();
@@ -29,7 +27,7 @@ double epsilon = 0.1;	// Set a stopping criteria
 	params->numClusters = atoi(argv[1]);
 	params->fuzziness = atoi(argv[2]);
 	params->threshold = atof(argv[3]);
-	params->maxLikelihood = char(argv[4]);
+	params->options = atoi(argv[4]);
 
 	readData(argv[5], params);
 
@@ -38,117 +36,333 @@ double epsilon = 0.1;	// Set a stopping criteria
 	params->membership2 = (float*) 	malloc(sizeof(float) * params->numClusters * params->numEvents);
 	params->Ti			= (int*)	malloc( sizeof(int) * params->numEvents );
 	
-	// Step 1:
-	// Initialize the membership functions.
-	// Often it works to initialize things to 1/(number of clusters).
-	memset( params->membership, (float) 1.0 / params->numClusters, 
-												params->numClusters * params->numEvents );
-	
-// TOP OF THE LOOP
-// AS LONG AS IT TAKES...
-	
-	float max_epsilon_change = 0;
-	
-	do {
-		// Make a copy of all the membership functions.
-		memcpy( params->membership2, params->membership, sizeof(float) * params->numClusters * params->numEvents );
-		
-		
-		// Step 2a:
-		// Estimate the cluster centers:
-		setCenters( params );
-		
-		// Step 2b:
-		// Set Scatter matrix according to equation 17:
-		setScatterMatrices( params );
-		
-		// Step 3:
-		// Initialize the set Ti = none.
-		// This is the set of points to ignore because they had a membership
-		// value that was negative.
-		// Compute the Ti's, and iterate as long as any Ti != 0.
-		memset( params->Ti, (int) 0, params->numEvents );
-		
-		int any_Ti_set = 0;
-		do {
-			any_Ti_set = 0;
-			
-			// Evaluate the membership functions according to EQ 31.
-			// If any membership is negative, range clip it to zero.
-			// 		AND set params->Ti( that point ) to 1.
-			//		AND re-calculate the memberships according to EQ 31.
-			// TODO EQ 31 that here...
-			
-			// Total up all values of "any_Ti_set".  
-			// If the sum is non-zero, then one of them is set, 
-			// and you need to keep looping.
-			for (int ii=0; ii < params->numEvents; ii++ )
-				any_Ti_set = any_Ti_set + params->Ti(ii);
-			
-		} while (any_Ti_set != 0);
-		
-		// Step 4:
-		// Compare the membership functions to previous methods.
-		max_epsilon_change = 0;
-		for (int idx=0;idx<=params->numClusters * params->numEvents; idx++)
-		{
-			float difference = params->membership(idx) - params->membership2(idx);
-			if (difference < 0)
-				difference = -difference;		// Form absolute value of difference.
-			if (difference > max_epsilon_change)
-				max_epsilon_change = difference;
-		}
-	} while (max_epsilon_change >= params->threshold );
-	
-	
-	// Check for the character 'y'
-	if (maxLikelihood = 121)
-		computeMaxLikelihood;
-	else
-		fcmeans(params);
 
-	writeData(params, "output.dat");
-
-	free(params->centers);
-	free(params->data);
-	free(params->membership);
-	free(params);
-
-	return EXIT_SUCCESS;
-}
-
-
-void fcmeans(Params* p) {
+void fuzzySmatrix(Params* p) {
 	int det = 0;
 	int iter = 1;
 	int MAXITER = 150;
 
-	p->oldNorm = 0;
+	// Step 1:
+		// Initialize the membership functions.
+		// Often it works to initialize things to 1/(number of clusters).
+		memset( params->membership, (float) 1.0 / params->numClusters, params->numClusters * params->numEvents );
+		
+	// TOP OF THE LOOP
+	// AS LONG AS IT TAKES...
+		
+		float max_epsilon_change = 0.1; //Set a stopping criteria
 
-	setCenters(p);
-	computeMembership(p);
+				switch (params->options)                  /* select the type of calculation */
+				// pDimensions is the number of dimensions
+				// kClusters is the number of clusters
+				// sHat is the Scatter Matrix
+				// aSubT
+				// beta
+				// bSubIT
+				// tau
+				// THETA is a constant of 1 -- it is really only used in adaptive distance and is ignored in the other methods
+				    {
+					//adaptive distances
+				    case 1:
+				    	do {
+				    				// Make a copy of all the membership functions.
+				    				memcpy( params->membership2, params->membership, sizeof(float) * params->numClusters * params->numEvents );
 
-	while (det == 0 && iter <= MAXITER) {
-		computeCenters(p);
-		det = computeMembership(p);
-		iter++;
-	}
 
-	if (iter == MAXITER) {
-		cout << "Fuzzy C-Means was unable to converge using the threshold " << p->threshold << endl;
-	}
-	else {
-		cout << "Iterations: " << iter << endl << endl;
+				    				// Step 2a:
+				    				// Estimate the cluster centers:
+				    				setCenters( params );
 
-		cout << "Cluster centers:" << endl << endl;
+				    				// Step 2b:
+				    				// Set Scatter matrix according to equation 17 (covariance matrix):
+				    				setScatterMatrices( params );
 
-		for (int i = 0; i < p->numClusters; i++) {
-			for (int j = 0; j < p->numDimensions; j++) {
-				cout << p->centers[j + i * p->numDimensions] << " ";
-			}
+				    				// Step 3:
+				    				// Initialize the set Ti = none.
+				    				// This is the set of points to ignore because they had a membership
+				    				// value that was negative.
+				    				// Compute the Ti's, and iterate as long as any Ti != 0.
+				    				memset( params->Ti, (int) 0, params->numEvents );
 
-			cout << endl;
-		}
+				    				int any_Ti_set = 0;
+				    				do {
+				    					any_Ti_set = 0;
+
+				    					// Evaluate the membership functions according to EQ 31.
+				    					// If any membership is negative, range clip it to zero.
+				    					// 		AND set params->Ti( that point ) to 1.
+				    					//		AND re-calculate the memberships according to EQ 31.
+				    					//      EQ 31 that is here...
+				    					beta = 1/pDimensions;
+				    					tau = 0;
+				    					computeGeneralFormula(p, beta, tau, THETA);
+				    					// Total up all values of "any_Ti_set".
+				    					// If the sum is non-zero, then one of them is set,
+				    					// and you need to keep looping.
+				    					for (int ii=0; ii < params->numEvents; ii++ )
+				    						any_Ti_set = any_Ti_set + params->Ti(ii);
+				    					iter++;
+
+				                    } while (any_Ti_set != 0 && iter <= MAXITER);
+				    				if (iter == MAXITER) {
+				    						cout << "Program was unable to converge using the threshold " << p->threshold << endl;
+				    						break;
+				    					}
+
+				                    // Step 4:
+				                    // Compare the membership functions to previous methods.
+				    				max_epsilon_change = 0;
+				                    for (int idx=0;idx<=params->numClusters * params->numEvents; idx++)
+				                    	{
+				                    	float difference = params->membership(idx) - params->membership2(idx);
+				                    	if (difference < 0)
+				                    		difference = -difference;		// Form absolute value of difference.
+				                    	if (difference > max_epsilon_change)
+				                    		max_epsilon_change = difference;
+				                    	}
+				        } while (max_epsilon_change >= params->threshold );
+
+				    	cout << "Iterations: " << iter << endl << endl;
+
+				    	cout << "Cluster centers:" << endl << endl;
+
+				    	for (int i = 0; i < p->numClusters; i++) {
+				    		for (int j = 0; j < p->numDimensions; j++) {
+				    			cout << p->centers[j + i * p->numDimensions] << " ";
+				    			}
+				    		cout << endl;
+				    		}
+				        break;
+
+
+				    //minimum total volume
+				    case 2:
+				    	do {
+				    				// Make a copy of all the membership functions.
+				    				memcpy( params->membership2, params->membership, sizeof(float) * params->numClusters * params->numEvents );
+
+
+				    				// Step 2a:
+				    				// Estimate the cluster centers:
+				    				setCenters( params );
+
+				    				// Step 2b:
+				    				// Set Scatter matrix according to equation 17 (covariance matrix):
+				    				setScatterMatrices( params );
+
+				    				// Step 3:
+				    				// Initialize the set Ti = none.
+				    				// This is the set of points to ignore because they had a membership
+				    				// value that was negative.
+				    				// Compute the Ti's, and iterate as long as any Ti != 0.
+				    				memset( params->Ti, (int) 0, params->numEvents );
+
+				    				int any_Ti_set = 0;
+				    				do {
+				    					any_Ti_set = 0;
+
+				    					// Evaluate the membership functions according to EQ 31.
+				    					// If any membership is negative, range clip it to zero.
+				    					// 		AND set params->Ti( that point ) to 1.
+				    					//		AND re-calculate the memberships according to EQ 31.
+				    					//      EQ 31 that is here...
+				    					beta = 1/pDimensions;
+				    					tau = 0;
+				    					computeGeneralFormula(p, beta, tau, THETA);
+				    					// Total up all values of "any_Ti_set".
+				    					// If the sum is non-zero, then one of them is set,
+				    					// and you need to keep looping.
+				    				    for (int ii=0; ii < params->numEvents; ii++ )
+				    						any_Ti_set = any_Ti_set + params->Ti(ii);
+				    				    iter++;
+
+				                    } while (any_Ti_set != 0 && iter <= MAXITER);
+				    				if (iter == MAXITER) {
+				    						cout << "Program was unable to converge using the threshold " << p->threshold << endl;
+				    						break;
+				    					}
+
+				                    // Step 4:
+				                    // Compare the membership functions to previous methods.
+				    				max_epsilon_change = 0;
+				                    for (int idx=0;idx<=params->numClusters * params->numEvents; idx++)
+				                    	{
+				                    	float difference = params->membership(idx) - params->membership2(idx);
+				                    	if (difference < 0)
+				                    		difference = -difference;		// Form absolute value of difference.
+				                    	if (difference > max_epsilon_change)
+				                    		max_epsilon_change = difference;
+				                    	}
+				        } while (max_epsilon_change >= params->threshold );
+
+				    	cout << "Iterations: " << iter << endl << endl;
+
+				    	cout << "Cluster centers:" << endl << endl;
+
+				    	for (int i = 0; i < p->numClusters; i++) {
+				    		for (int j = 0; j < p->numDimensions; j++) {
+				    			cout << p->centers[j + i * p->numDimensions] << " ";
+				    			}
+				    		cout << endl;
+				    		}
+				        break;
+
+
+				    //sum of all normalized determinants (SAND)
+				    case 3:
+				    	do {
+				    				// Make a copy of all the membership functions.
+				    				memcpy( params->membership2, params->membership, sizeof(float) * params->numClusters * params->numEvents );
+
+
+				    				// Step 2a:
+				    				// Estimate the cluster centers:
+				    				setCenters( params );
+
+				    				// Step 2b:
+				    				// Set Scatter matrix according to equation 17 (covariance matrix):
+				    				setScatterMatrices( params );
+
+				    				// Step 3:
+				    				// Initialize the set Ti = none.
+				    				// This is the set of points to ignore because they had a membership
+				    				// value that was negative.
+				    				// Compute the Ti's, and iterate as long as any Ti != 0.
+				    				memset( params->Ti, (int) 0, params->numEvents );
+
+				    				int any_Ti_set = 0;
+				    				do {
+				    					any_Ti_set = 0;
+
+				    					// Evaluate the membership functions according to EQ 31.
+				    					// If any membership is negative, range clip it to zero.
+				    					// 		AND set params->Ti( that point ) to 1.
+				    					//		AND re-calculate the memberships according to EQ 31.
+				    					//      EQ 31 that is here...
+				    					beta = 1/pDimensions;
+				    					tau = 0;
+				    					computeGeneralFormula(p, beta, tau, THETA);
+				    					// Total up all values of "any_Ti_set".
+				    					// If the sum is non-zero, then one of them is set,
+				    					// and you need to keep looping.
+				    					for (int ii=0; ii < params->numEvents; ii++ )
+				    						any_Ti_set = any_Ti_set + params->Ti(ii);
+				    					iter++;
+
+				                    } while (any_Ti_set != 0 && iter <= MAXITER);
+				    				if (iter == MAXITER) {
+				    						cout << "Program was unable to converge using the threshold " << p->threshold << endl;
+				    						break;
+				    					}
+
+				                    // Step 4:
+				                    // Compare the membership functions to previous methods.
+				    				max_epsilon_change = 0;
+				                    for (int idx=0;idx<=params->numClusters * params->numEvents; idx++)
+				                    	{
+				                    	float difference = params->membership(idx) - params->membership2(idx);
+				                    	if (difference < 0)
+				                    		difference = -difference;		// Form absolute value of difference.
+				                    	if (difference > max_epsilon_change)
+				                    		max_epsilon_change = difference;
+				                    	}
+				        } while (max_epsilon_change >= params->threshold );
+
+				    	cout << "Iterations: " << iter << endl << endl;
+
+				    	cout << "Cluster centers:" << endl << endl;
+
+				    	for (int i = 0; i < p->numClusters; i++) {
+				    		for (int j = 0; j < p->numDimensions; j++) {
+				    			cout << p->centers[j + i * p->numDimensions] << " ";
+				    			}
+				    		cout << endl;
+				    		}
+				        break;
+
+
+				    //maxmum likelihood method
+				    case 4:
+				    	do {
+				    				// Make a copy of all the membership functions.
+				    				memcpy( params->membership2, params->membership, sizeof(float) * params->numClusters * params->numEvents );
+
+
+				    				// Step 2a:
+				    				// Estimate the cluster centers:
+				    				setCenters( params );
+
+				    				// Step 2b:
+				    				// Set Scatter matrix according to equation 17 (covariance matrix):
+				    				setScatterMatrices( params );
+
+				    				// Step 3:
+				    				// Initialize the set Ti = none.
+				    				// This is the set of points to ignore because they had a membership
+				    				// value that was negative.
+				    				// Compute the Ti's, and iterate as long as any Ti != 0.
+				    				memset( params->Ti, (int) 0, params->numEvents );
+
+				    				int any_Ti_set = 0;
+				    				do {
+				    					any_Ti_set = 0;
+
+				    					// Evaluate the membership functions according to EQ 31.
+				    					// If any membership is negative, range clip it to zero.
+				    					// 		AND set params->Ti( that point ) to 1.
+				    					//		AND re-calculate the memberships according to EQ 31.
+				    					//      EQ 31 that is here...
+				                        computeMaxLikelihood(p);
+				                        // Total up all values of "any_Ti_set".
+				                        // If the sum is non-zero, then one of them is set,
+				                        // and you need to keep looping.
+				                        for (int ii=0; ii < params->numEvents; ii++ )
+				                        	any_Ti_set = any_Ti_set + params->Ti(ii);
+				                        iter++;
+				                    } while (any_Ti_set != 0 && iter <= MAXITER);
+				    				if (iter == MAXITER) {
+				    						cout << "Program was unable to converge using the threshold " << p->threshold << endl;
+				    						break;
+				    					}
+
+				                    // Step 4:
+				                    // Compare the membership functions to previous methods.
+				    				max_epsilon_change = 0;
+				                    for (int idx=0;idx<=params->numClusters * params->numEvents; idx++)
+				                    	{
+				                    	float difference = params->membership(idx) - params->membership2(idx);
+				                    	if (difference < 0)
+				                    		difference = -difference;		// Form absolute value of difference.
+				                    	if (difference > max_epsilon_change)
+				                    		max_epsilon_change = difference;
+				                    	}
+				        } while (max_epsilon_change >= params->threshold );
+
+				    	cout << "Iterations: " << iter << endl << endl;
+
+				    	cout << "Cluster centers:" << endl << endl;
+
+				    	for (int i = 0; i < p->numClusters; i++) {
+				    		for (int j = 0; j < p->numDimensions; j++) {
+				    			cout << p->centers[j + i * p->numDimensions] << " ";
+				    			}
+				    		cout << endl;
+				    		}
+				        break;
+
+				    // catch all for bad option
+				    default: cout << "Invalid option selected" << endl;
+				    }
+
+
+		writeData(params, "output.dat");
+
+		free(params->centers);
+		free(params->data);
+		free(params->membership);
+		free(params);
+
+		return EXIT_SUCCESS;
 	}
 }
 
@@ -180,7 +394,7 @@ void computeCenters(Params* p) {
 	}
 }
 
-int computeMembership(Params* p) {
+int computeGeneralFomula(Params* p) {
 	float numerator;
 	float denominator = 0;
 	float exp = 1;
@@ -242,5 +456,5 @@ void computeMaxLikelihood(Params* p) {
 }
 
 void usage() {
-	cout << "Usage: ./fcmeans <num clusters> <fuzziness> <threshold> <max likelyhood calculation y or n> <file name>" << endl;
+	cout << "Usage: ./fcmeans <num clusters> <fuzziness> <threshold> <option> <file name>" << endl;
 }
