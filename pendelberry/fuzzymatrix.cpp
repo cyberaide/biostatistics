@@ -2,7 +2,9 @@
  * Implement Fuzzy clustering using scatter matrices paper P.J. Rousseeuw, L. Kaufman, E. Trauwaert 1996...
  * 
  */
+
 #include "clusteringutils.h"
+#include "fuzzymatrix.h"
 
 const int THETA = 1; // Maybe
 
@@ -39,6 +41,66 @@ void  computeGeneralFormula(Params* p, float beta, float tau, const int THETA); 
 //								// negative membership.
 //	};
 
+// Given the clusters, find the center
+void setCenters(Params* p) {
+
+}
+
+// Computes scatter matrices (covariance matrices) for all clusters according to (17)
+void setScatterMatrix(Params* p)
+{
+    float  denominator = 0;
+    float *numerator=new float[p->numDimensions];
+    int    membIndex;
+
+    float* total = new float[p->numDimensions];
+    float* avgs = new float[p->numDimensions];
+
+	// Solve for each cluster at a time:
+	for (int t = 0; t < p->numClusters; t++)
+	{
+		// For each Event:
+		for (int event_id = 0; event_id < p->numEvents; event_id++)
+		{
+			for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
+			{
+				total[dim_id] = total[dim_id] + p->data[dim_id + event_id * p->numDimensions];
+			}
+		}
+
+		// Normalize the totals:
+		for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
+		{
+			avgs[dim_id] = total[dim_id] / p->numEvents;
+		}
+
+		// For each Event:
+		for (int j = 0; j < p->numDimensions; j++)
+		{
+			float numerator = 0;
+			for (int i = 0; i < p->numDimensions; i++)
+			{
+				numerator = 0;
+				for (int event_id = 0; event_id < p->numEvents; event_id++)
+				{
+					numerator = numerator + (p->membership[t*p->numEvents+event_id]*p->membership[t*p->numClusters+event_id]) *
+							  (p->data[i + event_id * p->numDimensions] - avgs[i]) *
+							  (p->data[j + event_id * p->numDimensions] - avgs[j]);
+				}
+
+				// TODO: Move this outside the loop:
+				float denominator = 0;
+				for (int event_id = 0; event_id < p->numEvents; event_id++)
+				{
+					denominator = denominator + p->membership(t,event_id);
+				}
+
+				p->scatters[t*p->numClusters*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
+			}
+		}
+	}
+}
+
 /*******************************************************************************
  *
  *    Equation 31:
@@ -51,24 +113,7 @@ computeGeneralFormula_eq31(params, beta, tau, THETA)
 {
 float	B(); 		// B(ir), as per equation 27
 
-
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 	
 
 /*********************
@@ -273,6 +318,8 @@ int main(int argc, char** argv)
 	initRand();
 
 	Params* params = (Params*) malloc(sizeof(Params));
+	// Initializes and allocates arrays in the struct
+    initializeParams(params);
 	
 	//Initialize Membership values of all objects with respect to each cluster
 	params->numClusters 	= atoi(argv[1]);	// K in the paper.

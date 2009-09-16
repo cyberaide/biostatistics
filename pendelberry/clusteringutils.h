@@ -24,8 +24,8 @@
 #include <iomanip>
 #include <sys/types.h>
 //#include <unistd.h>  // unix only
-#include <conio.h>   /* added by sid */
-#include <process.h> /* added by sid */
+//#include <conio.h>   /* added by sid */
+//#include <process.h> /* added by sid */
 //#include <algorithm>
 
 using namespace std;
@@ -35,39 +35,36 @@ struct Params {
 	int 		numDimensions;		// p in the paper.
 	int 		numClusters;		// Set by user.
 	int 		fuzziness;			// User params also.
-	int 		maxLikelihood;		// True or false.
+	int 		options;            // Specify which algorithm
 	float 		threshold;			// Epsilon == max acceptable change 
-	float 		newNorm;			// ???
-	float 		oldNorm;			// ???
 	float* 		data;				// NxP matrix of point coordinates
 	float* 		centers;			// Nx<numClusters> coords of centers.
 	float* 		membership;			// Px<numclusters> values that tell
 									// how connected each point is to each
 									// cluster center.
 	float*		membership2;		// Copy of membership.
-	
+    float*      scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
 	int*		Ti;					// N data points that are set if a point has any
 									// negative membership.
 };
 
+void 	initRand();
+float 	randFloat();
+float 	randFloatRange(float min, float max);
+int 	randInt(int max);
+int 	randIntRange(int min, int max);
+int 	getRandIndex(int w, int h);
 
-extern "C" void 	initRand();
-extern "C" float 	randFloat();
-extern "C" float 	randFloatRange(float min, float max);
-extern "C" int 		randInt(int max);
-extern "C" int 		randIntRange(int min, int max);
-extern "C" int 		getRandIndex(int w, int h);
+bool    contains(Params* p, float points[]);
+void    setCenters(Params* p);
+void    getPoints(Params* p, float points[], int i);
 
-extern "C" bool 	contains(Params* p, float points[]);
-extern "C" void 	setCenters(Params* p);
-extern "C" void 	setCentersNew(Params* p);
-extern "C" void 	getPoints(Params* p, float points[], int i);
+void    allocateParamArrays(Params* p);
+void    readData(char* f, Params* p);
+void    writeData(Params* p, const char* f);
 
-extern "C" void 	readData(char* f, Params* p);
-extern "C" void 	writeData(Params* p, const char* f);
-
-extern "C" int 		clusterColor(float i, int nc);
-extern "C" string 	generateOutputFileName(int nc);
+int 		clusterColor(float i, int nc);
+string 	generateOutputFileName(int nc);
 
 void initRand() {
 	int seed = (int)time(0) * (int)getpid();
@@ -126,30 +123,22 @@ bool contains(Params* p, float points[]) {
 	}
 }
 
-// Given the clusters, find the center
-void setCenters(Params* p) {
-	float *temp=new float[p->numDimensions];
-
-	for (int i = 0; i < p->numClusters; i++) {
-		getPoints(p, temp, randIntRange(0, p->numEvents));
-
-		if (i != 0) {
-			while (contains(p, temp)) {
-				getPoints(p, temp, randIntRange(0, p->numEvents));
-			}
-		}
-
-		for (int j = 0; j < p->numDimensions; j++) {
-			p->centers[j + i * p->numDimensions] = temp[j];
-		}
-	}
-}
 
 // Get the coordinates of a point
 void getPoints(Params* p, float points[], int i) {
 	for (int j = 0; j < p->numDimensions; j++) {
 		points[j] = p->data[j + i * p->numDimensions];
 	}
+}
+
+// Initializes and allocates memory for all arrays of the Params structure
+// Requires numDimensions, numClusters, numEvents to be defined (by readData)
+void allocateParamArrays(Params* p) {
+    p->centers = new float[p->numClusters*p->numDimensions];
+    p->membership = new float[p->numClusters*p->numEvents];
+    p->membership2 = new float[p->numClusters*p->numEvents];
+    p->scatters = new float[p->numClusters*p->numDimensions*p->numDimensions];
+    p->Ti = new int[p->numEvents];
 }
 
 // Read in the file named "f"
@@ -302,65 +291,7 @@ string generateOutputFileName(int nc) {
 	return output;
 }
 
-double setScatterMatrix(Params* p, ScatterMatrix* sHat)
-{
-float  denominator = 0;
-float *numerator=new float[p->numDimensions];
-int    membIndex;
 
-float 	totals[4];		// Hard coded for 4 features
-float 	avgs[4];		// Hard coded for 4 features
-int		n_features = 4;
-
-
-	// Check the syntax of memset... set to zeros...
-	//memset( ScatterMatrix, 0, p->numDimensions * p->numDimensions * p->numEvents ... // intentional syntax error, check all syntax...
-	memset(sHat, 0, SIZE);
-
-	// Solve for each cluster at a time:
-	for (int t = 0; t < p->numClusters; t++)
-	{
-		// For each Event:
-		for (int event_id = 0; event_id < p->numEvents; event_id++)
-		{
-			for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
-			{
-				total[dim_id] = total[dim_id] + p->data[dim_id + event_id * p->numDimensions];
-			}
-		}
-
-		// Normalize the totals:
-		for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
-		{
-			avgs[dim_id] = total[dim_id] / p->numEvents;
-		}
-
-		// For each Event:
-		for (int j = 0; j < p->numDimensions; j++)
-		{
-			float numerator = 0;
-			for (int i = 0; i < p->numDimensions; i++)
-			{
-				numerator = 0;
-				for (int event_id = 0; event_id < p->numEvents; event_id++)
-				{
-					numerator = numerator + (p->membership(t,event_id)^2) *
-							  (p->data[i + event_id * p->numDimensions] - avgs[i]) *
-							  (p->data[j + event_id * p->numDimensions] - avgs[j]);
-				}
-
-				// TODO: Move this outside the loop:
-				float denominator = 0;
-				for (int event_id = 0; event_id < p->numEvents; event_id++)
-				{
-					denominator = denominator + p->membership(t,event_id);
-				}
-
-				sHat(t,i,j) = numerator / denominator;
-			}
-		}
-	}
-}
 
 
 
