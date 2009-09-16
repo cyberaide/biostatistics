@@ -35,7 +35,7 @@ struct Params {
 	int 		numDimensions;		// p in the paper.
 	int 		numClusters;		// Set by user.
 	int 		fuzziness;			// User params also.
-	int 		options;            // Specify which algorithm
+	int 		option;            // Specify which algorithm
 	float 		threshold;			// Epsilon == max acceptable change 
 	float* 		data;				// NxP matrix of point coordinates
 	float* 		centers;			// Nx<numClusters> coords of centers.
@@ -46,6 +46,8 @@ struct Params {
     float*      scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
 	int*		Ti;					// N data points that are set if a point has any
 									// negative membership.
+    float       newNorm;
+    float       oldNorm;
 };
 
 void 	initRand();
