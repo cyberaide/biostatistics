@@ -23,7 +23,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sys/types.h>
-#include <unistd.h>
+//#include <unistd.h>  // unix only
 #include <conio.h>   /* added by sid */
 #include <process.h> /* added by sid */
 //#include <algorithm>
@@ -126,7 +126,7 @@ bool contains(Params* p, float points[]) {
 	}
 }
 
-// Given the clusters, find the center?
+// Given the clusters, find the center
 void setCenters(Params* p) {
 	float *temp=new float[p->numDimensions];
 
@@ -145,7 +145,7 @@ void setCenters(Params* p) {
 	}
 }
 
-// Get the coordinates of a point?
+// Get the coordinates of a point
 void getPoints(Params* p, float points[], int i) {
 	for (int j = 0; j < p->numDimensions; j++) {
 		points[j] = p->data[j + i * p->numDimensions];
@@ -251,8 +251,8 @@ void writeData(Params* p, const char* f) {
 
 		for (int j = 0; j < p->numClusters; j++) {
 			file << identity[i][j] << " ";
-		}
 
+		}
 		file << endl;
 	}
 
@@ -301,6 +301,67 @@ string generateOutputFileName(int nc) {
 
 	return output;
 }
+
+double setScatterMatrix(Params* p, ScatterMatrix* sHat)
+{
+float  denominator = 0;
+float *numerator=new float[p->numDimensions];
+int    membIndex;
+
+float 	totals[4];		// Hard coded for 4 features
+float 	avgs[4];		// Hard coded for 4 features
+int		n_features = 4;
+
+
+	// Check the syntax of memset... set to zeros...
+	//memset( ScatterMatrix, 0, p->numDimensions * p->numDimensions * p->numEvents ... // intentional syntax error, check all syntax...
+	memset(sHat, 0, SIZE);
+
+	// Solve for each cluster at a time:
+	for (int t = 0; t < p->numClusters; t++)
+	{
+		// For each Event:
+		for (int event_id = 0; event_id < p->numEvents; event_id++)
+		{
+			for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
+			{
+				total[dim_id] = total[dim_id] + p->data[dim_id + event_id * p->numDimensions];
+			}
+		}
+
+		// Normalize the totals:
+		for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
+		{
+			avgs[dim_id] = total[dim_id] / p->numEvents;
+		}
+
+		// For each Event:
+		for (int j = 0; j < p->numDimensions; j++)
+		{
+			float numerator = 0;
+			for (int i = 0; i < p->numDimensions; i++)
+			{
+				numerator = 0;
+				for (int event_id = 0; event_id < p->numEvents; event_id++)
+				{
+					numerator = numerator + (p->membership(t,event_id)^2) *
+							  (p->data[i + event_id * p->numDimensions] - avgs[i]) *
+							  (p->data[j + event_id * p->numDimensions] - avgs[j]);
+				}
+
+				// TODO: Move this outside the loop:
+				float denominator = 0;
+				for (int event_id = 0; event_id < p->numEvents; event_id++)
+				{
+					denominator = denominator + p->membership(t,event_id);
+				}
+
+				sHat(t,i,j) = numerator / denominator;
+			}
+		}
+	}
+}
+
 
 
 double determinant(double **a, int n) {
