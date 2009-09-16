@@ -12,9 +12,9 @@ const int THETA = 1; // Maybe
 void  usage();
 void  fcSmatrix(Params* p);
 void  computeCenters(Params* p);
-float computeDistance(Params* p, int i, int c);
+double computeDistance(Params* p, int i, int c);
 void  computeMaxLikelihood(Params* p); //not really a void -- sets Ti (i) to 0 or returns the Event
-void  computeGeneralFormula(Params* p, float beta, float tau, const int THETA); //not really a void -- sets Ti (i) to 0 or returns the  Event
+void  computeGeneralFormula(Params* p, double beta, double tau, const int THETA); //not really a void -- sets Ti (i) to 0 or returns the  Event
 
 
 // REFERENCE COPY OF STRUCTURE:
@@ -24,38 +24,56 @@ void  computeGeneralFormula(Params* p, float beta, float tau, const int THETA); 
 //		int 		numClusters;		// Set by user.
 //		int 		fuzziness;			// User params also.
 //		int 		maxLikelihood;		// True or false.
-//		float 		threshold;			// Epsilon == max acceptable change 
-//		float 		newNorm;			// ???
-//		float 		oldNorm;			// ???
+//		double 		threshold;			// Epsilon == max acceptable change 
+//		double 		newNorm;			// ???
+//		double 		oldNorm;			// ???
 //
-//		float* 		data;				// NxP matrix of point coordinates.
+//		double* 		data;				// NxP matrix of point coordinates.
 //
-//		float* 		centers;			// Nx<numClusters> coords of centers.
+//		double* 		centers;			// Nx<numClusters> coords of centers.
 //
-//		float 		membership[3][64];		// Px<numclusters> values that tell
+//		double 		membership[3][64];		// Px<numclusters> values that tell
 //								// how connected each point is to each
 //								// cluster center.
 //
-//		float		membership2[3][64];		// Copy of membership.
+//		double		membership2[3][64];		// Copy of membership.
 //		
 //		int*		Ti;				// N data points that are set if a point has any
 //								// negative membership.
 //	};
 
-// Given the clusters, find the center
+// Given the clusters, find the centers, equation (30)
 void setCenters(Params* p) {
-
+    double numerator;
+    double denom;
+    
+    // Compute the center for all clusters
+    for(int t=0; t < p->numClusters; t++) {
+        // Each center has 'd' dimensions, loop over all of them
+        for(int d=0; d < p->numDimensions; d++) {
+            numerator = 0.0;
+            denom = 0.0;
+            // Average over all events weighted by membership for this particular cluster
+            for(int i=0; i < p->numEvents; i++) {
+                double u_ti = p->membership[t*p->numEvents+i];
+                double x_i = p->data[i*p->numDimensions+d];
+                numerator += u_ti*u_ti*x_i;
+                denom += u_ti*u_ti;
+            }
+            p->centers[t*p->numDimensions+d] = numerator / denom;            
+        }
+    }
 }
 
 // Computes scatter matrices (covariance matrices) for all clusters according to (17)
 void setScatterMatrices(Params* p)
 {
-    float  denominator = 0;
-    float *numerator=new float[p->numDimensions];
+    double  denominator = 0;
+    double *numerator=new double[p->numDimensions];
     int    membIndex;
 
-    float* total = new float[p->numDimensions];
-    float* avgs = new float[p->numDimensions];
+    double* total = new double[p->numDimensions];
+    double* avgs = new double[p->numDimensions];
 
 	// Solve for each cluster at a time:
 	for (int t = 0; t < p->numClusters; t++)
@@ -78,7 +96,7 @@ void setScatterMatrices(Params* p)
 		// For each Event:
 		for (int j = 0; j < p->numDimensions; j++)
 		{
-			float numerator = 0;
+			double numerator = 0;
 			for (int i = 0; i < p->numDimensions; i++)
 			{
 				numerator = 0;
@@ -90,7 +108,7 @@ void setScatterMatrices(Params* p)
 				}
 
 				// TODO: Move this outside the loop:
-				float denominator = 0;
+				double denominator = 0;
 				for (int event_id = 0; event_id < p->numEvents; event_id++)
 				{
 					denominator = denominator + p->membership[t*p->numEvents+event_id];
@@ -110,7 +128,7 @@ void setScatterMatrices(Params* p)
  *
  *******************************************************************************/
 // TODO
-void computeGeneralFormula_eq31(Params* p, float beta, float tau, float THETA)
+void computeGeneralFormula_eq31(Params* p, double beta, double tau, double THETA)
 {
     // B(ir), as per equation 27
 }
@@ -127,24 +145,27 @@ void computeGeneralFormula_eq31(Params* p, float beta, float tau, float THETA)
 
 void fuzzySmatrix(Params* p) 
 {
-int det 	= 0;
-int inner_iter 	= 1;
-int outer_iter 	= 1;
-int MAXITER 	= 150;
+    int det 	= 0;
+    int inner_iter 	= 1;
+    int outer_iter 	= 1;
 
-int need_to_continue = 0;
+    int need_to_continue = 0;
 
-// Step 1:
-	// Initialize the membership functions.
-	// Often it works to initialize things to 1/(number of clusters).
-	memset( p->membership, 
-		(float) 1.0 / p->numClusters, 
-		p->numClusters * p->numEvents );
+    // Step 1:
+    	// Initialize the membership functions.
+    	// Often it works to initialize things to 1/(number of clusters).
+    	//memset( p->membership, 
+    	//	1.0 / p->numClusters, 
+    	//	p->numClusters * p->numEvents );
+    double initial_membership = 1.0 / p->numClusters;
+    for(int i=0; i < p->numEvents*p->numClusters; i++) {
+        p->membership[i] = initial_membership;
+    }
 
-// TOP OF THE LOOP
-// AS LONG AS IT TAKES...
+    // TOP OF THE LOOP
+    // AS LONG AS IT TAKES...
 
-	float max_epsilon_change = 0.1; //Set a stopping criteria
+	double max_epsilon_change = p->threshold; //Set a stopping criteria
 
 	// MAIN STEPS:
 	// 1:
@@ -156,12 +177,14 @@ int need_to_continue = 0;
 
 	    // Make a copy of all the membership matrices:
 	    memcpy( p->membership2, p->membership, 
-		    sizeof(float) * p->numClusters * p->numEvents );
+		    sizeof(double) * p->numClusters * p->numEvents );
 
 	    // Step 2a:
 	    // Estimate the cluster centers:
 	    // Changes the structure...
 	    setCenters( p );
+	    
+        printCenters( p ); // for debugging
 
 	    // Step 2b:
 	    // Compute Scatter matrix according to equation 17 (covariance matrix):
@@ -187,73 +210,76 @@ int need_to_continue = 0;
 	    int need_to_keep_reiterating	= 1;
 	    while ( need_to_keep_reiterating )
 	    {
-		any_Ti_set 			= 0;
-		need_to_keep_reiterating	= 0;
+    		any_Ti_set 			= 0;
+    		need_to_keep_reiterating	= 0;
 
-		// Evaluate the membership functions according to EQ 31.
-		// If any membership is negative, range clip it to zero.
-		// 		AND set p->Ti( that point ) to 1.
-		//		AND re-calculate the memberships according to EQ 31.
+    		// Evaluate the membership functions according to EQ 31.
+    		// If any membership is negative, range clip it to zero.
+    		// 		AND set p->Ti( that point ) to 1.
+    		//		AND re-calculate the memberships according to EQ 31.
 
-		// TODO: This is one set of the settings that are used for the equation:
-		//      EQ 31 that is here...
+    		// TODO: This is one set of the settings that are used for the equation:
+    		//      EQ 31 that is here...
 
-	    // switch (p->options)                  /* select the type of calculation */
-		// pDimensions is the number of dimensions
-        float beta,tau;
+    	    // switch (p->options)                  /* select the type of calculation */
+    		// pDimensions is the number of dimensions
+            double beta,tau;
         
-		switch (p->option) 
-		{
-			case '1':
-				beta = 1.0/p->numDimensions;
-				tau  = 0.0;
-				break;
-			case '2':
-				beta =1.0;
-				tau =0.0;
-				break;
-			case '3':
-				beta =1.0;
-				tau =0.0;
-				break;
-			case '4':
-				beta = 999.0;
-				tau = 0.0;
-				break;
-			// catch all for bad option
-			default: cout << "Invalid option selected" << endl;
-		}
+    		switch (p->option) 
+    		{
+    			case 1:
+    				beta = 1.0/p->numDimensions;
+    				tau  = 0.0;
+    				break;
+    			case 2:
+    				beta =1.0;
+    				tau =0.0;
+    				break;
+    			case 3:
+    				beta =1.0;
+    				tau =0.0;
+    				break;
+    			case 4:
+    				beta = 999.0;
+    				tau = 0.0;
+    				break;
+    			// catch all for bad option
+    			default: cout << "Invalid option selected" << endl;
+                exit(1);
+    		}
 
-		// SWITCH BASED ON WHICH ALGORITHM TO USE:
+    		// SWITCH BASED ON WHICH ALGORITHM TO USE:
 		
-		// kClusters is the number of clusters
-		// sHat is the Scatter Matrix
-		// aSubT
-		// beta
-		// bSubIT
-		// tau
-		// THETA is a constant of 1 -- it is really only used in adaptive distance and is ignored in the other methods
-		// THIS IS EQUATION (31)....
-		// TODO: AAA
+    		// kClusters is the number of clusters
+    		// sHat is the Scatter Matrix
+    		// aSubT
+    		// beta
+    		// bSubIT
+    		// tau
+    		// THETA is a constant of 1 -- it is really only used in adaptive distance and is ignored in the other methods
+    		// THIS IS EQUATION (31)....
+    		// TODO: AAA
 		
-		computeGeneralFormula_eq31(p, beta, tau, THETA);
+    		computeGeneralFormula_eq31(p, beta, tau, THETA);
 
-		// Total up all values of "any_Ti_set".
-		// If the sum is non-zero, then one of them is set,
-		// and you need to keep looping.
-		for (int ii=0; ii < p->numEvents; ii++ )
-		{
-		    any_Ti_set = any_Ti_set + p->Ti[ii];
-		}
-		inner_iter++;
+    		// Total up all values of "any_Ti_set".
+    		// If the sum is non-zero, then one of them is set,
+    		// and you need to keep looping.
+    		for (int ii=0; ii < p->numEvents; ii++ )
+    		{
+    		    any_Ti_set = any_Ti_set + p->Ti[ii];
+    		}
+    		inner_iter++;
+		
+            cout << "inner_iter: " << inner_iter << endl;
 
 	    } while (any_Ti_set != 0 && inner_iter <= MAXITER);
 
-	    need_to_keep_reiterating	= 0;
-	    if (inner_iter == MAXITER)
+        need_to_keep_reiterating	= 0;
+        if (inner_iter == MAXITER)
 	    {
-		cout << "Program was unable to converge using the threshold " << p->threshold << endl;
-		break;
+		    cout << "Program was unable to converge using the threshold " << p->threshold << endl;
+    		break;
 	    }
 
 	// Step 4:
@@ -262,7 +288,7 @@ int need_to_continue = 0;
 
 	for (int idx=0;idx<=p->numClusters * p->numEvents; idx++)
 	{
-	    float difference = fabs(p->membership[idx] - p->membership2[idx]);
+	    double difference = fabs(p->membership[idx] - p->membership2[idx]);
 	    
 	    if (difference > max_epsilon_change)
 		    max_epsilon_change = difference;
@@ -307,7 +333,7 @@ int need_to_continue = 0;
 int main(int argc, char** argv)
 {	
 	
-	if (argc != 6) {
+	if (argc != 5) {
 		usage();
 		return EXIT_FAILURE;
 	}
@@ -318,37 +344,33 @@ int main(int argc, char** argv)
 	
 	//Initialize Membership values of all objects with respect to each cluster
 	params->numClusters 	= atoi(argv[1]);	// K in the paper.
-	params->fuzziness 	= atoi(argv[2]);	// Fuzziness = theta, always 1.0.
-	params->threshold 	= atof(argv[3]);	// When to stop... when epsilon < threshold.
-	params->option 	= atoi(argv[4]);	// Which algorithm to use, 1 of 4.
+	//params->fuzziness 	= atoi(argv[2]);	// Fuzziness = theta, always 1.0.
+	params->threshold 	= atof(argv[2]);	// When to stop... when epsilon < threshold.
+	params->option 	= atoi(argv[3]);	// Which algorithm to use, 1 of 4.
 
-	readData(argv[5], params);
+    cout << "Number of clusters: " << params->numClusters << endl;
+    cout << "Threshold: " << params->threshold << endl;
+    cout << "Option: " << params->option << endl << endl;
+    
+    cout << "Reading in data...";
+	int error = readData(argv[4], params);
+	if(error) {
+        exit(error);
+	}
+    cout << "done" << endl << endl;
 
 	// Initializes and allocates arrays in the struct
     allocateParamArrays(params);
-
-	// Allocate one center per cluster.
-	params->centers 	= (float*) 	malloc(sizeof(float) * params->numClusters * params->numDimensions);
-
-	// U(it) in the paper. 
-	params->membership 	= (float*) 	malloc(sizeof(float) * params->numClusters * params->numEvents);
-
-	// Copy of last U(it).
-	params->membership2 	= (float*) 	malloc(sizeof(float) * params->numClusters * params->numEvents);
-
-	// Flag to see if membership goes negative.
-	// T(i) in paper.
-	params->Ti		= (int*)	malloc( sizeof(int) * params->numEvents );
-	
+    
+    cout << "Starting Scatter matrices" << endl;
 	fuzzySmatrix( params ) ;
-	
 }
 
 
 
 void computeCenters(Params* p) {
-	float denominator = 0;
-	float *numerator=new float[p->numDimensions];
+	double denominator = 0;
+	double *numerator=new double[p->numDimensions];
 	int membIndex;
 
 	for (int i = 0; i < p->numClusters; i++) {
@@ -374,20 +396,19 @@ void computeCenters(Params* p) {
 	}
 }
 
-
 /* TBD: Equation 31 */
 int computeGeneralFomula(Params* p) {
-	float numerator;
-	float denominator = 0;
-	float exp = 1;
-	float base;
-	float temp;
+	double numerator;
+	double denominator = 0;
+	double exp = 1;
+	double base;
+	double temp;
 
 	p->newNorm = 0;
 
-	if ((p->fuzziness - 1) > 1) {
-		exp = 1 / (p->fuzziness  - 1);
-	}
+//	if ((p->fuzziness - 1) > 1) {
+//		exp = 1 / (p->fuzziness  - 1);
+//	}
 
 	for (int i = 0; i < p->numEvents; i++) {
 		for (int j = 0; j < p->numClusters; j++) {
@@ -411,7 +432,7 @@ int computeGeneralFomula(Params* p) {
 		}
 	}
 
-	float diff = fabs(p->newNorm - p->oldNorm);
+	double diff = fabs(p->newNorm - p->oldNorm);
 
 	if (diff < p->threshold && p->oldNorm != 0) {
 		return 1;
@@ -422,9 +443,9 @@ int computeGeneralFomula(Params* p) {
 	}
 }
 
-float computeDistance(Params* p, int i, int c) {
-	float sum = 0;
-	float temp;
+double computeDistance(Params* p, int i, int c) {
+	double sum = 0;
+	double temp;
 
 	for (int j = 0; j < p->numDimensions; j++) {
 		temp = p->data[j + i * p->numDimensions] - p->centers[j + c * p->numDimensions];
@@ -438,5 +459,10 @@ void computeMaxLikelihood(Params* p) {
 }
 
 void usage() {
-	cout << "Usage: ./fcmeans <num clusters> <fuzziness> <threshold> <option> <file name>" << endl;
+	cout << "Usage: ./scattermatrix <num clusters> <threshold> <option> <file name>" << endl;
+    cout << "\t" << "option:" << endl;
+    cout << "\t\t" << "1: Adaptive distances" << endl;
+    cout << "\t\t" << "2: Minimum total volume" << endl;
+    cout << "\t\t" << "3: SAND" << endl;
+    cout << "\t\t" << "4: Maximum likelihood" << endl;
 }

@@ -1,5 +1,5 @@
 # change this to your program name
-EXE_NAME = fuzzymatrix
+EXE_NAME = scattermatrix
 # list your object files
 OBJS = fuzzymatrix.o
 CC = g++

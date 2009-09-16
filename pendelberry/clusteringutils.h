@@ -34,39 +34,51 @@ struct Params {
 	int 		numEvents;			// What is this?  Number of points???
 	int 		numDimensions;		// p in the paper.
 	int 		numClusters;		// Set by user.
-	int 		fuzziness;			// User params also.
+	//int 		fuzziness;			// User params also.
 	int 		option;            // Specify which algorithm
-	float 		threshold;			// Epsilon == max acceptable change 
-	float* 		data;				// NxP matrix of point coordinates
-	float* 		centers;			// Nx<numClusters> coords of centers.
-	float* 		membership;			// Px<numclusters> values that tell
+	double 		threshold;			// Epsilon == max acceptable change 
+	double* 		data;				// NxP matrix of point coordinates
+	double* 		centers;			// Nx<numClusters> coords of centers.
+	double* 		membership;			// Px<numclusters> values that tell
 									// how connected each point is to each
 									// cluster center.
-	float*		membership2;		// Copy of membership.
-    float*      scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
+	double*		membership2;		// Copy of membership.
+    double*      scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
 	int*		Ti;					// N data points that are set if a point has any
 									// negative membership.
-    float       newNorm;
-    float       oldNorm;
+    double       newNorm;
+    double       oldNorm;
 };
 
 void 	initRand();
-float 	randFloat();
-float 	randFloatRange(float min, float max);
+double 	randdouble();
+double 	randdoubleRange(double min, double max);
 int 	randInt(int max);
 int 	randIntRange(int min, int max);
 int 	getRandIndex(int w, int h);
 
-bool    contains(Params* p, float points[]);
+bool    contains(Params* p, double points[]);
 void    setCenters(Params* p);
-void    getPoints(Params* p, float points[], int i);
+void    getPoints(Params* p, double points[], int i);
+void    printCenters(Params* p);
 
 void    allocateParamArrays(Params* p);
-void    readData(char* f, Params* p);
+int    readData(char* f, Params* p);
 void    writeData(Params* p, const char* f);
 
-int 		clusterColor(float i, int nc);
+int 		clusterColor(double i, int nc);
 string 	generateOutputFileName(int nc);
+
+void printCenters(Params* p) {
+    for(int c=0;c<p->numClusters;c++) {
+        cout << "Cluster Center #" << c << ": ";
+        for(int d=0; d<p->numDimensions;d++){
+            cout << p->centers[c*p->numDimensions+d] << " ";
+        }
+        cout << endl;
+    }
+    cout << endl;
+}
 
 void initRand() {
 	int seed = (int)time(0) * (int)getpid();
@@ -74,16 +86,16 @@ void initRand() {
 	srand((unsigned) 42);  // 42 ADDED For Repeatability.
 }
 
-float randFloat() {
-	return rand() / (float(RAND_MAX) + 1);
+double randdouble() {
+	return rand() / (double(RAND_MAX) + 1);
 }
 
-float randFloatRange(float min, float max) {
+double randdoubleRange(double min, double max) {
 	if (min > max) {
-		return randFloat() * (min - max) + max;
+		return randdouble() * (min - max) + max;
 	}
 	else {
-		return randFloat() * (max - min) + min;
+		return randdouble() * (max - min) + min;
 	}
 }
 
@@ -106,7 +118,7 @@ int getRandIndex(int w, int h) {
 
 // What does this do?
 // Is it convex hull or the cluster
-bool contains(Params* p, float points[]) {
+bool contains(Params* p, double points[]) {
 	int count = 1;
 
 	for (int i = 0; i < p->numClusters; i++) {
@@ -127,7 +139,7 @@ bool contains(Params* p, float points[]) {
 
 
 // Get the coordinates of a point
-void getPoints(Params* p, float points[], int i) {
+void getPoints(Params* p, double points[], int i) {
 	for (int j = 0; j < p->numDimensions; j++) {
 		points[j] = p->data[j + i * p->numDimensions];
 	}
@@ -136,15 +148,15 @@ void getPoints(Params* p, float points[], int i) {
 // Initializes and allocates memory for all arrays of the Params structure
 // Requires numDimensions, numClusters, numEvents to be defined (by readData)
 void allocateParamArrays(Params* p) {
-    p->centers = new float[p->numClusters*p->numDimensions];
-    p->membership = new float[p->numClusters*p->numEvents];
-    p->membership2 = new float[p->numClusters*p->numEvents];
-    p->scatters = new float[p->numClusters*p->numDimensions*p->numDimensions];
+    p->centers = new double[p->numClusters*p->numDimensions];
+    p->membership = new double[p->numClusters*p->numEvents];
+    p->membership2 = new double[p->numClusters*p->numEvents];
+    p->scatters = new double[p->numClusters*p->numDimensions*p->numDimensions];
     p->Ti = new int[p->numEvents];
 }
 
 // Read in the file named "f"
-void readData(char* f, Params* p) {
+int readData(char* f, Params* p) {
 	string line1;
 	ifstream file(f);			// input file stream
 	vector<string> lines;
@@ -164,7 +176,7 @@ void readData(char* f, Params* p) {
 	}
 	else {
 		cout << "Unable to read the file " << f << endl;
-		return;
+		return -1;
 	}
 
 	line1 = lines[0];
@@ -180,7 +192,7 @@ void readData(char* f, Params* p) {
 	p->numDimensions = dim;
 	p->numEvents = (int)lines.size();
 
-	p->data = (float*)malloc(sizeof(float) * p->numDimensions * p->numEvents);
+	p->data = (double*)malloc(sizeof(double) * p->numDimensions * p->numEvents);
 	temp = strtok((char*)line2.c_str(), " ");
 
 	for (int i = 0; i < p->numEvents; i++) {
@@ -250,7 +262,7 @@ void writeData(Params* p, const char* f) {
 	file.close();
 }
 
-int clusterColor(float i, int nc) {
+int clusterColor(double i, int nc) {
 	return (int)((i / nc) * 256);
 }
 
