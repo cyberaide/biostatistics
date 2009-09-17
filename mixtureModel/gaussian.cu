@@ -361,6 +361,8 @@ main( int argc, char** argv) {
                     num_clusters--;
                 }
             }
+            min_c1 = 0;
+            min_c2 = 1;
             DEBUG("Number of non-empty clusters: %d\n",num_clusters); 
             // For all combinations of subclasses...
             for(int c1=0; c1<num_clusters;c1++) {
@@ -448,18 +450,37 @@ main( int argc, char** argv) {
 
     // Print the clusters with the lowest rissanen score to the console and output file
     for(int c=0; c<ideal_num_clusters; c++) {
+        if(saved_clusters[c].N == 0.0) {
+            continue;
+        }
         if(ENABLE_PRINT) {
             // Output the final cluster stats to the console
-            PRINT("-----------------------    Cluster #%d  ------------------------------\n",c);
+            PRINT("Cluster #%d\n",c);
             printCluster(&(saved_clusters[c]),num_dimensions);
             PRINT("\n\n");
         }
 
         // Output the final cluster stats to the output file        
-        fprintf(outf,"-----------------------    Cluster #%d  ------------------------------\n",c);
+        fprintf(outf,"Cluster #%d\n",c);
         writeCluster(outf,&(saved_clusters[c]),num_dimensions);
         fprintf(outf,"\n\n");
     }
+    
+    // Print profiling information
+    printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
+    printf("      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
+    printf("     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    printf(" Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    printf("   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
+    printf("GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
+   
+    // Write profiling info to summary file
+    fprintf(outf,"Program Component\tTotal\tIters\tTime Per Iteration\n");
+    fprintf(outf,"      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
+    fprintf(outf,"     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    fprintf(outf," Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    fprintf(outf,"   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
+    fprintf(outf,"GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
     fclose(outf);
     
     
@@ -480,14 +501,7 @@ main( int argc, char** argv) {
     }
     
     
-    // Print profiling information
-    printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
-    printf("      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    printf("     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    printf(" Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
-    printf("   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
-    printf("GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
-    
+ 
     // cleanup memory
     free(fcs_data);
     for(int i=0; i<original_num_clusters; i++) {
@@ -554,12 +568,12 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
         } 
         
         // parse outfile
-        FILE* outfile = fopen(argv[3],"w");
-        if(!outfile) {
-            printf("Unable to create output file.\n\n");
-            printUsage(argv);
-            return 3;
-        }        
+        //FILE* outfile = fopen(argv[3],"w");
+        //if(!outfile) {
+        //    printf("Unable to create output file.\n\n");
+        //    printUsage(argv);
+        //    return 3;
+        //}        
         // parse target_num_clusters
         if(argc == 5) {
             if(!sscanf(argv[4],"%d",target_num_clusters)) {
@@ -578,7 +592,7 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
         
         // Clean up so the EPA is happy
         fclose(infile);
-        fclose(outfile);
+        //fclose(outfile);
         return 0;
     } else {
         printUsage(argv);

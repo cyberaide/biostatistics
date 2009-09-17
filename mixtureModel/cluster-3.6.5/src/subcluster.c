@@ -36,8 +36,9 @@
 #include "subcluster.h"
 #include "alloc_util.h"
 #include "clust_util.h"
+#include <time.h>
 
-#define VERBOSE 0
+#define VERBOSE 1
 
 
 
@@ -314,6 +315,10 @@ static double refine_clusters(
      double rissanen_const;
      double change,ll_new,ll_old;
      double epsilon;
+     clock_t time_start1;
+     clock_t time_finish1;
+     clock_t time_start2;
+     clock_t time_finish2;
 
      /* compute number of parameters per cluster */
      nparams_clust = 1+nbands+0.5*(nbands+1)*nbands;
@@ -333,11 +338,19 @@ static double refine_clusters(
      change = 2*epsilon;
      do {
        ll_old = ll_new;
-       reestimate(Sig,nbands,Rmin,option);
 
+       time_start1 = clock();
+       reestimate(Sig,nbands,Rmin,option);
+       time_finish1 = clock();
+
+       time_start2 = clock();
        ll_new = regroup(Sig,nbands);
+       time_finish2 = clock();
+
        change = ll_new-ll_old;
        if(VERBOSE) {
+           printf("\nReestimate time per iteration: %0.2f\n",((double)(time_finish1-time_start1))/((double)CLOCKS_PER_SEC));
+           printf("\nRegroup time per iteration: %0.2f\n",((double)(time_finish2-time_start2))/((double)CLOCKS_PER_SEC));
            printf("New LL: %f\tOld LL: %f\tLikelihood change: %f\n",ll_new,ll_old,change);
        }
        repeat = change>epsilon;

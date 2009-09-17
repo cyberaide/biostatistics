@@ -48,11 +48,11 @@ float* readData(char* f, int* ndims, int* nevents) {
         line1 = lines[0];
         string line2 (line1.begin(), line1.end());
 
-        temp = strtok((char*)line1.c_str(), " ");
+        temp = strtok((char*)line1.c_str(), ",");
 
         while(temp != NULL) {
             num_dims++;
-            temp = strtok(NULL, " ");
+            temp = strtok(NULL, ",");
         }
 
         int num_events = (int)lines.size();
@@ -65,7 +65,7 @@ float* readData(char* f, int* ndims, int* nevents) {
         }
 
         for (int i = 0; i < num_events; i++) {
-            temp = strtok((char*)lines[i].c_str(), " ");
+            temp = strtok((char*)lines[i].c_str(), ",");
 
             for (int j = 0; j < num_dims; j++) {
                 if(temp == NULL) {
@@ -73,7 +73,7 @@ float* readData(char* f, int* ndims, int* nevents) {
                     return NULL;
                 }
                 data[i * num_dims + j] = atof(temp);
-                temp = strtok(NULL, " ");
+                temp = strtok(NULL, ",");
             }
         }
 

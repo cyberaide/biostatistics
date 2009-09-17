@@ -123,7 +123,7 @@ __device__ void invert(float* data, int actualsize, float* determinant)  {
     int n = actualsize;
     
     if(threadIdx.x == 0) {
-        *determinant = 1.0;
+        *determinant = 0.0;
 
 #if EMU
             EMUPRINT("\n\nR matrix before inversion:\n");
@@ -156,7 +156,7 @@ __device__ void invert(float* data, int actualsize, float* determinant)  {
         }
         
         for(int i=0; i<actualsize; i++) {
-            *determinant *= data[i*n+i];
+            *determinant += logf(data[i*n+i]);
         }
 #if EMU
             EMUPRINT("Determinant: %E\n",*determinant);
@@ -234,7 +234,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     
     __shared__ float determinant_arg;
     
-    float determinant;
+    float log_determinant;
     
     __shared__ float matrix[NUM_DIMENSIONS*NUM_DIMENSIONS];
     
@@ -251,7 +251,7 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
 
         __syncthreads(); 
         
-        determinant = determinant_arg;
+        log_determinant = determinant_arg;
         
         // Copy the matrx from shared memory back into the cluster memory
         for(int i=tid; i<num_elements; i+= num_threads) {
@@ -262,8 +262,8 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
         
         // Compute the constant
         if(tid == 0) {
-            determinant = fabs(determinant);
-            clusters[c].constant = -num_dimensions*0.5*logf(2*PI) - 0.5*logf(determinant);
+            //determinant = fabs(determinant);
+            clusters[c].constant = -num_dimensions*0.5*logf(2*PI) - 0.5*log_determinant;
         }
     }
 }

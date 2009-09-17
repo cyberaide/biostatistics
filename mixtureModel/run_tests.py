@@ -38,11 +38,13 @@ def generate_pdf(name,num,means,covs):
     out = pstdout.read()
     print out
     
-def combine_pdfs(pdfs):
+def combine_pdfs(pdfs,name=None):
     files = [open(f,"r") for f in pdfs]
     num_dimensions = len(files[0].next().split())
     files[0].seek(0)
-    outf = open('combo.d%d.space' % num_dimensions,'w')
+    if not name:
+        name = 'combo.d%d_%dcluster.space' % (num_dimensions,len(pdfs))
+    outf = open(name,'w')
     for f in files:
         outf.write(f.read())
         f.close()
@@ -54,19 +56,62 @@ def diag_matrix(n):
         m[i][i] = 1
     return m
 
-# Create 7 2-D PDFs w/ 100,000 events each        
-generate_pdf("pdf.d2a.space",10**5,[1,2],[[1,0.9],[0.9,1]])
-generate_pdf("pdf.d2b.space",10**5,[3,4],[[1,0.8],[0.8,1]])
-generate_pdf("pdf.d2c.space",10**5,[5,6],[[1,0.7],[0.7,1]])
-generate_pdf("pdf.d2d.space",10**5,[7,8],[[1,0.6],[0.6,1]])
-generate_pdf("pdf.d2e.space",10**5,[9,10],[[1,0.5],[0.5,1]])
-generate_pdf("pdf.d2f.space",10**5,[11,12],[[1,0.4],[0.4,1]])
-generate_pdf("pdf.d2g.space",10**5,[13,14],[[1,0.3],[0.3,1]])
-combine_pdfs(["pdf.d2a.space","pdf.d2b.space","pdf.d2c.space","pdf.d2d.space","pdf.d2e.space","pdf.d2f.space","pdf.d2g.space"])
+def generate_testdata():
+    # Create 10 16-D PDFs w/ 10,000 events each        
+    generate_pdf("pdf.d16a.space",10**4,[i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16b.space",10**4,[2*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16c.space",10**4,[-i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16d.space",10**4,[-2*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16e.space",10**4,[3*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16f.space",10**4,[-3*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16g.space",10**4,[0.5*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16h.space",10**4,[-0.5*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16i.space",10**4,[5*i for i in range(16)],diag_matrix(16))
+    generate_pdf("pdf.d16j.space",10**4,[-5*i for i in range(16)],diag_matrix(16))
+    combine_pdfs(["pdf.d16a.space","pdf.d16b.space","pdf.d16c.space","pdf.d16d.space","pdf.d16e.space","pdf.d16f.space","pdf.d16g.space","pdf.d16h.space","pdf.d16i.space","pdf.d16j.space"])
 
-# Create 4 20-D PDFs w/ 25,000 events each
-generate_pdf("pdf.d16a.space",25000,range(16),diag_matrix(16))
-generate_pdf("pdf.d16b.space",25000,[2*i for i in range(16)],diag_matrix(16))
-generate_pdf("pdf.d16c.space",25000,[-1*i for i in range(16)],diag_matrix(16))
-generate_pdf("pdf.d16d.space",25000,[-2*i for i in range(16)],diag_matrix(16))
-combine_pdfs(["pdf.d16a.space","pdf.d16b.space","pdf.d16c.space","pdf.d16d.space"])
+    generate_pdf("pdf.d21a_100_event.space",100,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_100_event.space",100,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_100_event.space","pdf.d21b_100_event.space"],"combo.d21_2cluster_200event.space")
+
+    generate_pdf("pdf.d21a_1k_event.space",1000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_1k_event.space",1000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_1k_event.space","pdf.d21b_1k_event.space"],"combo.d21_2cluster_2kevent.space")
+
+    generate_pdf("pdf.d21a_10k_event.space",10000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_10k_event.space",10000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_10k_event.space","pdf.d21b_10k_event.space"],"combo.d21_2cluster_20kevent.space")
+
+    generate_pdf("pdf.d21a_50k_event.space",50000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_50k_event.space",50000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_50k_event.space","pdf.d21b_50k_event.space"],"combo.d21_2cluster_100kevent.space")
+
+    generate_pdf("pdf.d21a_100k_event.space",100000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_100k_event.space",100000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_100k_event.space","pdf.d21b_100k_event.space"],"combo.d21_2cluster_200kevent.space")
+
+    generate_pdf("pdf.d21a_250k_event.space",250000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_250k_event.space",250000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_250k_event.space","pdf.d21b_250k_event.space"],"combo.d21_2cluster_500kevent.space")
+
+    generate_pdf("pdf.d21a_500k_event.space",500000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_500k_event.space",500000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_500k_event.space","pdf.d21b_500k_event.space"],"combo.d21_2cluster_1kkevent.space")
+
+    generate_pdf("pdf.d21a_1kk_event.space",1000000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_1kk_event.space",1000000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_1kk_event.space","pdf.d21b_1kk_event.space"],"combo.d21_2cluster_2kkevent.space")
+
+    generate_pdf("pdf.d21a_2kk_event.space",2000000,range(21),diag_matrix(21))
+    generate_pdf("pdf.d21b_2kk_event.space",2000000,list(reversed(range(21))),diag_matrix(21))
+    combine_pdfs(["pdf.d21a_2kk_event.space","pdf.d21b_2kk_event.space"],"combo.d21_2cluster_4kkevent.space")
+
+if __name__ == '__main__':
+    generate_pdf("simple2d_cluster1.space",200,[2.0,2.0],[[1,0.1],[0.1,1.0]])
+    generate_pdf("simple2d_cluster2.space",200,[-2.0,-2.0],[[1,-0.1],[-0.1,1.0]])
+    generate_pdf("simple2d_cluster3.space",100,[5.5,2.0],[[1,0.2],[0.2,0.5]])
+    combine_pdfs(["simple2d_cluster1.space","simple2d_cluster2.space","simple2d_cluster3.space"])
+    #test_files = ['combo.d21_2cluster_2kevent.space','combo.d21_2cluster_20kevent.space','combo.d21_2cluster_100kevent.space','combo.d21_2cluster_200kevent.space','combo.d21_2cluster_500kevent.space','combo.d21_2cluster_1kkevent.space','combo.d21_2cluster_2kkevent.space']
+    #import os
+    #for test in test_files:
+        #os.system('time ./emubin/gaussian 20 %s output' % test)
