@@ -212,6 +212,7 @@ main( int argc, char** argv) {
     //int ndata_points = num_events*num_dimensions;
     float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
     float likelihood, old_likelihood;
+    int iters;
     
     DEBUG("Gaussian.cu: epsilon = %f\n",epsilon);
 
@@ -256,10 +257,11 @@ main( int argc, char** argv) {
         float change = epsilon*2;
         
         PRINT("Performing EM algorithm on %d clusters.\n",num_clusters);
+        iters = 0;
         // This is the iterative loop for the EM algorithm.
         // It re-estimates parameters, re-computes constants, and then regroups the events
         // These steps keep repeating until the change in likelihood is less than some epsilon        
-        while(fabs(change) > epsilon) {
+        while(fabs(change) > epsilon && iters < MAX_ITERS) {
             old_likelihood = likelihood;
             
             DEBUG("Invoking reestimate_parameters kernel...",num_threads);
@@ -308,6 +310,8 @@ main( int argc, char** argv) {
             change = likelihood - old_likelihood;
             DEBUG("likelihood = %f\n",likelihood);
             DEBUG("Change in likelihood: %f\n",change);
+
+            iters++;
         }
         
         // copy clusters from the device
