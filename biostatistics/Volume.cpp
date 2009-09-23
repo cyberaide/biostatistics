@@ -168,24 +168,33 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
     
 
     for(int i = 0; i < NUM_EVENTS; i++){
-        for(int j = 0; j < ALL_DIMENSIONS; j++){
-            myfile << events[i*ALL_DIMENSIONS + j] << "\t";
+        for(int j = 0; j < ALL_DIMENSIONS-1; j++){
+            myfile << events[i*ALL_DIMENSIONS + j] << ",";
         }
-        for(int j = 0; j < count; j++){
-            myfile << MembershipValueReduced(clusters, events, j, i, count) << "\t"; 
+        myfile << events[i*ALL_DIMENSIONS + ALL_DIMENSIONS - 1];
+        myfile << "\t";
+        for(int j = 0; j < count-1; j++){
+            myfile << MembershipValueReduced(clusters, events, j, i, count) << ","; 
         }
+        myfile << MembershipValueReduced(clusters, events, count-1, i, count);
         myfile << endl;
         
     }
     for(int i = 0; i < count; i++){
-        for(int j = 0; j < ALL_DIMENSIONS; j++){
-            myfile << clusters[i*ALL_DIMENSIONS + j] << "\t";
+        for(int j = 0; j < ALL_DIMENSIONS-1; j++){
+            myfile << clusters[i*ALL_DIMENSIONS + j] << ",";
         }
+        myfile << clusters[i*ALL_DIMENSIONS+ALL_DIMENSIONS-1];
+        myfile << "\t";
         for(int j = 0; j < count; j++){
             if(j == i)
-                myfile << 1 << "\t"; 
+                myfile << 1; 
             else
-                myfile << 0 << "\t";
+                myfile << 0;
+
+            if(j < (count-1)) {
+                myfile << ",";
+            }
         }
         myfile << endl;
     }
