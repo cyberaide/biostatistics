@@ -1,8 +1,3 @@
-/********************************************************************
-*  sample.cu
-*  This is a example of the CUDA program.
-*********************************************************************/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <cuda_runtime.h>
@@ -408,18 +403,18 @@ float* ParseSampleInput(const char* filename){
 
     for(int i = 0; i < NUM_EVENTS; i++){
         fgets(myline, 1024, myfile);
-        retVal[i*ALL_DIMENSIONS] = (float)atof(strtok(myline, " "));
+        retVal[i*ALL_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
         for(int j = 1; j < ALL_DIMENSIONS; j++){
-            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, " "));
+            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
         }
     }
 #else
     fgets(myline, 1024, myfile);
     for(int i = 0; i < NUM_EVENTS; i++){
         fgets(myline, 1024, myfile);
-        strtok(myline, " ");
+        strtok(myline, DELIMITER);
         for(int j = 0; j < ALL_DIMENSIONS; j++){
-            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, " "));
+            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
         }
     }
 #endif
