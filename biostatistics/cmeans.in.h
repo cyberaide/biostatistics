@@ -16,6 +16,9 @@
 // number of elements
 #define NUM_EVENTS VALUE
 
+// input file delimiter (normally " " or "," or "\t")
+#define DELIMITER ","
+
 // Parameters
 #define FUZZINESS VALUE
 #define THRESHOLD VALUE
