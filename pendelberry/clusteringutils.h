@@ -31,31 +31,41 @@
 using namespace std;
 
 struct Params {
-	int 		numEvents;			// What is this?  Number of points???
-	int 		numDimensions;		// p in the paper.
-	int 		numClusters;		// Set by user.
-	//int 		fuzziness;			// User params also.
-	int 		option;            // Specify which algorithm
-	double 		threshold;			// Epsilon == max acceptable change 
-	double* 		data;				// NxP matrix of point coordinates
-	double* 		centers;			// Nx<numClusters> coords of centers.
-	double* 		membership;			// Px<numclusters> values that tell
-									// how connected each point is to each
-									// cluster center.
-	double*		membership2;		// Copy of membership.
-    double*      scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
-	int*		Ti;					// N data points that are set if a point has any
-									// negative membership.
+    int         numEvents;          // What is this?  Number of points???
+    int         numDimensions;      // p in the paper.
+    int         numClusters;        // Set by user.
+    //int       fuzziness;          // User params also.
+    int         option;            // Specify which algorithm
+    double      threshold;          // Epsilon == max acceptable change 
+    double*     data;               // NxP matrix of point coordinates
+    double*     centers;            // Nx<numClusters> coords of centers.
+    double*     membership;         // Px<numclusters> values that tell
+                                    // how connected each point is to each
+                                    // cluster center.
+    double*     membership2;        // Copy of membership.
+    double*     scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
+    double*     scatter_inverses;    // Inver of all scatter matrices
+    int*        Ti;                 // N data points that are set if a point has any
+                                    // negative membership.
     double       newNorm;
     double       oldNorm;
+    
+    double*     n;                   // effective size of each cluster (sum of fuzzy memberships for that cluster)
+    double*     A_t;                // Used for eqn (31)
+    
+    double*      determinants;       // determinants of scatter matrices 
+    //double*      means              // multidimensional mean for every cluster
+    
+    double      beta;
+    double      tau;
 };
 
-void 	initRand();
-double 	randdouble();
-double 	randdoubleRange(double min, double max);
-int 	randInt(int max);
-int 	randIntRange(int min, int max);
-int 	getRandIndex(int w, int h);
+void    initRand();
+double  randdouble();
+double  randdoubleRange(double min, double max);
+int     randInt(int max);
+int     randIntRange(int min, int max);
+int     getRandIndex(int w, int h);
 
 bool    contains(Params* p, double points[]);
 void    setCenters(Params* p);
@@ -66,8 +76,8 @@ void    allocateParamArrays(Params* p);
 int    readData(char* f, Params* p);
 void    writeData(Params* p, const char* f);
 
-int 		clusterColor(double i, int nc);
-string 	generateOutputFileName(int nc);
+int     clusterColor(double i, int nc);
+string  generateOutputFileName(int nc);
 
 void printCenters(Params* p) {
     for(int c=0;c<p->numClusters;c++) {
@@ -81,68 +91,68 @@ void printCenters(Params* p) {
 }
 
 void initRand() {
-	int seed = (int)time(0) * (int)getpid();
-	// srand((unsigned)seed);	// REMOVED for testing
-	srand((unsigned) 42);  // 42 ADDED For Repeatability.
+    int seed = (int)time(0) * (int)getpid();
+    // srand((unsigned)seed);   // REMOVED for testing
+    srand((unsigned) 42);  // 42 ADDED For Repeatability.
 }
 
 double randdouble() {
-	return rand() / (double(RAND_MAX) + 1);
+    return rand() / (double(RAND_MAX) + 1);
 }
 
 double randdoubleRange(double min, double max) {
-	if (min > max) {
-		return randdouble() * (min - max) + max;
-	}
-	else {
-		return randdouble() * (max - min) + min;
-	}
+    if (min > max) {
+        return randdouble() * (min - max) + max;
+    }
+    else {
+        return randdouble() * (max - min) + min;
+    }
 }
 
 int randInt(int max) {
-	return int(rand() % max) + 1;
+    return int(rand() % max) + 1;
 }
 
 int randIntRange(int min, int max) {
-	if (min > max) {
-		return max + int(rand() % (min - max));
-	}
-	else {
-		return min + int(rand() % (max - min));
-	}
+    if (min > max) {
+        return max + int(rand() % (min - max));
+    }
+    else {
+        return min + int(rand() % (max - min));
+    }
 }
 
 int getRandIndex(int w, int h) {
-	return (randIntRange(0, w) - 1) + (randIntRange(0, h) - 1) * w;
+    return (randIntRange(0, w) - 1) + (randIntRange(0, h) - 1) * w;
 }
 
 // What does this do?
 // Is it convex hull or the cluster
 bool contains(Params* p, double points[]) {
-	int count = 1;
+    int count = 1;
 
-	for (int i = 0; i < p->numClusters; i++) {
-		for (int j = 0; j < p->numDimensions; j++) {
-			if (p->centers[j + i * p->numDimensions] == points[j]) {
-				count++;
-			}
-		}
-	}
+    for (int i = 0; i < p->numClusters; i++) {
+        for (int j = 0; j < p->numDimensions; j++) {
+            if (p->centers[j + i * p->numDimensions] == points[j]) {
+                count++;
+            }
+        }
+    }
 
-	if (count == p->numDimensions) {
-		return true;
-	}
-	else {
-		return false;
-	}
+    if (count == p->numDimensions) {
+        return true;
+    }
+    else {
+        return false;
+    }
 }
 
 
 // Get the coordinates of a point
 void getPoints(Params* p, double points[], int i) {
-	for (int j = 0; j < p->numDimensions; j++) {
-		points[j] = p->data[j + i * p->numDimensions];
-	}
+    for (int j = 0; j < p->numDimensions; j++) {
+        points[j] = p->data[j + i * p->numDimensions];
+    }
 }
 
 // Initializes and allocates memory for all arrays of the Params structure
@@ -152,157 +162,161 @@ void allocateParamArrays(Params* p) {
     p->membership = new double[p->numClusters*p->numEvents];
     p->membership2 = new double[p->numClusters*p->numEvents];
     p->scatters = new double[p->numClusters*p->numDimensions*p->numDimensions];
+    p->scatter_inverses = new double[p->numClusters*p->numDimensions*p->numDimensions];
     p->Ti = new int[p->numEvents];
+    p->n = new double[p->numClusters];
+    p->A_t = new double[p->numClusters];
+    //p->means = new double[p->numClusters*p->numDimensions];
 }
 
 // Read in the file named "f"
 int readData(char* f, Params* p) {
-	string line1;
-	ifstream file(f);			// input file stream
-	vector<string> lines;
-	int dim = 0;
-	char* temp;
+    string line1;
+    ifstream file(f);           // input file stream
+    vector<string> lines;
+    int dim = 0;
+    char* temp;
 
-	if (file.is_open()) {
-		while(!file.eof()) {
-			getline(file, line1);
+    if (file.is_open()) {
+        while(!file.eof()) {
+            getline(file, line1);
 
-			if (!line1.empty()) {
-				lines.push_back(line1);
-			}
-		}
+            if (!line1.empty()) {
+                lines.push_back(line1);
+            }
+        }
 
-		file.close();
-	}
-	else {
-		cout << "Unable to read the file " << f << endl;
-		return -1;
-	}
+        file.close();
+    }
+    else {
+        cout << "Unable to read the file " << f << endl;
+        return -1;
+    }
 
-	line1 = lines[0];
-	string line2 (line1.begin(), line1.end());
+    line1 = lines[0];
+    string line2 (line1.begin(), line1.end());
 
-	temp = strtok((char*)line1.c_str(), " ");
+    temp = strtok((char*)line1.c_str(), " ");
 
-	while(temp != NULL) {
-		dim++;
-		temp = strtok(NULL, " ");
-	}
+    while(temp != NULL) {
+        dim++;
+        temp = strtok(NULL, " ");
+    }
 
-	p->numDimensions = dim;
-	p->numEvents = (int)lines.size();
+    p->numDimensions = dim;
+    p->numEvents = (int)lines.size();
 
-	p->data = (double*)malloc(sizeof(double) * p->numDimensions * p->numEvents);
-	temp = strtok((char*)line2.c_str(), " ");
+    p->data = (double*)malloc(sizeof(double) * p->numDimensions * p->numEvents);
+    temp = strtok((char*)line2.c_str(), " ");
 
-	for (int i = 0; i < p->numEvents; i++) {
-		if (i != 0) {
-			temp = strtok((char*)lines[i].c_str(), " ");
-		}
+    for (int i = 0; i < p->numEvents; i++) {
+        if (i != 0) {
+            temp = strtok((char*)lines[i].c_str(), " ");
+        }
 
-		for (int j = 0; j < p->numDimensions && temp != NULL; j++) {
-			p->data[j + i * p->numDimensions] = atof(temp);
-			temp = strtok(NULL, " ");
-		}
-	}
+        for (int j = 0; j < p->numDimensions && temp != NULL; j++) {
+            p->data[j + i * p->numDimensions] = atof(temp);
+            temp = strtok(NULL, " ");
+        }
+    }
 }
 
 void writeData(Params* p, const char* f) {
-	ofstream file;
-	int precision = 5;
+    ofstream file;
+    int precision = 5;
 
-	file.open(f);
+    file.open(f);
 
-	file << "Data: last " << p->numClusters << " columns indicate cluster membership." << endl << endl;
+    file << "Data: last " << p->numClusters << " columns indicate cluster membership." << endl << endl;
 
-	for (int i = 0; i < p->numEvents; i++) {
-		for (int j = 0; j < p->numDimensions; j++) {
-			file << fixed << setprecision(precision) << p->data[j + i * p->numDimensions] << " ";
-		}
+    for (int i = 0; i < p->numEvents; i++) {
+        for (int j = 0; j < p->numDimensions; j++) {
+            file << fixed << setprecision(precision) << p->data[j + i * p->numDimensions] << " ";
+        }
 
-		for (int j = 0; j < p->numClusters; j++) {
-			file << fixed << setprecision(precision) << p->membership[j + i * p->numClusters] << " ";
-		}
+        for (int j = 0; j < p->numClusters; j++) {
+            file << fixed << setprecision(precision) << p->membership[j + i * p->numClusters] << " ";
+        }
 
-		file << endl;
-	}
+        file << endl;
+    }
 
-	//int identity[p->numClusters][p->numClusters];
-	int **identity = new int*[p->numClusters];
-	for(int i = 0; i < p->numClusters; i++)
-	{
+    //int identity[p->numClusters][p->numClusters];
+    int **identity = new int*[p->numClusters];
+    for(int i = 0; i < p->numClusters; i++)
+    {
        identity[i] = new int[p->numClusters];
-	}
+    }
 
-	for (int i = 0; i < p->numClusters; i++) {
-		for (int j = 0; j < p->numClusters; j++) {
-			if (i == j) {
-				identity[i][j] = 1;
-			}
-			else {
-				identity[i][j] = 0;
-			}
-		}
-	}
+    for (int i = 0; i < p->numClusters; i++) {
+        for (int j = 0; j < p->numClusters; j++) {
+            if (i == j) {
+                identity[i][j] = 1;
+            }
+            else {
+                identity[i][j] = 0;
+            }
+        }
+    }
 
-	file << endl << "Cluster Centers: last " << p->numClusters << " columns is the identity matrix." << endl << endl;
+    file << endl << "Cluster Centers: last " << p->numClusters << " columns is the identity matrix." << endl << endl;
 
-	for (int i = 0; i < p->numClusters; i++) {
-		for (int j = 0; j < p->numDimensions; j++) {
-			file << fixed << setprecision(precision) << p->centers[j + i * p->numDimensions] << " ";
-		}
+    for (int i = 0; i < p->numClusters; i++) {
+        for (int j = 0; j < p->numDimensions; j++) {
+            file << fixed << setprecision(precision) << p->centers[j + i * p->numDimensions] << " ";
+        }
 
-		for (int j = 0; j < p->numClusters; j++) {
-			file << identity[i][j] << " ";
+        for (int j = 0; j < p->numClusters; j++) {
+            file << identity[i][j] << " ";
 
-		}
-		file << endl;
-	}
+        }
+        file << endl;
+    }
 
-	file.close();
+    file.close();
 }
 
 int clusterColor(double i, int nc) {
-	return (int)((i / nc) * 256);
+    return (int)((i / nc) * 256);
 }
 
 string generateOutputFileName(int nc) {
-	string output;
-	time_t rawtime;
-	struct tm *timeinfo;
-	int i;
-	char ch[50];
+    string output;
+    time_t rawtime;
+    struct tm *timeinfo;
+    int i;
+    char ch[50];
 
-	output = "../../../output/output";
-	//output = "../output/output";
+    output = "../../../output/output";
+    //output = "../output/output";
 
-	time(&rawtime);
-	timeinfo = localtime(&rawtime);
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
 
-	i = 1 + timeinfo->tm_mon;
-	sprintf(ch, "-%d", i);
-	output.append(ch);
+    i = 1 + timeinfo->tm_mon;
+    sprintf(ch, "-%d", i);
+    output.append(ch);
 
-	i = timeinfo->tm_mday;
-	sprintf(ch, "-%d", i);
-	output.append(ch);
+    i = timeinfo->tm_mday;
+    sprintf(ch, "-%d", i);
+    output.append(ch);
 
-	i = 1900 + timeinfo->tm_year;
-	sprintf(ch, "-%d", i);
-	output.append(ch);
+    i = 1900 + timeinfo->tm_year;
+    sprintf(ch, "-%d", i);
+    output.append(ch);
 
-	i = timeinfo->tm_hour;
-	sprintf(ch, "-%d", i);
-	output.append(ch);
+    i = timeinfo->tm_hour;
+    sprintf(ch, "-%d", i);
+    output.append(ch);
 
-	i = timeinfo->tm_min;
-	sprintf(ch, "-%d", i);
-	output.append(ch);
+    i = timeinfo->tm_min;
+    sprintf(ch, "-%d", i);
+    output.append(ch);
 
-	sprintf(ch, "_%d.dat", nc);
-	output.append(ch);
+    sprintf(ch, "_%d.dat", nc);
+    output.append(ch);
 
-	return output;
+    return output;
 }
 
 

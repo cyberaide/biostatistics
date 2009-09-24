@@ -14,7 +14,8 @@ void  fcSmatrix(Params* p);
 void  computeCenters(Params* p);
 double computeDistance(Params* p, int i, int c);
 void  computeMaxLikelihood(Params* p); //not really a void -- sets Ti (i) to 0 or returns the Event
-void  computeGeneralFormula(Params* p, double beta, double tau, const int THETA); //not really a void -- sets Ti (i) to 0 or returns the  Event
+void  computeGeneralFormula(Params* p); //not really a void -- sets Ti (i) to 0 or returns the  Event
+void compute_A_general(Params* p);
 
 
 // REFERENCE COPY OF STRUCTURE:
@@ -91,6 +92,7 @@ void setScatterMatrices(Params* p)
 		for (int dim_id = 0; dim_id < p->numDimensions; dim_id++)
 		{
 			avgs[dim_id] = total[dim_id] / p->numEvents;
+            //p->means[t*p->numDimensions+dim_id];
 		}
 
 		// For each Event:
@@ -111,14 +113,76 @@ void setScatterMatrices(Params* p)
 				double denominator = 0;
 				for (int event_id = 0; event_id < p->numEvents; event_id++)
 				{
-					denominator = denominator + p->membership[t*p->numEvents+event_id];
+					denominator += p->membership[t*p->numEvents+event_id];
 				}
+				
+				// denominator is n_t
+                p->n[t] = denominator;
 
 				p->scatters[t*p->numClusters*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
 			}
 		}
 	}
+	
+	// compute scatter_inverses
+	// TODO	
+		
+	// compute determinants |S_t|
+	// TODO
+	
+	// compute A_t
+    compute_A_general(p);
 }
+
+double dotProduct(double* a, double* b, int n) {
+    double dp = 0.0;
+    for(int i=0; i<n; i++) {
+        dp += a[i]*b[i];
+    }
+    return dp;
+}
+
+double compute_B_general(Params* p, int i, int t) {
+    double n_t = p->n[t];
+    double det_S_t = p->determinants[t];
+    
+    // All the scalar stuff on left size of matrix multiplication
+    double constant = pow(n_t,p->numDimensions*p->beta - p->tau-1.0)*THETA*pow(det_S_t,p->beta);
+
+    // Temp vector for (x_i - u_t)
+    double* difference = new double[p->numDimensions];
+    for(int j=0; j< p->numDimensions; j++) {
+        difference[j] = p->data[i*p->numDimensions+j] - p->centers[t*p->numDimensions+j];
+    }
+    
+    // Temp matrix for matrix mult of (x_i - u_t)*(S_t_inv)
+    double* temp = new double[p->numDimensions];
+    
+    for(int j=0; j < p->numDimensions; j++) {
+        // NOTE: Not sure about the apersand..might need to just do point arithmetic to get the double* instead of double
+        temp[j] = dotProduct(difference,&(p->scatter_inverses[t*p->numDimensions*p->numDimensions+j*p->numDimensions]),p->numDimensions);
+    }
+    
+    double mult_result = dotProduct(temp,difference,p->numDimensions);
+    
+    return constant*mult_result;
+}
+
+double compute_B_maxlikelihood() {
+    
+}
+
+void compute_A_general(Params* p) {
+    for(int t=0; t < p->numClusters; t++) {
+        double constant = pow(p->n[t],p->numDimensions*p->beta - p->tau-1.0)*THETA*pow(p->determinants[t],p->beta);
+        p->A_t[t] = 0.5*p->tau/p->beta*constant;
+    }
+}
+
+void compute_A_maxlikelihood() {
+    
+}
+
 
 /*******************************************************************************
  *
@@ -128,9 +192,8 @@ void setScatterMatrices(Params* p)
  *
  *******************************************************************************/
 // TODO
-void computeGeneralFormula_eq31(Params* p, double beta, double tau, double THETA)
+void computeGeneralFormula_eq31(Params* p)
 {
-    // B(ir), as per equation 27
 }
 	
 
@@ -223,30 +286,6 @@ void fuzzySmatrix(Params* p)
 
     	    // switch (p->options)                  /* select the type of calculation */
     		// pDimensions is the number of dimensions
-            double beta,tau;
-        
-    		switch (p->option) 
-    		{
-    			case 1:
-    				beta = 1.0/p->numDimensions;
-    				tau  = 0.0;
-    				break;
-    			case 2:
-    				beta =1.0;
-    				tau =0.0;
-    				break;
-    			case 3:
-    				beta =1.0;
-    				tau =0.0;
-    				break;
-    			case 4:
-    				beta = 999.0;
-    				tau = 0.0;
-    				break;
-    			// catch all for bad option
-    			default: cout << "Invalid option selected" << endl;
-                exit(1);
-    		}
 
     		// SWITCH BASED ON WHICH ALGORITHM TO USE:
 		
@@ -260,7 +299,7 @@ void fuzzySmatrix(Params* p)
     		// THIS IS EQUATION (31)....
     		// TODO: AAA
 		
-    		computeGeneralFormula_eq31(p, beta, tau, THETA);
+    		computeGeneralFormula_eq31(p);
 
     		// Total up all values of "any_Ti_set".
     		// If the sum is non-zero, then one of them is set,
@@ -362,6 +401,28 @@ int main(int argc, char** argv)
 	// Initializes and allocates arrays in the struct
     allocateParamArrays(params);
     
+	switch (params->option) 
+	{
+		case 1:
+			params->beta = 1.0/params->numDimensions;
+			params->tau  = 0.0;
+			break;
+		case 2:
+			params->beta = 0.5;
+			params->tau = params->numDimensions / 2.0;
+			break;
+		case 3:
+			params->beta = 1.0/params->numDimensions;
+			params->tau = 1.0;
+			break;
+		case 4:
+		    // maximimum likelihood
+            break;
+		// catch all for bad option
+		default: cout << "Invalid option selected" << endl;
+        exit(1);
+	}
+	    
     cout << "Starting Scatter matrices" << endl;
 	fuzzySmatrix( params ) ;
 }
