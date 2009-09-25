@@ -93,8 +93,8 @@ void printCenters(Params* p) {
 
 void initRand() {
     //int seed = (int)time(0) * (int)getpid();
-    // srand((unsigned)seed);   // REMOVED for testing
-    srand((unsigned) 42);  // 42 ADDED For Repeatability.
+    srand((int)getpid());   // REMOVED for testing
+    //srand((unsigned) 42);  // 42 ADDED For Repeatability.
 }
 
 double randdouble() {
@@ -226,57 +226,49 @@ int readData(char* f, Params* p) {
 
 void writeData(Params* p, const char* f) {
     ofstream file;
+    ofstream summary;
     int precision = 5;
 
     file.open(f);
 
-    file << "Data: last " << p->numClusters << " columns indicate cluster membership." << endl << endl;
-
     for (int i = 0; i < p->numEvents; i++) {
         for (int j = 0; j < p->numDimensions; j++) {
-            file << fixed << setprecision(precision) << p->data[j + i * p->numDimensions] << " ";
-        }
-
-        for (int j = 0; j < p->numClusters; j++) {
-            file << fixed << setprecision(precision) << p->membership[j + i * p->numClusters] << " ";
-        }
-
-        file << endl;
-    }
-
-    //int identity[p->numClusters][p->numClusters];
-    int **identity = new int*[p->numClusters];
-    for(int i = 0; i < p->numClusters; i++)
-    {
-       identity[i] = new int[p->numClusters];
-    }
-
-    for (int i = 0; i < p->numClusters; i++) {
-        for (int j = 0; j < p->numClusters; j++) {
-            if (i == j) {
-                identity[i][j] = 1;
-            }
-            else {
-                identity[i][j] = 0;
+            file << fixed << setprecision(precision) << p->data[j + i * p->numDimensions]; 
+            if(j < p->numDimensions-1) {
+                file << ",";
             }
         }
-    }
-
-    file << endl << "Cluster Centers: last " << p->numClusters << " columns is the identity matrix." << endl << endl;
-
-    for (int i = 0; i < p->numClusters; i++) {
-        for (int j = 0; j < p->numDimensions; j++) {
-            file << fixed << setprecision(precision) << p->centers[j + i * p->numDimensions] << " ";
-        }
-
+        file << "\t";
         for (int j = 0; j < p->numClusters; j++) {
-            file << identity[i][j] << " ";
-
+            file << fixed << setprecision(precision) << p->membership[j + i * p->numClusters];
+            if(j < p->numClusters-1) {
+                file << ",";
+            }
         }
         file << endl;
     }
 
     file.close();
+    
+    summary.open("output.summary");
+    for (int t = 0; t < p->numClusters; t++) {
+        summary << "Cluster #" << t << endl;
+        summary << "Probability: " << p->n[t]/p->numEvents << endl;
+        summary << "N: " << p->n[t] << endl;
+        summary << "Means: ";
+        for(int d=0; d < p->numDimensions; d++) {
+            summary << p->centers[t*p->numDimensions+d] << " ";
+        }
+        summary << endl << endl;
+        summary << "R Matrix:" << endl;
+        for(int i=0; i< p->numDimensions; i++) {
+            for(int j=0; j< p->numDimensions; j++) {
+                summary << p->scatters[t*p->numDimensions*p->numDimensions+ i*p->numDimensions + j] << " ";
+            }
+            summary << endl;
+        } 
+        summary << endl << endl;
+    }
 }
 
 int clusterColor(double i, int nc) {
@@ -335,13 +327,13 @@ void invert_cpu(double* data, int actualsize, double* determinant)  {
     int n = actualsize;
     *determinant = 1.0;
 
-    printf("\n\nR matrix before inversion:\n");
+    /*printf("\n\nR matrix before inversion:\n");
     for(int i=0; i<n; i++) {
         for(int j=0; j<n; j++) {
             printf("%.4f ",data[i*n+j]);
         }
         printf("\n");
-    }
+    }*/
     
   if (actualsize <= 0) return;  // sanity check
   if (actualsize == 1) return;  // must be of dimension >= 2
@@ -393,13 +385,15 @@ void invert_cpu(double* data, int actualsize, double* determinant)  {
       data[j*maxsize+i] = sum;
       }
       
-          printf("\n\nR matrix after inversion:\n");
-          for(int i=0; i<n; i++) {
-              for(int j=0; j<n; j++) {
-                  printf("%.4f ",data[i*n+j]);
-              }
-              printf("\n");
+    /*
+      printf("\n\nR matrix after inversion:\n");
+      for(int i=0; i<n; i++) {
+          for(int j=0; j<n; j++) {
+              printf("%.4f ",data[i*n+j]);
           }
+          printf("\n");
+      }
+    */
  }
 
 #endif /* CLUSTERINGUTILS_H_ */

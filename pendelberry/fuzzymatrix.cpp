@@ -66,6 +66,25 @@ void setCenters(Params* p) {
     }
 }
 
+void seedCenters(Params* p) {
+        double *temp=new double[p->numDimensions];
+
+        for (int i = 0; i < p->numClusters; i++) {
+                getPoints(p, temp, randIntRange(0, p->numEvents));
+
+                if (i != 0) {
+                        while (contains(p, temp)) {
+                                getPoints(p, temp, randIntRange(0, p->numEvents));
+                        }
+                }
+
+                for (int j = 0; j < p->numDimensions; j++) {
+                        p->centers[j + i * p->numDimensions] = temp[j];
+                }
+        }
+}
+
+
 // Computes scatter matrices (covariance matrices) for all clusters according to (17)
 void setScatterMatrices(Params* p)
 {
@@ -248,8 +267,19 @@ void fuzzySmatrix(Params* p)
     	//	1.0 / p->numClusters, 
     	//	p->numClusters * p->numEvents );
     double initial_membership = 1.0 / p->numClusters;
-    for(int i=0; i < p->numEvents*p->numClusters; i++) {
-        p->membership[i] = initial_membership;
+
+    //for(int i=0; i < p->numEvents*p->numClusters; i++) {
+    //    p->membership[i] = initial_membership;
+    //}
+    for(int i=0; i< p->numEvents; i++) {
+        int member = rand() % (p->numClusters);
+        for(int t=0; t < p->numClusters; t++) {
+            if(t == member) {
+                p->membership[i*p->numClusters+t] = 1.0;   
+            } else {
+                p->membership[i*p->numClusters+t] = 0.0;   
+            }
+        }
     }
 
     // TOP OF THE LOOP
