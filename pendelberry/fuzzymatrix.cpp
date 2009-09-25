@@ -95,41 +95,45 @@ void setScatterMatrices(Params* p)
             //p->means[t*p->numDimensions+dim_id];
 		}
 
-		// For each Event:
-		for (int j = 0; j < p->numDimensions; j++)
+        // TODO: Move this outside the loop:
+        double numerator;
+        double denominator = 0.0;
+        for (int event_id = 0; event_id < p->numEvents; event_id++)
+        {
+            denominator += p->membership[t*p->numEvents+event_id];
+        }
+        
+        // denominator is n_t
+        p->n[t] = denominator;
+		
+        // Covariance matrix
+		for (int i = 0; i < p->numDimensions; i++)
 		{
-			double numerator = 0;
-			for (int i = 0; i < p->numDimensions; i++)
+			for (int j = 0; j < p->numDimensions; j++)
 			{
-				numerator = 0;
+				numerator = 0.0;
 				for (int event_id = 0; event_id < p->numEvents; event_id++)
 				{
-					numerator = numerator + (p->membership[t*p->numEvents+event_id]*p->membership[t*p->numClusters+event_id]) *
+					numerator = numerator + (p->membership[event_id*p->numClusters+t]*p->membership[event_id*p->numClusters+t]) *
 							  (p->data[i + event_id * p->numDimensions] - avgs[i]) *
 							  (p->data[j + event_id * p->numDimensions] - avgs[j]);
 				}
 
-				// TODO: Move this outside the loop:
-				double denominator = 0;
-				for (int event_id = 0; event_id < p->numEvents; event_id++)
-				{
-					denominator += p->membership[t*p->numEvents+event_id];
-				}
-				
-				// denominator is n_t
-                p->n[t] = denominator;
-
-				p->scatters[t*p->numClusters*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
+				p->scatters[t*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
 			}
 		}
 	}
 	
-	// compute scatter_inverses
-	// TODO	
+	// compute scatter_inverses and determinants
+	for(int i=0; i<p->numClusters; i++) {
+        double* scatter = &(p->scatters[i*p->numDimensions*p->numDimensions]);
+        double* scatter_inverse = &(p->scatter_inverses[i*p->numDimensions*p->numDimensions]);
+        memcpy(scatter_inverse,scatter,p->numDimensions*p->numDimensions*sizeof(double));
+        double det = 0.0;
+        invert_cpu(scatter_inverse,p->numDimensions,&det);
+        p->determinants[i] = det;
+    }
 		
-	// compute determinants |S_t|
-	// TODO
-	
 	// compute A_t
     compute_A_general(p);
 }
@@ -419,6 +423,9 @@ int main(int argc, char** argv)
         exit(error);
 	}
     cout << "done" << endl << endl;
+
+    cout << "Number of events: " << params->numEvents << endl;
+    cout << "Number of dimensions: " << params->numDimensions << endl;
 
 	// Initializes and allocates arrays in the struct
     allocateParamArrays(params);
