@@ -163,6 +163,7 @@ void allocateParamArrays(Params* p) {
     p->membership2 = new double[p->numClusters*p->numEvents];
     p->scatters = new double[p->numClusters*p->numDimensions*p->numDimensions];
     p->scatter_inverses = new double[p->numClusters*p->numDimensions*p->numDimensions];
+    p->determinants = new double[p->numClusters];
     p->Ti = new int[p->numEvents*p->numClusters];
     p->n = new double[p->numClusters];
     p->A_t = new double[p->numClusters];
