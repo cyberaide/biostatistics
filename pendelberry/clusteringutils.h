@@ -91,7 +91,7 @@ void printCenters(Params* p) {
 }
 
 void initRand() {
-    int seed = (int)time(0) * (int)getpid();
+    //int seed = (int)time(0) * (int)getpid();
     // srand((unsigned)seed);   // REMOVED for testing
     srand((unsigned) 42);  // 42 ADDED For Repeatability.
 }
@@ -163,7 +163,7 @@ void allocateParamArrays(Params* p) {
     p->membership2 = new double[p->numClusters*p->numEvents];
     p->scatters = new double[p->numClusters*p->numDimensions*p->numDimensions];
     p->scatter_inverses = new double[p->numClusters*p->numDimensions*p->numDimensions];
-    p->Ti = new int[p->numEvents];
+    p->Ti = new int[p->numEvents*p->numClusters];
     p->n = new double[p->numClusters];
     p->A_t = new double[p->numClusters];
     //p->means = new double[p->numClusters*p->numDimensions];

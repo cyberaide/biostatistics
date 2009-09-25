@@ -169,7 +169,7 @@ double compute_B_general(Params* p, int i, int t) {
 }
 
 double compute_B_maxlikelihood() {
-    
+	return 0.0;
 }
 
 void compute_A_general(Params* p) {
@@ -194,6 +194,29 @@ void compute_A_maxlikelihood() {
 // TODO
 void computeGeneralFormula_eq31(Params* p)
 {
+    double membership = 0.0;
+    for(int i=0; i<p->numEvents; i++) {
+        for(int t=0; t< p->numClusters; t++) {
+            double B_it = compute_B_general(p,i,t);
+            double B_ir = 0.0;
+            double sum_B_ir = 0.0;
+            double sum_A_ir_and_B_ir = 0.0;
+            for(int r=0; r< p->numClusters; r++) {
+                // Only include clusters not in the set Ti
+                if(p->Ti[i*p->numClusters+r] == 0) {
+                    B_ir= compute_B_general(p,i,r);
+                    sum_B_ir += 1.0/B_ir;
+                    sum_A_ir_and_B_ir += p->A_t[r] / B_ir;
+                }
+            }
+            membership = (1/B_ir)/sum_B_ir - (1/B_it)*((sum_A_ir_and_B_ir)/(sum_B_ir)-p->A_t[t]);
+            if(membership < 0.0) {
+            	p->Ti[i*p->numClusters+t] = 1;
+            	membership = 0.0;
+            }
+            p->membership[i*p->numClusters+t] = membership;
+        }
+    }
 }
 	
 
@@ -269,12 +292,14 @@ void fuzzySmatrix(Params* p)
 	    // Compute the Ti's, and iterate as long as any Ti != 0.
 	    memset( p->Ti, (int) 0, p->numEvents );
 
-	    int any_Ti_set 			= 0;
-	    int need_to_keep_reiterating	= 1;
-	    while ( need_to_keep_reiterating )
+	    int any_Ti_set;
+	    // Clear all the Ti values
+        memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
+	    
+	    inner_iter = 1;
+	    do
 	    {
-    		any_Ti_set 			= 0;
-    		need_to_keep_reiterating	= 0;
+    		any_Ti_set = 0;
 
     		// Evaluate the membership functions according to EQ 31.
     		// If any membership is negative, range clip it to zero.
@@ -304,41 +329,37 @@ void fuzzySmatrix(Params* p)
     		// Total up all values of "any_Ti_set".
     		// If the sum is non-zero, then one of them is set,
     		// and you need to keep looping.
-    		for (int ii=0; ii < p->numEvents; ii++ )
+    		for (int ii=0; ii < p->numEvents*p->numClusters; ii++ )
     		{
-    		    any_Ti_set = any_Ti_set + p->Ti[ii];
+    		    if(p->Ti[ii] != 0) {
+    		        any_Ti_set = 1;
+    		        break;
+    		    }
     		}
     		inner_iter++;
-		
-            cout << "inner_iter: " << inner_iter << endl;
-
 	    } while (any_Ti_set != 0 && inner_iter <= MAXITER);
 
-        need_to_keep_reiterating	= 0;
         if (inner_iter == MAXITER)
 	    {
 		    cout << "Program was unable to converge using the threshold " << p->threshold << endl;
-    		break;
+    		break; // Do we need to break? Or just issue a warning?
 	    }
 
-	// Step 4:
-	// COMPARE THE MEMBERSHIP FUNCTIONS TO PREVIOUS METHODS.
-		    max_epsilon_change = 0;
+	    // Step 4:
+	    // COMPARE THE MEMBERSHIP FUNCTIONS TO PREVIOUS METHODS.
+        double difference;
+        need_to_continue = 0; // Assume we don't need to continue, check differences until we find otherwise
+	    for (int idx=0;idx < p->numClusters * p->numEvents; idx++)
+	    {
+	        difference = fabs(p->membership[idx] - p->membership2[idx]);
+	        
+	        if (difference > p->threshold) {
+	            need_to_continue = 1;
+	        }
+	    }
 
-	for (int idx=0;idx<=p->numClusters * p->numEvents; idx++)
-	{
-	    double difference = fabs(p->membership[idx] - p->membership2[idx]);
-	    
-	    if (difference > max_epsilon_change)
-		    max_epsilon_change = difference;
-	}
-
-	outer_iter	 = outer_iter + 1;
-        if ( (max_epsilon_change >= p->threshold) && (outer_iter <= MAXITER) )
-	{
-	    need_to_continue = 1;
-	}
-    }
+	    outer_iter	 = outer_iter + 1;
+    } // end of outer while loop
 
     cout << "Outer Iterations: " << outer_iter << endl << endl;
 
@@ -347,9 +368,9 @@ void fuzzySmatrix(Params* p)
     for (int i = 0; i < p->numClusters; i++) {
 	    for (int j = 0; j < p->numDimensions; j++) {
 		    cout << p->centers[j + i * p->numDimensions] << " ";
-		    }
+		}
 	    cout << endl;
-	    }			    
+	}			    
 
 	writeData(p, "output.dat");
 
