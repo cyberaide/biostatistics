@@ -219,6 +219,7 @@ int readData(char* f, Params* p) {
             temp = strtok(NULL, " ");
         }
     }
+    return 0;
 }
 
 void writeData(Params* p, const char* f) {

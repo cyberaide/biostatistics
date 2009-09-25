@@ -415,6 +415,7 @@ int main(int argc, char** argv)
     cout << "Reading in data...";
 	int error = readData(argv[4], params);
 	if(error) {
+        cout << "error" << endl;
         exit(error);
 	}
     cout << "done" << endl << endl;
