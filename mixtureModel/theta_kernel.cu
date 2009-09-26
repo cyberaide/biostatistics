@@ -156,7 +156,7 @@ __device__ void invert(float* data, int actualsize, float* determinant)  {
         }
         
         for(int i=0; i<actualsize; i++) {
-            *determinant += logf(data[i*n+i]);
+            *determinant += logf(fabs(data[i*n+i]));
         }
 #if EMU
             EMUPRINT("Determinant: %E\n",*determinant);
@@ -445,6 +445,8 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
         
         denominator_sum = 0.0;
         for(int c=0; c<num_clusters; c++) {
+            //EMUPRINT("denominator_sum: %f\n",denominator_sum);
+            //EMUPRINT("clusters[c].p[pixel]: %f\n",clusters[c].p[pixel]);
             temp = exp(clusters[c].p[pixel]-max_likelihood)*clusters[c].pi;
             denominator_sum += temp;
             clusters[c].p[pixel] = temp;
