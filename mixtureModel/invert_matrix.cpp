@@ -30,7 +30,7 @@ void invert_cpu(float* data, int actualsize, float* determinant)  {
         DEBUG("\n\nR matrix before inversion:\n");
         for(int i=0; i<n; i++) {
             for(int j=0; j<n; j++) {
-                DEBUG("%.2f ",data[i*n+j]);
+                DEBUG("%.4f ",data[i*n+j]);
             }
             DEBUG("\n");
         }
