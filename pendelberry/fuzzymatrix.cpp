@@ -57,7 +57,8 @@ void setCenters(Params* p) {
             denom = 0.0;
             // Average over all events weighted by membership for this particular cluster
             for(int i=0; i < p->numEvents; i++) {
-                double u_ti = p->membership[t*p->numEvents+i];
+                //double u_ti = p->membership[t*p->numEvents+i];
+                double u_ti = p->membership[i*p->numClusters+t];
                 double x_i = p->data[i*p->numDimensions+d];
                 numerator += u_ti*u_ti*x_i;
                 denom += u_ti*u_ti;
@@ -142,8 +143,10 @@ void setScatterMatrices(Params* p)
 				for (int event_id = 0; event_id < p->numEvents; event_id++)
 				{
 					numerator = numerator + (p->membership[event_id*p->numClusters+t]*p->membership[event_id*p->numClusters+t]) *
-							  (p->data[i + event_id * p->numDimensions] - avgs[i]) *
-							  (p->data[j + event_id * p->numDimensions] - avgs[j]);
+							  //(p->data[i + event_id * p->numDimensions] - avgs[i]) *
+							  (p->data[i + event_id * p->numDimensions] - p->centers[t*p->numDimensions+i]) *
+							  //(p->data[j + event_id * p->numDimensions] - avgs[j]);
+							  (p->data[j + event_id * p->numDimensions] - p->centers[t*p->numDimensions+j]);
 				}
 
 				p->scatters[t*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
@@ -183,7 +186,7 @@ double compute_B_general(Params* p, int i, int t) {
     double det_S_t = p->determinants[t];
     
     // All the scalar stuff on left size of matrix multiplication
-    double constant = pow(n_t,p->numDimensions*p->beta - p->tau-1.0)*THETA*pow(det_S_t,p->beta);
+    double constant = pow(n_t,p->numDimensions*p->beta - p->tau-1.0)*pow(THETA*det_S_t,p->beta);
 
     // Temp vector for (x_i - u_t)
     double* difference = new double[p->numDimensions];
@@ -210,7 +213,7 @@ double compute_B_maxlikelihood() {
 
 void compute_A_general(Params* p) {
     for(int t=0; t < p->numClusters; t++) {
-        double constant = pow(p->n[t],p->numDimensions*p->beta - p->tau-1.0)*THETA*pow(p->determinants[t],p->beta);
+        double constant = pow(p->n[t],p->numDimensions*p->beta - p->tau-1.0)*pow(THETA*p->determinants[t],p->beta);
         p->A_t[t] = 0.5*p->tau/p->beta*constant;
     }
 }
@@ -246,14 +249,13 @@ void computeGeneralFormula_eq31(Params* p)
                     sum_A_ir_and_B_ir += p->A_t[r] / B_ir;
                 }
             }
-            membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*((sum_A_ir_and_B_ir)/(sum_B_ir)-p->A_t[t]);
+            membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*(sum_A_ir_and_B_ir/sum_B_ir - p->A_t[t]);
             if(membership < 0.0) {
             	p->Ti[i*p->numClusters+t] = 1;
             	membership = 0.0;
             }
             p->membership[i*p->numClusters+t] = membership;
             sum_memberships += membership;
-            cout << "t = " << t << endl;
         }
         // normalize memberships for this event
         cout << "Event " << i << " memberships: ";
@@ -295,8 +297,21 @@ void fuzzySmatrix(Params* p)
         p->membership[i] = initial_membership;
     }
 
+    /*
+    int training_data[64] = {3,3,3,3,3,3,3,3,1,1,1,1,1,1,1,1,3,3,3,3,1,2,3,3,3,3,3,3,2,2,2,2,2,3,3,3,1,1,1,1,1,3,3,3,1};
+    for(int i=0; i< p->numEvents; i++) {
+        for(int t=0; t < p->numClusters; t++) {
+            if((t+1) == training_data[i]) {
+                p->membership[i*p->numClusters+t] = 1.0;   
+            } else {
+                p->membership[i*p->numClusters+t] = 0.0;   
+            }
+        }
+    }
+    */
+    
     // Assign each point fully to a cluster
-    /*for(int i=0; i< p->numEvents; i++) {
+    for(int i=0; i< p->numEvents; i++) {
         int member = rand() % (p->numClusters);
         for(int t=0; t < p->numClusters; t++) {
             if(t == member) {
@@ -305,7 +320,8 @@ void fuzzySmatrix(Params* p)
                 p->membership[i*p->numClusters+t] = 0.0;   
             }
         }
-    }*/
+    }
+    
 
     // TOP OF THE LOOP
     // AS LONG AS IT TAKES...
