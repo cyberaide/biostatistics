@@ -84,6 +84,7 @@ void seedCenters(Params* p) {
                         p->centers[j + i * p->numDimensions] = temp[j];
                 }
         }
+        delete[]temp;
 }
 
 void printSquareMatrix(double* matrix, int n) {
@@ -104,6 +105,7 @@ void setScatterMatrices(Params* p)
     double* total = new double[p->numDimensions];
     double* avgs = new double[p->numDimensions];
 
+    
 	// Solve for each cluster at a time:
 	for (int t = 0; t < p->numClusters; t++)
 	{
@@ -163,14 +165,19 @@ void setScatterMatrices(Params* p)
         invert_cpu(scatter_inverse,p->numDimensions,&det);
         p->determinants[i] = det;
 
-        cout << "Scatter Matrix #: " << i << endl;
-        printSquareMatrix(scatter,p->numDimensions);
-        cout << endl << "Scatter Matrix Inverse #: " << i << endl;
-        printSquareMatrix(scatter_inverse,p->numDimensions);
+        //cout << "Scatter Matrix #: " << i << endl;
+        //printSquareMatrix(scatter,p->numDimensions);
+        //cout << endl << "Scatter Matrix Inverse #: " << i << endl;
+        //printSquareMatrix(scatter_inverse,p->numDimensions);
     }
 		
 	// compute A_t
     compute_A_general(p);
+        
+    // clean memory
+    delete[]numerator;
+    delete[]total;
+    delete[]avgs;
 }
 
 double dotProduct(double* a, double* b, int n) {
@@ -203,7 +210,11 @@ double compute_B_general(Params* p, int i, int t) {
     }
     
     double mult_result = dotProduct(temp,difference,p->numDimensions);
-    
+
+    // cleanup   
+    delete[]temp;
+    delete[]difference;
+ 
     return constant*mult_result;
 }
 
@@ -258,12 +269,12 @@ void computeGeneralFormula_eq31(Params* p)
             sum_memberships += membership;
         }
         // normalize memberships for this event
-        cout << "Event " << i << " memberships: ";
+        //cout << "Event " << i << " memberships: ";
         for(int t=0; t < p->numClusters; t++) {
             p->membership[i*p->numClusters+t] /= sum_memberships;
-            cout << p->membership[i*p->numClusters+t] << " ";
+            //cout << p->membership[i*p->numClusters+t] << " ";
         }
-        cout << endl;
+        //cout << endl;
     }
 }
 	
@@ -297,9 +308,9 @@ void fuzzySmatrix(Params* p)
         p->membership[i] = initial_membership;
     }
 
-    /*
+    
     int training_data[64] = {3,3,3,3,3,3,3,3,1,1,1,1,1,1,1,1,3,3,3,3,1,2,3,3,3,3,3,3,2,2,2,2,2,3,3,3,1,1,1,1,1,3,3,3,1};
-    for(int i=0; i< p->numEvents; i++) {
+    /*for(int i=0; i< p->numEvents; i++) {
         for(int t=0; t < p->numClusters; t++) {
             if((t+1) == training_data[i]) {
                 p->membership[i*p->numClusters+t] = 1.0;   
@@ -307,8 +318,8 @@ void fuzzySmatrix(Params* p)
                 p->membership[i*p->numClusters+t] = 0.0;   
             }
         }
-    }
-    */
+    }*/
+    
     
     // Assign each point fully to a cluster
     for(int i=0; i< p->numEvents; i++) {
@@ -557,6 +568,8 @@ void computeCenters(Params* p) {
 
 		denominator = 0;
 	}
+
+    delete[]numerator;
 }
 
 /* TBD: Equation 31 */
