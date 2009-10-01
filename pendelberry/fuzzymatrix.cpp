@@ -1,4 +1,4 @@
-/*
+/**
  * Implement Fuzzy clustering using scatter matrices paper P.J. Rousseeuw, L. Kaufman, E. Trauwaert 1996...
  * 
  */
@@ -16,6 +16,7 @@ double computeDistance(Params* p, int i, int c);
 void  computeMaxLikelihood(Params* p); //not really a void -- sets Ti (i) to 0 or returns the Event
 void  computeGeneralFormula(Params* p); //not really a void -- sets Ti (i) to 0 or returns the  Event
 void compute_A_general(Params* p);
+void printSquareMatrix(double* matrix, int n); 
 
 
 // REFERENCE COPY OF STRUCTURE:
@@ -84,7 +85,14 @@ void seedCenters(Params* p) {
         }
 }
 
-
+void printSquareMatrix(double* matrix, int n) {
+    for(int i=0; i<n; i++) {
+        for(int j=0; j<n; j++) {
+            printf("%0.2f ",matrix[i*n+j]);
+        }
+        printf("\n");
+    }
+}
 // Computes scatter matrices (covariance matrices) for all clusters according to (17)
 void setScatterMatrices(Params* p)
 {
@@ -151,6 +159,11 @@ void setScatterMatrices(Params* p)
         double det = 0.0;
         invert_cpu(scatter_inverse,p->numDimensions,&det);
         p->determinants[i] = det;
+
+        cout << "Scatter Matrix #: " << i << endl;
+        printSquareMatrix(scatter,p->numDimensions);
+        cout << endl << "Scatter Matrix Inverse #: " << i << endl;
+        printSquareMatrix(scatter_inverse,p->numDimensions);
     }
 		
 	// compute A_t
@@ -219,6 +232,7 @@ void computeGeneralFormula_eq31(Params* p)
 {
     double membership = 0.0;
     for(int i=0; i<p->numEvents; i++) {
+        double sum_memberships = 0.0;
         for(int t=0; t< p->numClusters; t++) {
             double B_it = compute_B_general(p,i,t);
             double B_ir = 0.0;
@@ -232,13 +246,22 @@ void computeGeneralFormula_eq31(Params* p)
                     sum_A_ir_and_B_ir += p->A_t[r] / B_ir;
                 }
             }
-            membership = (1/B_ir)/sum_B_ir - (1/B_it)*((sum_A_ir_and_B_ir)/(sum_B_ir)-p->A_t[t]);
+            membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*((sum_A_ir_and_B_ir)/(sum_B_ir)-p->A_t[t]);
             if(membership < 0.0) {
             	p->Ti[i*p->numClusters+t] = 1;
             	membership = 0.0;
             }
             p->membership[i*p->numClusters+t] = membership;
+            sum_memberships += membership;
+            cout << "t = " << t << endl;
         }
+        // normalize memberships for this event
+        cout << "Event " << i << " memberships: ";
+        for(int t=0; t < p->numClusters; t++) {
+            p->membership[i*p->numClusters+t] /= sum_memberships;
+            cout << p->membership[i*p->numClusters+t] << " ";
+        }
+        cout << endl;
     }
 }
 	
@@ -255,8 +278,8 @@ void computeGeneralFormula_eq31(Params* p)
 void fuzzySmatrix(Params* p) 
 {
     int det 	= 0;
-    int inner_iter 	= 1;
-    int outer_iter 	= 1;
+    int inner_iter 	= 0;
+    int outer_iter 	= 0;
 
     int need_to_continue = 0;
 
@@ -268,10 +291,12 @@ void fuzzySmatrix(Params* p)
     	//	p->numClusters * p->numEvents );
     double initial_membership = 1.0 / p->numClusters;
 
-    //for(int i=0; i < p->numEvents*p->numClusters; i++) {
-    //    p->membership[i] = initial_membership;
-    //}
-    for(int i=0; i< p->numEvents; i++) {
+    for(int i=0; i < p->numEvents*p->numClusters; i++) {
+        p->membership[i] = initial_membership;
+    }
+
+    // Assign each point fully to a cluster
+    /*for(int i=0; i< p->numEvents; i++) {
         int member = rand() % (p->numClusters);
         for(int t=0; t < p->numClusters; t++) {
             if(t == member) {
@@ -280,7 +305,7 @@ void fuzzySmatrix(Params* p)
                 p->membership[i*p->numClusters+t] = 0.0;   
             }
         }
-    }
+    }*/
 
     // TOP OF THE LOOP
     // AS LONG AS IT TAKES...
@@ -330,7 +355,7 @@ void fuzzySmatrix(Params* p)
 	    // Clear all the Ti values
         memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
 	    
-	    inner_iter = 1;
+	    inner_iter = 0;
 	    do
 	    {
     		any_Ti_set = 0;
@@ -372,6 +397,8 @@ void fuzzySmatrix(Params* p)
     		}
     		inner_iter++;
 	    } while (any_Ti_set != 0 && inner_iter <= MAXITER);
+
+        cout << "Inner Iter: " << inner_iter << endl;
 
         if (inner_iter == MAXITER)
 	    {
