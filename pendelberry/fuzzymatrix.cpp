@@ -262,8 +262,12 @@ void computeGeneralFormula_eq31(Params* p)
             }
             membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*(sum_A_ir_and_B_ir/sum_B_ir - p->A_t[t]);
             if(membership < 0.0) {
+                cout << membership << endl;
             	p->Ti[i*p->numClusters+t] = 1;
             	membership = 0.0;
+                cout << "Ti = 1 for event # " << i << endl;
+            } else {
+            	p->Ti[i*p->numClusters+t] = 0;
             }
             p->membership[i*p->numClusters+t] = membership;
             sum_memberships += membership;
@@ -379,7 +383,8 @@ void fuzzySmatrix(Params* p)
 	    memset( p->Ti, (int) 0, p->numEvents );
 
 	    int any_Ti_set;
-	    // Clear all the Ti values
+            
+        // Clear all the Ti values
         memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
 	    
 	    inner_iter = 0;
@@ -422,6 +427,7 @@ void fuzzySmatrix(Params* p)
     		        break;
     		    }
     		}
+            cout << "inner_iter # " << inner_iter << endl;
     		inner_iter++;
 	    } while (any_Ti_set != 0 && inner_iter <= MAXITER);
 
