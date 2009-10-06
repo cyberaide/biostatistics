@@ -22,10 +22,10 @@ lubksb(float *a,int n,int *indx,float *b);
  * written by Mike Dinolfo 12/98
  * version 1.0
  */
-void invert_cpu(float* data, int actualsize, float* determinant)  {
+void invert_cpu(float* data, int actualsize, float* log_determinant)  {
     int maxsize = actualsize;
     int n = actualsize;
-    *determinant = 1.0;
+    *log_determinant = 0.0;
 
         DEBUG("\n\nR matrix before inversion:\n");
         for(int i=0; i<n; i++) {
@@ -56,9 +56,10 @@ void invert_cpu(float* data, int actualsize, float* determinant)  {
     }
     
     for(int i=0; i<actualsize; i++) {
-        *determinant *= data[i*n+i];
+        *log_determinant += log10(data[i*n+i]);
+        //printf("log_determinant: %e\n",*log_determinant); 
     }
-    
+   printf("\n\n");
   for ( int i = 0; i < actualsize; i++ )  // invert L
     for ( int j = i; j < actualsize; j++ )  {
       float x = 1.0;

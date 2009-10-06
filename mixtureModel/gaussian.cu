@@ -649,16 +649,16 @@ void printCluster(cluster* c, int num_dimensions) {
 }
 
 float cluster_distance(cluster* cluster1, cluster* cluster2, cluster* temp_cluster, int num_dimensions) {
-    float determinant;
+    float log_determinant;
     // Add the clusters together, this updates pi,means,R,N and stores in temp_cluster
     add_clusters(cluster1,cluster2,temp_cluster,num_dimensions);
     // Copy R to Rinv matrix
     memcpy(temp_cluster->Rinv,temp_cluster->R,sizeof(float)*num_dimensions*num_dimensions);
     // Invert the matrix
-    invert_cpu(temp_cluster->Rinv,num_dimensions,&determinant);
+    invert_cpu(temp_cluster->Rinv,num_dimensions,&log_determinant);
     //invert_matrix(temp_cluster->Rinv,num_dimensions,&determinant);
     // Compute the constant
-    temp_cluster->constant = (-num_dimensions)*0.5*logf(2*PI)-0.5*logf(fabs(determinant));
+    temp_cluster->constant = (-num_dimensions)*0.5*logf(2*PI)-0.5*log_determinant;
     
     return cluster1->N*cluster1->constant + cluster2->N*cluster2->constant - temp_cluster->N*temp_cluster->constant;
 }
