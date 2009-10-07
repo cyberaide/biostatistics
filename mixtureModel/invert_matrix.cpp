@@ -59,7 +59,7 @@ void invert_cpu(float* data, int actualsize, float* log_determinant)  {
         *log_determinant += log10(data[i*n+i]);
         //printf("log_determinant: %e\n",*log_determinant); 
     }
-   printf("\n\n");
+   //printf("\n\n");
   for ( int i = 0; i < actualsize; i++ )  // invert L
     for ( int j = i; j < actualsize; j++ )  {
       float x = 1.0;
