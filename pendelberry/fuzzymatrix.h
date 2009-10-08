@@ -1,6 +1,6 @@
 #include "clusteringutils.h"
 
-#define MAXITER 100000
+#define MAXITER 150
 
 void setCenters(Params* p); 
 void setScatterMatrices(Params* p);
