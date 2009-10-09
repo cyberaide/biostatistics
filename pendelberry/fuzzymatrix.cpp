@@ -16,6 +16,7 @@ double computeDistance(Params* p, int i, int c);
 void  computeMaxLikelihood(Params* p); //not really a void -- sets Ti (i) to 0 or returns the Event
 void  computeGeneralFormula(Params* p); //not really a void -- sets Ti (i) to 0 or returns the  Event
 void compute_A_general(Params* p);
+void compute_A_maxlikelihood(Params* p);
 void printSquareMatrix(double* matrix, int n); 
 void fuzzySmatrix(Params* p);
 
@@ -225,6 +226,9 @@ void setScatterMatrices(Params* p)
 							  (p->data[j + event_id * p->numDimensions] - p->centers[t*p->numDimensions+j]);
 				}
 
+                if(fabs(numerator) < 1e-20) {
+                       numerator = 1e-20;
+                }
 				p->scatters[t*p->numDimensions*p->numDimensions+i*p->numDimensions+j] = numerator / denominator;
 			}
 		}
@@ -242,7 +246,11 @@ void setScatterMatrices(Params* p)
     }
 		
 	// compute A_t
-    compute_A_general(p);
+	if(p->option == 4) {
+        compute_A_maxlikelihood(p);
+    } else {
+        compute_A_general(p);
+    }
         
     // clean memory
     delete[]numerator;
@@ -323,7 +331,7 @@ void compute_A_general(Params* p) {
 
 void compute_A_maxlikelihood(Params* p) {
     for(int t=0; t < p->numClusters; t++) {
-        p->A_t[t] = -0.5 * log(p->determinants[t]);
+        p->A_t[t] = -0.5 * log(fabs(p->determinants[t]));
     }  
 }
 
@@ -450,7 +458,11 @@ void fuzzySmatrix(Params* p)
                 p->n[i] = p->numEvents / p->numClusters;
             }
             // Compute the A_t values (needed for membership calculations)
-            compute_A_general(p);
+            if(p->option == 4) {
+                compute_A_maxlikelihood(p);
+            } else {
+                compute_A_general(p);
+            }
             
             printCenters(p); 
             printScatters(p);
