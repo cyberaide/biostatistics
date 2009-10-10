@@ -55,6 +55,7 @@ float* readData(char* f, int* ndims, int* nevents) {
             temp = strtok(NULL, ",");
         }
 
+        lines.erase(lines.begin()); // Remove first line, assumed to be header
         int num_events = (int)lines.size();
 
         // Allocate space for all the FCS data

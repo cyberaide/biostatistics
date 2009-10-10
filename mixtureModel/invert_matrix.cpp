@@ -56,7 +56,7 @@ void invert_cpu(float* data, int actualsize, float* log_determinant)  {
     }
     
     for(int i=0; i<actualsize; i++) {
-        *log_determinant += log10(data[i*n+i]);
+        *log_determinant += log10(fabs(data[i*n+i]));
         //printf("log_determinant: %e\n",*log_determinant); 
     }
    //printf("\n\n");
@@ -193,7 +193,6 @@ ludcmp(float *a,int n,int *indx,float *d)
         vv[i]=1.0/big;
     }
        
-    int f,g;
    
     for (j=0;j<n;j++)
     {  
@@ -206,6 +205,7 @@ ludcmp(float *a,int n,int *indx,float *d)
         }
        
         /*
+        int f,g;
         printf("\n\nMatrix After Step 1:\n");
         for(f=0; f<n; f++) {
             for(g=0; g<n; g++) {

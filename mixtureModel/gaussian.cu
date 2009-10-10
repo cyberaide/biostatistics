@@ -251,6 +251,7 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
         likelihood = 0.0;
         for(int i=0;i<NUM_BLOCKS;i++) {
+            DEBUG("Likelihood #%d: %e\n",i,likelihood);
             likelihood += likelihoods[i]; 
         }
 
@@ -328,7 +329,7 @@ main( int argc, char** argv) {
         }
         // Calculate Rissanen Score
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
-        PRINT("\nRissanen Score: %f\n",rissanen);
+        PRINT("\nRissanen Score: %e\n",rissanen);
         
         
         // Save the cluster data the first time through, so we have a base rissanen score and result
