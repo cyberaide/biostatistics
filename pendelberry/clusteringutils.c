@@ -110,6 +110,7 @@ int readData(char* f, Params* p) {
     int dim = 0;
     char* temp;
 
+    // Read in all of the lines
     if (file.is_open()) {
         while(!file.eof()) {
             getline(file, line1);
@@ -127,8 +128,6 @@ int readData(char* f, Params* p) {
     }
 
     line1 = lines[0];
-    string line2 (line1.begin(), line1.end());
-
     temp = strtok((char*)line1.c_str(), DELIMITER);
 
     while(temp != NULL) {
@@ -136,16 +135,19 @@ int readData(char* f, Params* p) {
         temp = strtok(NULL, DELIMITER);
     }
 
+    // Assume first line is header, delete it
+    lines.erase(lines.begin());
+
     p->numDimensions = dim;
     p->numEvents = (int)lines.size();
 
+    cout << "Number of Dimensions: " << p->numDimensions << endl;
+    cout << "Number of Events: " << p->numEvents << endl;
+
     p->data = (double*)malloc(sizeof(double) * p->numDimensions * p->numEvents);
-    temp = strtok((char*)line2.c_str(), DELIMITER);
 
     for (int i = 0; i < p->numEvents; i++) {
-        if (i != 0) {
-            temp = strtok((char*)lines[i].c_str(), DELIMITER);
-        }
+        temp = strtok((char*)lines[i].c_str(), DELIMITER);
 
         for (int j = 0; j < p->numDimensions && temp != NULL; j++) {
             p->data[j + i * p->numDimensions] = atof(temp);

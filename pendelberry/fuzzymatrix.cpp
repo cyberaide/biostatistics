@@ -465,7 +465,7 @@ void fuzzySmatrix(Params* p)
             }
             
             printCenters(p); 
-            printScatters(p);
+            //printScatters(p);
 
             // compute initial memberships based on the centers/scatters
             memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
@@ -500,8 +500,37 @@ void fuzzySmatrix(Params* p)
 			}
 			setCenters( p );
 			break;
-		default: cout << "Invalid option selected" << endl;
-        exit(1);
+        case 4:
+            // Use first K events as centers (makes it easy to specify centers)
+            for(int k=0; k< p->numClusters; k++) {
+                for(int d=0; d< p->numDimensions; d++) {
+                    p->centers[k*p->numDimensions+d] = p->data[k*p->numDimensions+d];
+                }
+            }
+
+            // Initialize the scatters to identity matrices
+            seedScatters(p);
+            // Need to define N, divide points evenly for start
+            for(int i=0; i < p->numClusters; i++) {
+                p->n[i] = p->numEvents / p->numClusters;
+            }
+            // Compute the A_t values (needed for membership calculations)
+            if(p->option == 4) {
+                compute_A_maxlikelihood(p);
+            } else {
+                compute_A_general(p);
+            }
+            
+            printCenters(p); 
+            //printScatters(p);
+
+            // compute initial memberships based on the centers/scatters
+            memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
+    		computeGeneralFormula_eq31(p);
+            break;
+		default: 
+            cout << "Invalid option selected" << endl;
+            exit(1);
     }
     // TOP OF THE LOOP
     // AS LONG AS IT TAKES...
@@ -514,7 +543,7 @@ void fuzzySmatrix(Params* p)
 	// 1:
 	need_to_continue = 1;
 	outer_iter	 = 1;
-	while ( need_to_continue == 1 )
+	while ( need_to_continue == 1 && outer_iter < 100)
 	{
 	    need_to_continue = 0;
 
@@ -532,7 +561,7 @@ void fuzzySmatrix(Params* p)
 	    // Step 2b:
 	    // Compute Scatter matrix according to equation 17 (covariance matrix):
 	    setScatterMatrices( p ); 
-        printScatters( p );
+        //printScatters( p );
 
         for(int i=0; i< p->numClusters; i++) {
             cout << "N: " << p->n[i] << endl;
@@ -606,7 +635,7 @@ void fuzzySmatrix(Params* p)
 	        }
 	    }
 
-	    outer_iter	 = outer_iter + 1;
+	    outer_iter++;
     } // end of outer while loop
 
     cout << "Outer Iterations: " << outer_iter << endl << endl;
