@@ -8,35 +8,35 @@
 #define MDL_on_GPU 1
 
 // number of clusters
-#define NUM_CLUSTERS VALUE
+#define NUM_CLUSTERS $NUM_CLUSTERS$
 
 // number of dimensions
-#define ALL_DIMENSIONS VALUE 
+#define ALL_DIMENSIONS $NUM_DIMENSIONS$
 
 // number of elements
-#define NUM_EVENTS VALUE
+#define NUM_EVENTS $NUM_EVENTS$
 
 // input file delimiter (normally " " or "," or "\t")
 #define DELIMITER ","
 
 // Parameters
-#define FUZZINESS VALUE
-#define THRESHOLD VALUE
-#define K1 VALUE
-#define K2 VALUE
-#define K3 VALUE
-#define MEMBER_THRESH VALUE
-#define TABU_ITER VALUE
-#define TABU_TENURE VALUE
-#define VOLUME_TYPE VALUE
-#define DISTANCE_MEASURE VALUE
+#define FUZZINESS $FUZZINESS$
+#define THRESHOLD $THRESHOLD$
+#define K1 $K1$
+#define K2 $K2$
+#define K3 $K3$
+#define MEMBER_THRESH $MEMBER_THRESHOLD$
+#define TABU_ITER $TABU_ITER$
+#define TABU_TENURE $TABU_TENURE$
+#define VOLUME_TYPE $VOLUME_TYPE$
+#define DISTANCE_MEASURE $DISTANCE_MEASURE$
 
 
-const float VOLUME_INC_PARAMS
+const float VOLUME_INC_PARAMS[] = {0.05,0.1,0.15};
 
 // number of Threads and blocks
 #define Q_THREADS 92 // number of threads per block building Q
-#define NUM_THREADS VALUE  // number of threads per block
+#define NUM_THREADS $NUM_THREADS$  // number of threads per block
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
