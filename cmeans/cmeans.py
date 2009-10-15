@@ -91,7 +91,7 @@ def parseInputArgs():
         print "Invalid input file."
         sys.exit(1)
    
-    num_threads = 384
+    num_threads = 256
     if 8 < num_dimensions <= 10:
         num_threads = 320;
     elif 10 < num_dimensions <= 12:
@@ -100,7 +100,7 @@ def parseInputArgs():
         num_threads = 192
     elif 16 < num_dimensions <= 24:
         num_threads = 128
-    else:
+    elif num_dimensions > 24:
         num_threads = 64
     params['NUM_THREADS'] = num_threads
 

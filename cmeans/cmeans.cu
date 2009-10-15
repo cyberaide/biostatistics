@@ -363,10 +363,13 @@ __host__ float MembershipValue(const float* clusters, const float* events, int c
 void UpdateClusterCentersCPU(const float* oldClusters, const float* events, float* newClusters){
     
     
+    //float membershipValue, sum, denominator;
     float membershipValue, denominator;
     float* numerator = (float*)malloc(sizeof(float)*ALL_DIMENSIONS);
+    float* denominators = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* distances = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
 
-
+    
     for(int i = 0; i < NUM_CLUSTERS; i++){
       denominator = 0.0;
       for(int j = 0; j < ALL_DIMENSIONS; j++)
@@ -384,6 +387,54 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
       }  
     }
     
+
+    /*
+    memset(newClusters,0.0,sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);    
+    memset(denominators,0.0,sizeof(float)*NUM_CLUSTERS);    
+
+    for(int i = 0; i < NUM_EVENTS; i++){
+        for(int j = 0; j < ALL_DIMENSIONS; j++)
+            numerator[j] = 0;
+
+        // Compute distance from this event to each cluster
+        for(int j = 0; j < NUM_CLUSTERS; j++){
+            distances[j] = CalculateDistanceCPU(oldClusters,events,j,i);
+        }
+
+        // Find sum of all distances
+        sum = 0.0;
+        for(int j = 0; j < NUM_CLUSTERS; j++) {
+            sum += distances[j];
+        }
+
+        for(int j = 0; j < NUM_CLUSTERS; j++){
+            membershipValue = distances[j] / sum;
+            //printf("%f\n",membershipValue);
+            if(isnan(membershipValue)) {
+                printf("Event #%d: MembershipValue: %f, sum: %f\n",i,membershipValue,sum);
+            }
+
+            // Add contribution to the center for each dimension for this cluster
+            for(int k = 0; k < ALL_DIMENSIONS; k++){
+              newClusters[j*ALL_DIMENSIONS+k] += events[i*ALL_DIMENSIONS + k]*membershipValue;
+            }
+
+            denominators[j] += membershipValue;
+        }  
+    }
+    for(int k = 0; k < NUM_CLUSTERS; k++){
+        for(int j = 0; j < ALL_DIMENSIONS; j++) {
+            newClusters[k*ALL_DIMENSIONS + j] /= denominators[k];
+            //printf("%f ",newClusters[k*ALL_DIMENSIONS + j]);
+        }
+        //printf("\n");
+    } 
+    //printf("\n"); 
+    */
+    
+    free(numerator);
+    free(denominators);
+    free(distances);
 }
 
 
@@ -439,23 +490,32 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
 
 
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_matrix, size));
+    cudaMalloc((void**)&d_matrix, size);
+    cudaThreadSynchronize();
+    printf(cudaGetErrorString(cudaGetLastError()));
+    printf("\n");
     //CalculateQMatrixGPU<<<NUM_CLUSTERS,Q_THREADS>>>(d_events, d_clusters, d_matrix);
 
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
     CUT_SAFE_CALL(cutStartTimer(timer_gpu));
 
     dim3 grid(NUM_CLUSTERS, NUM_CLUSTERS);
-
+    printf("Launching Q Matrix Kernel\n");
     CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix);
     cudaThreadSynchronize();
-    
+    printf(cudaGetErrorString(cudaGetLastError()));
+    printf("\n");
+
     CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
 
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     float* matrix = (float*)malloc(size);
+    printf("Copying results to CPU\n");
     cudaError_t error = cudaMemcpy(matrix, d_matrix, size, cudaMemcpyDeviceToHost);
+    cudaThreadSynchronize();
+    printf(cudaGetErrorString(cudaGetLastError()));
+    printf("\n");
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
 
     CUT_SAFE_CALL(cutStopTimer(timer));
