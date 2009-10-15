@@ -123,6 +123,7 @@ if __name__ == '__main__':
 
     # Compile the program
     print "CWD:",os.getcwd()
+    os.system('make clean') # cpp files won't get recompiled if cmeans.h changes for some reason...
     error = os.system('make')
 
     # Run the cmeans program

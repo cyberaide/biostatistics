@@ -116,7 +116,8 @@ int* TabuSearch(float* matrix, char* inputFile){
         config[i] = 1;
         minimumConfig[i] = 1;
     }
-    int history[NUM_CLUSTERS] = {0};
+    int history[NUM_CLUSTERS];
+    memset(history,0,sizeof(int)*NUM_CLUSTERS);
     float minimumScore = EvaluateSolution(matrix, config);
     
     
@@ -129,10 +130,7 @@ int* TabuSearch(float* matrix, char* inputFile){
         << INT_MIN << endl;
     myfile.open(logFileName);
 
-
     for(int i = 0; i < TABU_ITER; i++){
-        
-        
         float currentScore = INT_MIN;//FLT_MAX;
 
         for(int j = 0; j < NUM_CLUSTERS; j++){

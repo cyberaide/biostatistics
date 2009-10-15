@@ -23,9 +23,9 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
     ofstream charFile;  
     char charFileName [512];
     sprintf(charFileName, "%s_volume_log_%d", inFileName, NUM_CLUSTERS);
-    cout << "Characteristics Log file name = " << charFileName;
+    cout << "Characteristics Log file name = " << charFileName << endl;
     charFile.open(charFileName);
-    
+    fflush(stdout); 
     CUT_SAFE_CALL(cutStopTimer(timer_io));
     
     for(unsigned i = 0; i < sizeof(VOLUME_INC_PARAMS)/sizeof(float); i++){
@@ -141,7 +141,7 @@ void ReportSummary(float* clusters, int count, char* inFileName, float averageTi
     
     char logFileName [512];
     sprintf(logFileName, "%s_summary_log_%d_%d_%d", inFileName, NUM_CLUSTERS,  CPU_ONLY, MDL_on_GPU);
-    cout << "Log file name = " << logFileName;
+    cout << "Log file name = " << logFileName << endl;
     myfile.open(logFileName);
     float totalTime = (float)(clock() - total_start)/(float)(CLOCKS_PER_SEC);
     myfile << "Average c-means iteration time = " << averageTime 
