@@ -51,8 +51,8 @@ struct Params {
     double*     membership2;        // Copy of membership.
     double*     scatters;           // Scatter matrices. One N*N matrix per cluster, dynamically allocated
     double*     scatter_inverses;   // Inver of all scatter matrices
-    int*        Ti;                 // N data points that are set if a point has any
-                                    // negative membership.
+    int*        Ti;                 // An array of flags, one for each cluster, indicates negative membership (used as a temporary array in eq31)
+    int         Ti_set;              // A flag that indicates if any Ti was set during the iteration
     double*     n;                  // effective size of each cluster (sum of fuzzy memberships for that cluster)
     double*     A_t;                // Used for eqn (31)
     

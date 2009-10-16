@@ -346,50 +346,73 @@ void compute_A_maxlikelihood(Params* p) {
 void computeGeneralFormula_eq31(Params* p)
 {
     double membership = 0.0;
-	
+    double sum_memberships = 0.0;
+    int ti_set;
+    int iters;
+    int* Ti_copy = new int[p->numClusters];
     for(int i=0; i<p->numEvents; i++) {
-        double sum_memberships = 0.0;
-        for(int t=0; t< p->numClusters; t++) {
-			double B_it = 0.0;
-			if (p->option == 4) {
-                B_it = compute_B_maxlikelihood(p,i,t) + 0.001;
-            } else {
-                B_it = compute_B_general(p,i,t) + 0.001;
-            }
-
-            double B_ir = 0.0;
-            double sum_B_ir = 0.0;
-            double sum_A_ir_and_B_ir = 0.0;
-            for(int r=0; r< p->numClusters; r++) {
-                // Only include clusters not in the set Ti
-                if(p->Ti[i*p->numClusters+r] == 0) {
-					if (p->option == 4) {
-                        B_ir = compute_B_maxlikelihood(p,i,r) + 0.001;
-                    } else {
-                        B_ir = compute_B_general(p,i,r) + 0.001;
-                    }
-                    //cout << "B_" << i << "_" << r << " = " << B_ir << endl;
-                    sum_B_ir += 1.0/B_ir;
-                    sum_A_ir_and_B_ir += p->A_t[r] / B_ir;
+        iters = 0;
+        do {
+            sum_memberships = 0.0;
+            ti_set = 0;
+            memcpy(Ti_copy,p->Ti,sizeof(int)*p->numClusters);
+            memset(p->Ti,0,sizeof(int)*p->numClusters);
+            for(int t=0; t< p->numClusters; t++) {
+                double B_it = 0.0;
+                if (p->option == 4) {
+                    B_it = compute_B_maxlikelihood(p,i,t) + 0.001;
+                } else {
+                    B_it = compute_B_general(p,i,t) + 0.001;
                 }
+
+                double B_ir = 0.0;
+                double sum_B_ir = 0.0;
+                double sum_A_ir_and_B_ir = 0.0;
+                for(int r=0; r< p->numClusters; r++) {
+                    // Only include clusters not in the set Ti
+                    if(p->Ti[r] == 0) {
+                        if (p->option == 4) {
+                            B_ir = compute_B_maxlikelihood(p,i,r) + 0.001;
+                        } else {
+                            B_ir = compute_B_general(p,i,r) + 0.001;
+                        }
+                        //cout << "B_" << i << "_" << r << " = " << B_ir << endl;
+                        sum_B_ir += 1.0/B_ir;
+                        sum_A_ir_and_B_ir += p->A_t[r] / B_ir;
+                    }
+                }
+                membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*(sum_A_ir_and_B_ir/sum_B_ir - p->A_t[t]);
+                if(membership < 0.0) {
+                    p->Ti[t] = 1;
+                    p->Ti_set = 1;
+                    ti_set = 1;
+                    membership = 0.0;
+                }
+                if( isnan(membership) ) {
+                    cout << "Membership #" << i << " is NaN" << endl;
+                    return;
+                }
+                p->membership[i*p->numClusters+t] = membership;
+                sum_memberships += membership;
             }
-            membership = (1.0/B_it)/sum_B_ir - (1.0/B_it)*(sum_A_ir_and_B_ir/sum_B_ir - p->A_t[t]);
-            if(membership < 0.0) {
-            	p->Ti[i*p->numClusters+t] = 1;
-            	membership = 0.0;
+            iters++;
+            if(memcmp(Ti_copy,p->Ti,sizeof(int)*p->numClusters) == 0) {
+                //cout << "No change in Ti after " << iters << " iterations. Terminating inner loop" << endl;
+                ti_set = 0;
+                break;
             }
-            if( isnan(membership) ) {
-                cout << "Membership #" << i << " is NaN" << endl;
-                return;
-            }
-            p->membership[i*p->numClusters+t] = membership;
-            sum_memberships += membership;
+        } while(ti_set && iters < p->innerloop);
+
+        if(ti_set) {
+            cout << "Ti was not resolved for event " << i << " after " << iters << " iterations" << endl;
         }
+
         // normalize memberships for this event
         for(int t=0; t < p->numClusters; t++) {
             p->membership[i*p->numClusters+t] /= sum_memberships;
         }
     }
+    delete[]Ti_copy;
 }
 
 // Computes covariance of the data set, sets every scatter matrix to initial covariance
@@ -468,7 +491,7 @@ void fuzzySmatrix(Params* p)
             //printScatters(p);
 
             // compute initial memberships based on the centers/scatters
-            memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
+            memset(p->Ti,0,sizeof(int)*p->numClusters);
     		computeGeneralFormula_eq31(p);
 			break;
 		case 2:					
@@ -525,7 +548,7 @@ void fuzzySmatrix(Params* p)
             //printScatters(p);
 
             // compute initial memberships based on the centers/scatters
-            memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
+            memset(p->Ti,0,sizeof(int)*p->numClusters);
     		computeGeneralFormula_eq31(p);
             break;
 		default: 
@@ -536,8 +559,6 @@ void fuzzySmatrix(Params* p)
     // AS LONG AS IT TAKES...
 
 	double max_epsilon_change = p->threshold; //Set a stopping criteria
-
-    int* Ti_copy = new int[p->numEvents*p->numClusters];
 
 	// MAIN STEPS:
 	// 1:
@@ -568,60 +589,15 @@ void fuzzySmatrix(Params* p)
         }
 
 	    // Step 3:
-	    //  "Initialise the set Ti == 0,
-	    //  and evalute the membership functions according to (31).
-	    //  If some of the memberships are <0, clip them to zero,
-	    //  add their index to the set T(i) (bad boys) and
-	    //  recalculate the other memberships according to (31).
-	    //  Iterate as long as there are any negative memberships."
-
-	    // Initialize the set Ti = none.
-	    // This is the set of points to ignore because they had a membership
-	    // value that was negative.
-	    // Compute the Ti's, and iterate as long as any Ti != 0.
-	    memset( p->Ti, (int) 0, p->numEvents );
-
-	    int any_Ti_set;
-	    // Clear all the Ti values
-        memset(p->Ti,0,sizeof(int)*p->numEvents*p->numClusters);
-	    
-	    inner_iter = 0;
-	    do
-	    {
-    		any_Ti_set = 0;
-            memcpy(Ti_copy,p->Ti,sizeof(int)*p->numClusters*p->numEvents);
-
-    		// Evaluate the membership functions according to EQ 31.
-    		// If any membership is negative, range clip it to zero.
-    		// 		AND set p->Ti( that point ) to 1.
-    		//		AND re-calculate the memberships according to EQ 31.
-    		// THETA is a constant of 1 -- it is really only used in adaptive distance and is ignored in the other methods
-    		// THIS IS EQUATION (31)....
-		
-    		computeGeneralFormula_eq31(p);
-
-    		// Total up all values of "any_Ti_set".
-    		// If the sum is non-zero, then one of them is set,
-    		// and you need to keep looping.
-    		for (int ii=0; ii < p->numEvents*p->numClusters; ii++ ){
-    		    if(p->Ti[ii] != 0) {
-    		        any_Ti_set = 1;
-    		        break;
-    		    }
-    		}
-    		inner_iter++;
-            //if(memcmp(Ti_copy,p->Ti,sizeof(int)*p->numClusters*p->numEvents) == 0) {
-            //    cout << "No change in Ti after " << inner_iter << " iterations. Terminating inner loop" << endl;
-            //    break;
-            //}
-	    } while (any_Ti_set != 0 && inner_iter < p->innerloop);
-
-        cout << "Inner Iter: " << inner_iter << endl;
-
-        if (inner_iter == p->innerloop){
-		    cout << "Did not resolve all Ti values in " << p->innerloop << " iterations" << endl;
-    		//break; // Do we need to break? Or just issue a warning?
-	    }
+	    // Compute memberships
+        // Evaluate the membership functions according to EQ 31.
+        // If any membership is negative, range clip it to zero.
+        // 		AND set p->Ti( that point ) to 1.
+        //		AND re-calculate the memberships according to EQ 31.
+        // THETA is a constant of 1 -- it is really only used in adaptive distance and is ignored in the other methods
+        // THIS IS EQUATION (31)....
+    
+        computeGeneralFormula_eq31(p);
 
 	    // Step 4:
 	    // COMPARE THE MEMBERSHIP FUNCTIONS TO PREVIOUS METHODS.
