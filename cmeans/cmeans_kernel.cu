@@ -5,7 +5,7 @@
 #include <cmeanscu.h>
 #include <float.h>
 
-__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters){
+__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* distanceMatrix){
 
 	float membershipValue;//, denominator;
 	
@@ -34,10 +34,11 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     // Add its contribution to the numerator and denominator for that thread
     for(int j = threadIdx.y; j < NUM_EVENTS; j+=NUM_NUM){
           
-        membershipValue = MembershipValueGPU(myClusters, events, blockIdx.x, j);
+        membershipValue = MembershipValueGPU(myClusters, events, blockIdx.x, j, distanceMatrix);
 
         for(int k = 0; k < ALL_DIMENSIONS; k+=THREADS_PER_EVENT){
-            numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(j)*ALL_DIMENSIONS + threadIdx.x+ k]*membershipValue;
+            numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(threadIdx.x+k)*ALL_DIMENSIONS + j]*membershipValue;
+            //numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(j)*ALL_DIMENSIONS + threadIdx.x+ k]*membershipValue;
                 
         }
         denominators[threadIdx.y] += membershipValue;
@@ -68,10 +69,38 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     }  
 }
 
-__device__ float MembershipValueGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex){
+__global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix) {
+    
+    // copy centers into shared memory	
+    __shared__ float myClusters[ALL_DIMENSIONS*NUM_CLUSTERS];
+    for(int j = threadIdx.x; j < ALL_DIMENSIONS*NUM_CLUSTERS; j+=320){
+        myClusters[j] = clusters[j];
+    }
+
+    /*
+    int cluster = 0;
+    int dim = 0;
+    for(int j = threadIdx.x; j < ALL_DIMENSIONS*NUM_CLUSTERS; j+= NUM_THREADS) {
+        cluster = j / ALL_DIMENSIONS;
+        dim = j % ALL_DIMENSIONS;
+        myClusters[dim*NUM_CLUSTERS+cluster] = clusters[cluster*ALL_DIMENSIONS+dim];
+    }
+    */
+    __syncthreads();
+
+    // For each event
+    // Note: global memory writes should be coalesced, but the event data access in CalculateDistanceGPU isn't
+    for(int i=threadIdx.x; i < NUM_EVENTS; i+= 320) {
+        matrix[blockIdx.x*NUM_EVENTS+i] = CalculateDistanceGPU(myClusters,events,blockIdx.x,i);
+    }
+}
+
+
+__device__ float MembershipValueGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0;
     // Compute the distance from this event to the given cluster
-	myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
+	//myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
+    myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
 	
 	float sum =0;
 	float otherClustDist;
@@ -81,7 +110,8 @@ __device__ float MembershipValueGPU(const float* clusters, const float* events, 
     // If each block handled a certain set of events rather than a cluster
     // we might be able to avoid this.
 	for(int j = 0; j< NUM_CLUSTERS; j++){
-		otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
+		//otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
+        otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
 		if(otherClustDist < .000001)
 			return 0.0;
@@ -96,24 +126,25 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 	float sum = 0;
 	float tmp;
 #if DISTANCE_MEASURE == 0
-			for(int i = 0; i < ALL_DIMENSIONS; i++){
-				tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
-				sum += tmp*tmp;
-			}
-			sum = sqrt(sum);
+    for(int i = 0; i < ALL_DIMENSIONS; i++){
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*ALL_DIMENSIONS +i];
+        //tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+        sum += tmp*tmp;
+    }
+    sum = sqrt(sum);
 #endif
 #if DISTANCE_MEASURE == 1
-			for(int i = 0; i < ALL_DIMENSIONS; i++){
-				tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
-				sum += abs(tmp);
-			}
+    for(int i = 0; i < ALL_DIMENSIONS; i++){
+        tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+        sum += abs(tmp);
+    }
 #endif
 #if DISTANCE_MEASURE == 2 
-			for(int i = 0; i < ALL_DIMENSIONS; i++){
-				tmp = abs(events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i]);
-				if(tmp > sum)
-					sum = tmp;
-			}
+    for(int i = 0; i < ALL_DIMENSIONS; i++){
+        tmp = abs(events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i]);
+        if(tmp > sum)
+            sum = tmp;
+    }
 #endif
 
 	return sum;

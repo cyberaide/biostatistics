@@ -103,6 +103,7 @@ def parseInputArgs():
     elif num_dimensions > 24:
         num_threads = 64
     params['NUM_THREADS'] = num_threads
+    params['NUM_THREADS'] = 128
 
     return params    
 

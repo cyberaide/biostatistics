@@ -27,6 +27,8 @@ bool InitCUDA(void)
 {
     int count = 0;
     int i = 0;
+    int device = -1;
+    int num_procs = 0;
 
     cudaGetDeviceCount(&count);
     if(count == 0) {
@@ -34,19 +36,28 @@ bool InitCUDA(void)
         return false;
     }
 
+    printf("There are %d devices.\n",count);
     for(i = 0; i < count; i++) {
         cudaDeviceProp prop;
         if(cudaGetDeviceProperties(&prop, i) == cudaSuccess) {
+            printf("Device #%d, Version: %d.%d\n",i,prop.major,prop.minor);
+            // Check if CUDA capable device
             if(prop.major >= 1) {
-                break;
+                if(prop.multiProcessorCount > num_procs) {
+                    device = i;
+                    num_procs = prop.multiProcessorCount;
+                }
             }
         }
     }
-    if(i == count) {
+    if(device == -1) {
         fprintf(stderr, "There is no device supporting CUDA.\n");
         return false;
     }
-    cudaSetDevice(i);
+
+    device = 1;
+    printf("Using Device %d\n",device);
+    CUDA_SAFE_CALL(cudaSetDevice(device));
 
     printf("CUDA initialized.\n");
     return true;
@@ -100,7 +111,7 @@ int main(int argc, char* argv[])
         return 0;
     }
     
-    CUT_DEVICE_INIT(argc, argv);
+    //CUT_DEVICE_INIT(argc, argv);
     srand((unsigned)(time(0)));
     
     
@@ -112,9 +123,25 @@ int main(int argc, char* argv[])
     
     clock_t total_start;
     total_start = clock();
-    
+
     // Select random cluster centers
     generateInitialClusters(myClusters, myEvents);
+    
+    // Transpose the events matrix
+    float* temp = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    for(int i=0; i<NUM_EVENTS; i++) {
+        for(int j=0; j<ALL_DIMENSIONS; j++) {
+            temp[j*NUM_EVENTS+i] = myEvents[i*ALL_DIMENSIONS+j];
+        }
+    }
+    memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    /*for(int i=0; i<NUM_EVENTS;i++) {
+        for(int j=0; j<ALL_DIMENSIONS;j++) {
+            printf("%f ",myEvents[j*NUM_EVENTS+i]);
+        }
+        printf("\n");
+    }*/
+    free(temp);
     
     int iterations = 0;
     
@@ -122,7 +149,8 @@ int main(int argc, char* argv[])
     
 #if !CPU_ONLY    
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-
+    float* d_distanceMatrix;
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
     float* d_E;// = AllocateEvents(myEvents);
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS));
     float* d_C;// = AllocateClusters(myClusters);
@@ -168,8 +196,16 @@ int main(int argc, char* argv[])
         dim3 BLOCK_DIM(1, NUM_THREADS, 1);
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-        UpdateClusterCentersGPU<<< NUM_BLOCKS, BLOCK_DIM >>>(d_C, d_E, d_nC);
-	cudaThreadSynchronize();
+        printf("Launching ComputeDistanceMatrix kernel\n");
+        ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
+        cudaThreadSynchronize();
+        printf(cudaGetErrorString(cudaGetLastError()));
+        printf("\n");
+        printf("Launching UpdateClusterCentersGPU kernel\n");
+        UpdateClusterCentersGPU<<< NUM_BLOCKS, BLOCK_DIM >>>(d_C, d_E, d_nC, d_distanceMatrix);
+        cudaThreadSynchronize();
+        printf(cudaGetErrorString(cudaGetLastError()));
+        printf("\n");
         CUT_SAFE_CALL(cutStopTimer(timer_gpu));
 
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));

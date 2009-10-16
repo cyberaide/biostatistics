@@ -25,6 +25,9 @@
 #
 ################################################################################
 
+# Add Flags for nvcc
+NVCCFLAGS += -cubin
+
 # Add source files here
 EXECUTABLE	:= cmeans
 # CUDA source files (compiled with cudacc)
