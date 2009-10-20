@@ -8,7 +8,7 @@
 #include <time.h>
 #include <string.h>
 #include <float.h>
-#include <cmeans_kernel.cu>
+//#include <cmeans_kernel.cu>
 #include "timers.h"
 
 
@@ -55,7 +55,7 @@ bool InitCUDA(void)
         return false;
     }
 
-    device = 1;
+    device = 0;
     printf("Using Device %d\n",device);
     CUDA_SAFE_CALL(cudaSetDevice(device));
 
@@ -197,8 +197,8 @@ int main(int argc, char* argv[])
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         printf("Launching ComputeDistanceMatrix kernel\n");
-        ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
-        cudaThreadSynchronize();
+        //ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
+        //cudaThreadSynchronize();
         printf(cudaGetErrorString(cudaGetLastError()));
         printf("\n");
         printf("Launching UpdateClusterCentersGPU kernel\n");

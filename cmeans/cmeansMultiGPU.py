@@ -124,11 +124,11 @@ if __name__ == '__main__':
 
     # Compile the program
     print "CWD:",os.getcwd()
-    os.system('make clean') # cpp files won't get recompiled if cmeans.h changes for some reason...
-    error = os.system('make')
+    os.system('make -f Makefile_MultiGPU clean') # cpp files won't get recompiled if cmeans.h changes for some reason...
+    error = os.system('make -f Makefile_MultiGPU')
 
     # Run the cmeans program
     if not error:
-        cmd = '../../bin/linux/release/cmeans "%s"' % params['INPUT_FILE']
+        cmd = '../../bin/linux/release/cmeansMultiGPU "%s"' % params['INPUT_FILE']
         print cmd
         os.system(cmd)

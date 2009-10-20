@@ -25,18 +25,19 @@
 #
 ################################################################################
 
-# Add Flags for nvcc
-NVCCFLAGS += -cubin
 
 # Add source files here
 EXECUTABLE	:= cmeans
 # CUDA source files (compiled with cudacc)
-CUFILES		:= cmeans.cu
+CUFILES		:= cmeans.cu cmeans_kernel.cu
 # CUDA dependency files
 CU_DEPS		:= \
 	cmeans_kernel.cu \
 	cmeans.h 	 \
 	cmeanscu.h 	 \
+	kmeans_kernel.cu \
+	kmeans.cu \
+	kmeans.h
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= \
@@ -46,5 +47,7 @@ CCFILES		:= \
 
 ################################################################################
 # Rules and targets
-
 include ../../common/common.mk
+
+kmeans: $(OBJDIR)/kmeans.cu.o
+	$(LINK) -o $(TARGETDIR)/kmeans $(OBJDIR)/kmeans.cu.o $(LIB)
