@@ -5,7 +5,7 @@
 #include <cmeansMultiGPUcu.h>
 #include <float.h>
 
-__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* distanceMatrix){
+__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* distanceMatrix, float* denominator_result, int start_event, int finish_event){
 
 	float membershipValue;//, denominator;
 	
@@ -32,7 +32,7 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
      
     // Compute new membership value for each event
     // Add its contribution to the numerator and denominator for that thread
-    for(int j = threadIdx.y; j < NUM_EVENTS; j+=NUM_NUM){
+    for(int j = (start_event+threadIdx.y); j < finish_event; j+=NUM_NUM){
           
         membershipValue = MembershipValueGPU(myClusters, events, blockIdx.x, j, distanceMatrix);
 
@@ -60,16 +60,19 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
         denominators[0] += denominators[j];
       }
       denominators[0] = denominators[0]/NUM_NUM;
+      denominator_result[blockIdx.x] = denominators[0];
     }
     __syncthreads();
 
 	// Set the new center for this block	
     for(int j = index; j < ALL_DIMENSIONS; j+=NUM_THREADS){
-        newClusters[blockIdx.x*ALL_DIMENSIONS + j] = numerators[j]/denominators[0];
+        //newClusters[blockIdx.x*ALL_DIMENSIONS + j] = numerators[j]/denominators[0];
+        // The denominator will get handled by the host
+        newClusters[blockIdx.x*ALL_DIMENSIONS + j] = numerators[j];
     }  
 }
 
-__global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix) {
+__global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix, int start, int stop) {
     
     // copy centers into shared memory	
     __shared__ float myClusters[ALL_DIMENSIONS*NUM_CLUSTERS];
@@ -90,7 +93,7 @@ __global__ void ComputeDistanceMatrix(const float* clusters, const float* events
 
     // For each event
     // Note: global memory writes should be coalesced, but the event data access in CalculateDistanceGPU isn't
-    for(int i=threadIdx.x; i < NUM_EVENTS; i+= 320) {
+    for(int i=(start+threadIdx.x); i < stop; i+= 320) {
         matrix[blockIdx.x*NUM_EVENTS+i] = CalculateDistanceGPU(myClusters,events,blockIdx.x,i);
     }
 }

@@ -55,7 +55,7 @@ bool InitCUDA(void)
         return false;
     }
 
-    device = 0;
+    device = 1;
     printf("Using Device %d\n",device);
     CUDA_SAFE_CALL(cudaSetDevice(device));
 
@@ -197,8 +197,8 @@ int main(int argc, char* argv[])
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         printf("Launching ComputeDistanceMatrix kernel\n");
-        //ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
-        //cudaThreadSynchronize();
+        ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
+        cudaThreadSynchronize();
         printf(cudaGetErrorString(cudaGetLastError()));
         printf("\n");
         printf("Launching UpdateClusterCentersGPU kernel\n");

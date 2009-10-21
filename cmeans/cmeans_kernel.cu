@@ -37,8 +37,8 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
         membershipValue = MembershipValueGPU(myClusters, events, blockIdx.x, j, distanceMatrix);
 
         for(int k = 0; k < ALL_DIMENSIONS; k+=THREADS_PER_EVENT){
-            numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(threadIdx.x+k)*ALL_DIMENSIONS + j]*membershipValue;
-            //numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(j)*ALL_DIMENSIONS + threadIdx.x+ k]*membershipValue;
+            //numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(threadIdx.x+k)*ALL_DIMENSIONS + j]*membershipValue;
+            numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(j)*ALL_DIMENSIONS + threadIdx.x+ k]*membershipValue;
                 
         }
         denominators[threadIdx.y] += membershipValue;
@@ -99,8 +99,8 @@ __global__ void ComputeDistanceMatrix(const float* clusters, const float* events
 __device__ float MembershipValueGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0;
     // Compute the distance from this event to the given cluster
-	myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
-    //myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
+	//myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
+    myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
 	
 	float sum =0;
 	float otherClustDist;
@@ -110,8 +110,8 @@ __device__ float MembershipValueGPU(const float* clusters, const float* events, 
     // If each block handled a certain set of events rather than a cluster
     // we might be able to avoid this.
 	for(int j = 0; j< NUM_CLUSTERS; j++){
-		otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
-        //otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
+		//otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
+        otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
 		if(otherClustDist < .000001)
 			return 0.0;
@@ -127,8 +127,8 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 	float tmp;
 #if DISTANCE_MEASURE == 0
     for(int i = 0; i < ALL_DIMENSIONS; i++){
-        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*ALL_DIMENSIONS +i];
-        //tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+        //tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*ALL_DIMENSIONS +i];
+        tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
         sum += tmp*tmp;
     }
     sum = sqrt(sum);
