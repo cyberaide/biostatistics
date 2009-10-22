@@ -265,6 +265,7 @@ int main(int argc, char* argv[])
 
             size = sizeof(float)*ALL_DIMENSIONS*NUM_CLUSTERS;
 
+            // Copy the cluster centers to the GPU
             CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
             CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
@@ -272,14 +273,14 @@ int main(int argc, char* argv[])
             dim3 BLOCK_DIM(1, NUM_THREADS, 1);
 
             CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-            printf("Launching ComputeDistanceMatrix kernel\n");
-            ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix, start, finish);
+            //printf("Launching ComputeDistanceMatrix kernel\n");
+            //ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix, start, finish);
 
-            cudaThreadSynchronize();
-            printCudaError();
+            //cudaThreadSynchronize();
+            //printCudaError();
 
             printf("Launching UpdateClusterCentersGPU kernel\n");
-            UpdateClusterCentersGPU<<< NUM_BLOCKS, BLOCK_DIM >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, start, finish);
+            UpdateClusterCentersGPU<<< NUM_BLOCKS, NUM_THREADS >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, start, finish);
             cudaThreadSynchronize();
             printCudaError();
             
@@ -287,8 +288,8 @@ int main(int argc, char* argv[])
             
             // Copy partial centers and denominators to host
             CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-            CUDA_SAFE_CALL(cudaMemcpy(tempClusters[cpu_thread_id], d_nC, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS, cudaMemcpyDeviceToHost));
-            CUDA_SAFE_CALL(cudaMemcpy(tempDenominators[cpu_thread_id], d_denoms, sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost));
+            cudaMemcpy(tempClusters[cpu_thread_id], d_nC, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS, cudaMemcpyDeviceToHost);
+            cudaMemcpy(tempDenominators[cpu_thread_id], d_denoms, sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
             printCudaError();
             CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
             
@@ -320,11 +321,9 @@ int main(int argc, char* argv[])
                 }
 
                 // Divide to get the final clusters
-                for(int i=1; i < num_gpus; i++) {
-                    for(int c=0; c < NUM_CLUSTERS; c++) {
-                        for(int d=0; d < ALL_DIMENSIONS; d++) {
-                            tempClusters[0][c*ALL_DIMENSIONS+d] /= tempDenominators[0][c];
-                        }
+                for(int c=0; c < NUM_CLUSTERS; c++) {
+                    for(int d=0; d < ALL_DIMENSIONS; d++) {
+                        tempClusters[0][c*ALL_DIMENSIONS+d] /= tempDenominators[0][c];
                     }
                 }
                 diff = 0.0;
@@ -332,7 +331,7 @@ int main(int argc, char* argv[])
                     //printf("GPU %d, Cluster %d: ",cpu_thread_id,i);
                     for(int k = 0; k < ALL_DIMENSIONS; k++){
                         //printf("%f ",tempClusters[cpu_thread_id][i*ALL_DIMENSIONS + k]);
-                        diff += myClusters[i*ALL_DIMENSIONS + k] - tempClusters[cpu_thread_id][i*ALL_DIMENSIONS + k];
+                        diff += fabs(myClusters[i*ALL_DIMENSIONS + k] - tempClusters[cpu_thread_id][i*ALL_DIMENSIONS + k]);
                     }
                     //printf("\n");
                 }
@@ -348,80 +347,83 @@ int main(int argc, char* argv[])
             printf("\n");
 
         } while(abs(diff) > THRESHOLD && iterations < 150); 
-        
-        if(iterations == 150){
-            printf("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
-        }
-        cpu_stop = clock();
-        
-        CUT_SAFE_CALL(cutStartTimer(timer_io));
-        
-        averageTime /= iterations;
-        printf("\nTotal Processing time: %f (s) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC));
-        printf("C-means complete\n");
-        printf("\n");
 
-        for(int i=0; i < NUM_CLUSTERS; i++){
-            printf("GPU %d, Center %d: ",cpu_thread_id,i);
-            for(int k = 0; k < ALL_DIMENSIONS; k++)
-                printf("%f\t", myClusters[i*ALL_DIMENSIONS + k]);
+        // MDL not fixed for multiple gpus, do it with single one for now
+        if(cpu_thread_id == 0) {        
+            if(iterations == 150){
+                printf("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
+            }
+            cpu_stop = clock();
+            
+            CUT_SAFE_CALL(cutStartTimer(timer_io));
+            
+            averageTime /= iterations;
+            printf("\nTotal Processing time: %f (s) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC));
+            printf("C-means complete\n");
             printf("\n");
-        }
-        
-        exit(0);  // NOTE - Stopping early until we figure out how to make it parallel!!!
 
-        CUT_SAFE_CALL(cutStopTimer(timer_io));
-        
-        int* finalClusterConfig;
-        float mdlTime = 0;
-        
-#if !MDL_on_GPU
-        finalClusterConfig = MDL(myEvents, myClusters, &mdlTime, argv[1]);
-#else
-        finalClusterConfig = MDLGPU(d_E, d_nC, &mdlTime, argv[1]);
-        mdlTime /= 1000.0; // CUDA timer returns time in milliseconds, normalize to seconds
-#endif
-
-
-        CUT_SAFE_CALL(cutStartTimer(timer_io));
-
-        printf("Final Clusters are:\n");
-        int newCount = 0;
-        for(int i = 0; i < NUM_CLUSTERS; i++){
-            if(finalClusterConfig[i]){
-                for(int j = 0; j < ALL_DIMENSIONS; j++){
-                    newClusters[newCount * ALL_DIMENSIONS + j] = myClusters[i*ALL_DIMENSIONS + j];
-                    printf("%f\t", myClusters[i*ALL_DIMENSIONS + j]);
-                }
-                newCount++;
+            for(int i=0; i < NUM_CLUSTERS; i++){
+                printf("GPU %d, Center %d: ",cpu_thread_id,i);
+                for(int k = 0; k < ALL_DIMENSIONS; k++)
+                    printf("%f\t", myClusters[i*ALL_DIMENSIONS + k]);
                 printf("\n");
             }
-        }
-        
-        CUT_SAFE_CALL(cutStopTimer(timer_io));
+            
+            //exit(0);  // NOTE - Stopping early until we figure out how to make it parallel!!!
 
-        FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
-        
-        free(newClusters);
-        free(myClusters);
-        free(myEvents);
-    #if !CPU_ONLY
-        CUDA_SAFE_CALL(cudaFree(d_E));
-        CUDA_SAFE_CALL(cudaFree(d_C));
-        CUDA_SAFE_CALL(cudaFree(d_nC));
+            CUT_SAFE_CALL(cutStopTimer(timer_io));
+            
+            int* finalClusterConfig;
+            float mdlTime = 0;
+            
+    #if !MDL_on_GPU
+            finalClusterConfig = MDL(myEvents, myClusters, &mdlTime, argv[1]);
+    #else
+            finalClusterConfig = MDLGPU(d_E, d_nC, &mdlTime, argv[1]);
+            mdlTime /= 1000.0; // CUDA timer returns time in milliseconds, normalize to seconds
     #endif
 
-        CUT_SAFE_CALL(cutStopTimer(timer_total));
-        printf("\n\n"); 
-        printf("Total Time (ms): %f\n.",cutGetTimerValue(timer_total));
-        printf("I/O Time (ms): %f\n.",cutGetTimerValue(timer_io));
-        printf("GPU memcpy Time (ms): %f\n.",cutGetTimerValue(timer_memcpy));
-        printf("CPU processing Time (ms): %f\n.",cutGetTimerValue(timer_cpu));
-        printf("GPU processing Time (ms): %f\n.",cutGetTimerValue(timer_gpu));
-        printf("\n\n"); 
-        
-        //CUT_EXIT(argc, argv);
-        printf("\n\n");
+
+            CUT_SAFE_CALL(cutStartTimer(timer_io));
+
+            printf("Final Clusters are:\n");
+            int newCount = 0;
+            for(int i = 0; i < NUM_CLUSTERS; i++){
+                if(finalClusterConfig[i]){
+                    for(int j = 0; j < ALL_DIMENSIONS; j++){
+                        newClusters[newCount * ALL_DIMENSIONS + j] = myClusters[i*ALL_DIMENSIONS + j];
+                        printf("%f\t", myClusters[i*ALL_DIMENSIONS + j]);
+                    }
+                    newCount++;
+                    printf("\n");
+                }
+            }
+            
+            CUT_SAFE_CALL(cutStopTimer(timer_io));
+
+            FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
+            
+            free(newClusters);
+            free(myClusters);
+            free(myEvents);
+        #if !CPU_ONLY
+            CUDA_SAFE_CALL(cudaFree(d_E));
+            CUDA_SAFE_CALL(cudaFree(d_C));
+            CUDA_SAFE_CALL(cudaFree(d_nC));
+        #endif
+
+            CUT_SAFE_CALL(cutStopTimer(timer_total));
+            printf("\n\n"); 
+            printf("Total Time (ms): %f\n.",cutGetTimerValue(timer_total));
+            printf("I/O Time (ms): %f\n.",cutGetTimerValue(timer_io));
+            printf("GPU memcpy Time (ms): %f\n.",cutGetTimerValue(timer_memcpy));
+            printf("CPU processing Time (ms): %f\n.",cutGetTimerValue(timer_cpu));
+            printf("GPU processing Time (ms): %f\n.",cutGetTimerValue(timer_gpu));
+            printf("\n\n"); 
+            
+            //CUT_EXIT(argc, argv);
+            printf("\n\n");
+        }
     
     } // end of omp_parallel block
     

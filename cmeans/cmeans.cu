@@ -128,20 +128,14 @@ int main(int argc, char* argv[])
     generateInitialClusters(myClusters, myEvents);
     
     // Transpose the events matrix
-    float* temp = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    /*float* temp = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
     for(int i=0; i<NUM_EVENTS; i++) {
         for(int j=0; j<ALL_DIMENSIONS; j++) {
             temp[j*NUM_EVENTS+i] = myEvents[i*ALL_DIMENSIONS+j];
         }
     }
     memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
-    /*for(int i=0; i<NUM_EVENTS;i++) {
-        for(int j=0; j<ALL_DIMENSIONS;j++) {
-            printf("%f ",myEvents[j*NUM_EVENTS+i]);
-        }
-        printf("\n");
-    }*/
-    free(temp);
+    free(temp);*/
     
     int iterations = 0;
     
@@ -193,16 +187,16 @@ int main(int argc, char* argv[])
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
         
-        dim3 BLOCK_DIM(1, NUM_THREADS, 1);
+        //dim3 BLOCK_DIM(1, NUM_THREADS, 1);
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-        printf("Launching ComputeDistanceMatrix kernel\n");
-        ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
-        cudaThreadSynchronize();
-        printf(cudaGetErrorString(cudaGetLastError()));
-        printf("\n");
+        //printf("Launching ComputeDistanceMatrix kernel\n");
+        //ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
+        //cudaThreadSynchronize();
+        //printf(cudaGetErrorString(cudaGetLastError()));
+        //printf("\n");
         printf("Launching UpdateClusterCentersGPU kernel\n");
-        UpdateClusterCentersGPU<<< NUM_BLOCKS, BLOCK_DIM >>>(d_C, d_E, d_nC, d_distanceMatrix);
+        UpdateClusterCentersGPU<<< NUM_BLOCKS, NUM_THREADS >>>(d_C, d_E, d_nC, d_distanceMatrix);
         cudaThreadSynchronize();
         printf(cudaGetErrorString(cudaGetLastError()));
         printf("\n");
@@ -224,13 +218,15 @@ int main(int argc, char* argv[])
         
         diff = 0.0;
         for(int i=0; i < NUM_CLUSTERS; i++){
-            
+            printf("Center %d: ",i);     
             for(int k = 0; k < ALL_DIMENSIONS; k++){
-                diff += myClusters[i*ALL_DIMENSIONS + k] - newClusters[i*ALL_DIMENSIONS + k];
+                printf("%f ",newClusters[i*ALL_DIMENSIONS + k]);
+                diff += fabs(myClusters[i*ALL_DIMENSIONS + k] - newClusters[i*ALL_DIMENSIONS + k]);
                 myClusters[i*ALL_DIMENSIONS + k] = newClusters[i*ALL_DIMENSIONS + k];
             }
+            printf("\n");
         }
-        printf("Diff = %f\n", diff);
+        printf("Iteration %d Diff = %f\n", iterations, diff);
 
         iterations++;
         
