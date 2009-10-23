@@ -22,6 +22,12 @@ bool InitCUDA(void){return true;}
 #else
 
 
+void printCudaError() {
+    cudaError_t error = cudaGetLastError();
+    if(error != cudaSuccess) {
+        printf("%s\n",cudaGetErrorString(error));
+    }
+}
 
 bool InitCUDA(void)
 {
@@ -112,7 +118,8 @@ int main(int argc, char* argv[])
     }
     
     //CUT_DEVICE_INIT(argc, argv);
-    srand((unsigned)(time(0)));
+    //srand((unsigned)(time(0)));
+    srand(42);
     
     
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
@@ -128,14 +135,16 @@ int main(int argc, char* argv[])
     generateInitialClusters(myClusters, myEvents);
     
     // Transpose the events matrix
-    /*float* temp = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    // Threads within a block access consecutive events, not consecutive dimensions
+    // So we need the data aligned this way for coaelsced global reads for event data
+    float* transposedEvents = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
     for(int i=0; i<NUM_EVENTS; i++) {
         for(int j=0; j<ALL_DIMENSIONS; j++) {
-            temp[j*NUM_EVENTS+i] = myEvents[i*ALL_DIMENSIONS+j];
+            transposedEvents[j*NUM_EVENTS+i] = myEvents[i*ALL_DIMENSIONS+j];
         }
     }
-    memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
-    free(temp);*/
+    //memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    //free(temp);
     
     int iterations = 0;
     
@@ -153,6 +162,7 @@ int main(int argc, char* argv[])
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS));
     int size = sizeof(float)*ALL_DIMENSIONS*NUM_EVENTS;
     CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
+    //CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
     size = sizeof(float)*ALL_DIMENSIONS*NUM_CLUSTERS;
     CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
 
@@ -519,15 +529,10 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     unsigned int timer = 0;
     CUT_SAFE_CALL(cutCreateTimer(&timer));
     CUT_SAFE_CALL(cutStartTimer(timer));
+    
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-
-
     cudaMalloc((void**)&d_matrix, size);
-    cudaThreadSynchronize();
-    printf(cudaGetErrorString(cudaGetLastError()));
-    printf("\n");
-    //CalculateQMatrixGPU<<<NUM_CLUSTERS,Q_THREADS>>>(d_events, d_clusters, d_matrix);
-
+    printCudaError();
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
     CUT_SAFE_CALL(cutStartTimer(timer_gpu));
 
@@ -535,8 +540,7 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     printf("Launching Q Matrix Kernel\n");
     CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix);
     cudaThreadSynchronize();
-    printf(cudaGetErrorString(cudaGetLastError()));
-    printf("\n");
+    printCudaError();
 
     CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
@@ -546,8 +550,7 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     printf("Copying results to CPU\n");
     cudaError_t error = cudaMemcpy(matrix, d_matrix, size, cudaMemcpyDeviceToHost);
     cudaThreadSynchronize();
-    printf(cudaGetErrorString(cudaGetLastError()));
-    printf("\n");
+    printCudaError();
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
 
     CUT_SAFE_CALL(cutStopTimer(timer));
@@ -560,6 +563,14 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
 
     
     FreeMatrix(d_matrix);
+
+    printf("Q Matrix:\n");
+    for(int row=0; row < NUM_CLUSTERS; row++) {
+        for(int col=0; col < NUM_CLUSTERS; col++) {
+            printf("%f ",matrix[row*NUM_CLUSTERS+col]);
+        }
+        printf("\n");
+    }
     return matrix;
 }
 

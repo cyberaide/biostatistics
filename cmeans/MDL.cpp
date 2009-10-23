@@ -1,4 +1,8 @@
-#include "cmeans.h"
+#ifdef MULTI_GPU
+    #include "cmeansMultiGPU.h"
+#else
+    #include "cmeans.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
@@ -11,6 +15,8 @@
 #include "timers.h"
 #include <cuda_runtime.h>
 #include <cutil.h>
+
+#include "MDL.h"
 
 using namespace std;
 
@@ -126,8 +132,7 @@ int* TabuSearch(float* matrix, char* inputFile){
     ofstream myfile;
     char logFileName [512];
     sprintf(logFileName, "%s_tabu_search_results_table_%d", inputFile, NUM_CLUSTERS);
-    cout << "Tabu Search Results Table filename = " << logFileName << " int_min = "
-        << INT_MIN << endl;
+    cout << "Tabu Search Results Table filename = " << logFileName << endl;
     myfile.open(logFileName);
 
     for(int i = 0; i < TABU_ITER; i++){
@@ -226,7 +231,7 @@ int* MDL(float* events, float* clusters, float* mdlTime, char* inputFile){
 
 }
 
-
+#ifndef MULTI_GPU
 int* MDLGPU(float* d_events, float* d_clusters, float* mdlTime, char* inputFile){
     
     printf("Calculating Q Matrix\n");
@@ -250,6 +255,7 @@ int* MDLGPU(float* d_events, float* d_clusters, float* mdlTime, char* inputFile)
     return finalConfig;
 
 }
+#endif
 
 /*long TabuSearchGPU(float* d_matrix){
     //long config = (long)pow((float)2, (float)(NUM_CLUSTERS )) - 1; // initialize at 111...11

@@ -112,8 +112,8 @@ if __name__ == '__main__':
     from pprint import pprint
     pprint(params)
      
-    header_file = open("cmeans.in.h",'r').read()
-    new_header = open("cmeans.h",'w')
+    header_file = open("cmeansMultiGPU.in.h",'r').read()
+    new_header = open("cmeansMultiGPU.h",'w')
 
     for key,val in params.items():
         header_file = header_file.replace("$%s$" % key,str(val))

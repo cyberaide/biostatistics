@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cutil.h>
-#include <cmeans.h>
+#include <cmeansMultiGPU.h>
 #include <cmeansMultiGPUcu.h>
 #include <float.h>
 
@@ -268,7 +268,7 @@ __global__ void CalculateQMatrixGPU(const float* events, const float* clusters, 
 	
 }
 
-__global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix){
+__global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix, int start_row){
 	__shared__ float myClusters[NUM_CLUSTERS*ALL_DIMENSIONS];
 	__shared__ float EI[Q_THREADS];
 	__shared__ float EJ[Q_THREADS];
@@ -279,16 +279,17 @@ __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clu
 
 		}
 	}
+
+    int row = blockIdx.x + start_row;
+    int col = blockIdx.y;
 	__syncthreads();
 	//printf("blockIdx.x = %d, blockIdx.y = %d\n", blockIdx.x, blockIdx.y);
-	if(blockIdx.x == blockIdx.y){
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y ] = CalculateQII(events, myClusters, blockIdx.x, EI, numMem);
+	if(row == col){
+		matrix[row*NUM_CLUSTERS + col ] = CalculateQII(events, myClusters, row, EI, numMem);
 	}
 	else{
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, myClusters, blockIdx.x, blockIdx.y, EI, EJ, numMem);
+		matrix[row*NUM_CLUSTERS + col] = CalculateQIJ(events, myClusters, row, col, EI, EJ, numMem);
 	}	
-	
-	
 }
 
 /*__global__ void EvaluateSolutionGPU(float* matrix, long config, float* score){

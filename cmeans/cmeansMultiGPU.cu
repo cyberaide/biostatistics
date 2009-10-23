@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 #include <cutil.h>
-#include <cmeans.h>
+#include <cmeansMultiGPU.h>
 #include <cmeansMultiGPUcu.h>
 #include <math.h>
 #include <time.h>
@@ -11,7 +11,7 @@
 #include <float.h>
 //#include <cmeans_kernel.cu>
 #include "timers.h"
-
+#include "MDL.h"
 
 /************************************************************************/
 /* Init CUDA                                                            */
@@ -144,7 +144,8 @@ int main(int argc, char* argv[])
     //}
     //CUT_DEVICE_INIT(argc, argv);
     
-    srand((unsigned)(time(0)));
+    //srand((unsigned)(time(0)));
+    srand(42);
     
     
     
@@ -169,6 +170,10 @@ int main(int argc, char* argv[])
         tempDenominators[i] = (float*) malloc(sizeof(float)*NUM_CLUSTERS);
         memcpy(tempClusters[i],myClusters,sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
     }
+    // Create an array of arrays for temporary Q matrix pieces from each GPU
+    float** q_matrices = (float**) malloc(sizeof(float*)*num_gpus);
+    // Create an array for the final Q matrix
+    float* q_matrix = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_CLUSTERS);
     
     float diff; // used to track difference in cluster centers between iterations
 
@@ -348,7 +353,6 @@ int main(int argc, char* argv[])
 
         } while(abs(diff) > THRESHOLD && iterations < 150); 
 
-        // MDL not fixed for multiple gpus, do it with single one for now
         if(cpu_thread_id == 0) {        
             if(iterations == 150){
                 printf("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
@@ -372,18 +376,56 @@ int main(int argc, char* argv[])
             //exit(0);  // NOTE - Stopping early until we figure out how to make it parallel!!!
 
             CUT_SAFE_CALL(cutStopTimer(timer_io));
+        }
+        
+        #pragma omp barrier // sync threads 
             
-            int* finalClusterConfig;
-            float mdlTime = 0;
-            
-    #if !MDL_on_GPU
+        int* finalClusterConfig;
+        float mdlTime = 0;
+        
+        #if !MDL_on_GPU
             finalClusterConfig = MDL(myEvents, myClusters, &mdlTime, argv[1]);
-    #else
-            finalClusterConfig = MDLGPU(d_E, d_nC, &mdlTime, argv[1]);
+        #else
+            printf("Calculating Q Matrix Section %d\n",cpu_thread_id);
+           
+            // Copy the latest clusters to the device 
+            //  (the current ones on the device are 1 iteration old) 
+            CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+            CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
+            CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+            q_matrices[cpu_thread_id] = BuildQGPU(d_E, d_C, &mdlTime, cpu_thread_id, num_gpus);
+            
+            #pragma omp barrier // sync threads
+            
+            if(cpu_thread_id == 0) {
+                // Combine the partial matrices
+                int num_matrix_elements = NUM_CLUSTERS*(NUM_CLUSTERS/num_gpus);
+                for(int i=0; i < num_gpus; i++) {
+                    float* q_matrix_ptr = (float*) q_matrix+i*num_matrix_elements;
+                    float* q_matrices_ptr = (float*) q_matrices[i]+i*num_matrix_elements;
+                    memcpy(q_matrix_ptr,q_matrices_ptr,sizeof(float)*num_matrix_elements);   
+                    free(q_matrices[i]);
+                }
+                CUT_SAFE_CALL(cutStartTimer(timer_cpu));
+                printf("Searching for optimal configuration...\n");
+                finalClusterConfig = TabuSearch(q_matrix, argv[1]);
+                CUT_SAFE_CALL(cutStopTimer(timer_cpu));
+
+                printf("Q Matrix:\n");
+                for(int row=0; row < NUM_CLUSTERS; row++) {
+                    for(int col=0; col < NUM_CLUSTERS; col++) {
+                        printf("%f ",q_matrix[row*NUM_CLUSTERS+col]);
+                    }
+                    printf("\n");
+                }
+                
+                free(q_matrix);
+            }
             mdlTime /= 1000.0; // CUDA timer returns time in milliseconds, normalize to seconds
-    #endif
+        #endif
 
-
+ 
+        if(cpu_thread_id == 0) {        
             CUT_SAFE_CALL(cutStartTimer(timer_io));
 
             printf("Final Clusters are:\n");
@@ -400,17 +442,15 @@ int main(int argc, char* argv[])
             }
             
             CUT_SAFE_CALL(cutStopTimer(timer_io));
-
+            fflush(stdout);
+            exit(1);
             FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
             
-            free(newClusters);
-            free(myClusters);
-            free(myEvents);
-        #if !CPU_ONLY
-            CUDA_SAFE_CALL(cudaFree(d_E));
-            CUDA_SAFE_CALL(cudaFree(d_C));
-            CUDA_SAFE_CALL(cudaFree(d_nC));
-        #endif
+            #if !CPU_ONLY
+                CUDA_SAFE_CALL(cudaFree(d_E));
+                CUDA_SAFE_CALL(cudaFree(d_C));
+                CUDA_SAFE_CALL(cudaFree(d_nC));
+            #endif
 
             CUT_SAFE_CALL(cutStopTimer(timer_total));
             printf("\n\n"); 
@@ -424,9 +464,10 @@ int main(int argc, char* argv[])
             //CUT_EXIT(argc, argv);
             printf("\n\n");
         }
-    
     } // end of omp_parallel block
-    
+    free(newClusters);
+    free(myClusters);
+    free(myEvents);
     return 0;
 }
 
@@ -541,12 +582,17 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
       }  
       for(int j = 0; j < ALL_DIMENSIONS; j++){
           newClusters[i*ALL_DIMENSIONS + j] = numerator[j]/denominator;
+
       }  
     }
     
 
     /*
     memset(newClusters,0.0,sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);    
+
+
+
+
     memset(denominators,0.0,sizeof(float)*NUM_CLUSTERS);    
 
     for(int i = 0; i < NUM_EVENTS; i++){
@@ -637,7 +683,7 @@ void FreeMatrix(float* d_matrix){
     CUDA_SAFE_CALL(cudaFree(d_matrix));
 }
 
-float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
+float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime, int gpu_id, int num_gpus){
     float* d_matrix;
     int size = sizeof(float) * NUM_CLUSTERS*NUM_CLUSTERS;
 
@@ -646,26 +692,22 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
     CUT_SAFE_CALL(cutStartTimer(timer));
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
 
-
     cudaMalloc((void**)&d_matrix, size);
-    cudaThreadSynchronize();
-    printf(cudaGetErrorString(cudaGetLastError()));
-    printf("\n");
-    //CalculateQMatrixGPU<<<NUM_CLUSTERS,Q_THREADS>>>(d_events, d_clusters, d_matrix);
+    printCudaError();
 
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
     CUT_SAFE_CALL(cutStartTimer(timer_gpu));
 
-    dim3 grid(NUM_CLUSTERS, NUM_CLUSTERS);
+    dim3 grid(NUM_CLUSTERS / num_gpus, NUM_CLUSTERS);
+    int start_row = gpu_id*(NUM_CLUSTERS/num_gpus);
+    printf("GPU %d: Starting row for Q Matrix: %d\n",gpu_id,start_row);
+
     printf("Launching Q Matrix Kernel\n");
-    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix);
+    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, start_row);
     cudaThreadSynchronize();
-    printf(cudaGetErrorString(cudaGetLastError()));
-    printf("\n");
+    printCudaError();
 
     CUT_SAFE_CALL(cutStopTimer(timer_gpu));
-    
-
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     float* matrix = (float*)malloc(size);
     printf("Copying results to CPU\n");
