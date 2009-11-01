@@ -12,7 +12,7 @@ DELIMITER = ","
 
 
 def usage():
-    print "Usage: ./cmeans INPUT_FILE NUM_CLUSTERS [FUZZINESS=2] [THRESHOLD=0.0001] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [VOLUME_TYPE=0]"
+    print "Usage: ./cmeans INPUT_FILE NUM_CLUSTERS [FUZZINESS=2] [THRESHOLD=0.0001] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [VOLUME_TYPE=0] [CPU_ONLY=0] [MDL_ON_GPU=1]"
     print
     print " INPUT_FILE and NUM_CLUSTERS are required."
     print " The rest of the parameters can be specified in NAME=VALUE form"
@@ -35,9 +35,11 @@ def parseInputArgs():
         'TABU_ITER': 100,
         'TABU_TENURE': 5,
         'VOLUME_TYPE': 0,
+        'CPU_ONLY': 0,
+        'MDL_ON_GPU': 1,
     }
-
-    if num_args == 13:
+    num_params = len(params.keys())
+    if num_args == num_params:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
         params['FUZZINESS'] = args[3]
@@ -53,7 +55,7 @@ def parseInputArgs():
     elif num_args == 3:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
-    elif 3 < num_args < 13:
+    elif 3 < num_args < num_params:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
         for arg in args[3:]:
@@ -103,7 +105,7 @@ def parseInputArgs():
     elif num_dimensions > 24:
         num_threads = 64
     params['NUM_THREADS'] = num_threads
-    #params['NUM_THREADS'] = 128
+    #params['NUM_THREADS'] = 256
 
     return params    
 

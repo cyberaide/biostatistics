@@ -4,14 +4,14 @@
 #include <time.h>
 
 // CPU vs GPU
-#define CPU_ONLY 0
-#define MDL_on_GPU 1
+#define CPU_ONLY $CPU_ONLY$
+#define MDL_on_GPU $MDL_ON_GPU$
 
 // number of clusters
 #define NUM_CLUSTERS $NUM_CLUSTERS$
 
 // number of dimensions
-#define ALL_DIMENSIONS $NUM_DIMENSIONS$
+#define NUM_DIMENSIONS $NUM_DIMENSIONS$
 
 // number of elements
 #define NUM_EVENTS $NUM_EVENTS$
@@ -31,15 +31,18 @@
 #define VOLUME_TYPE $VOLUME_TYPE$
 #define DISTANCE_MEASURE $DISTANCE_MEASURE$
 
-
 const float VOLUME_INC_PARAMS[] = {0.05,0.1,0.15};
 
 // number of Threads and blocks
 #define Q_THREADS 92 // number of threads per block building Q
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
+#define NUM_THREADS_MATRIX 384
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
+
+// Amount of loop unrolling for the distance and membership calculations accross dimensions
+#define UNROLL_FACTOR 1
 
 // use file or not - just for testing
 #define FAKE 0

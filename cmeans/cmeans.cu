@@ -122,8 +122,8 @@ int main(int argc, char* argv[])
     srand(42);
     
     
-    float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
-    float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);
+    float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
+    float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
     
     CUT_SAFE_CALL(cutStopTimer(timer_io));
     CUT_SAFE_CALL(cutStartTimer(timer_cpu));
@@ -137,13 +137,13 @@ int main(int argc, char* argv[])
     // Transpose the events matrix
     // Threads within a block access consecutive events, not consecutive dimensions
     // So we need the data aligned this way for coaelsced global reads for event data
-    float* transposedEvents = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    float* transposedEvents = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     for(int i=0; i<NUM_EVENTS; i++) {
-        for(int j=0; j<ALL_DIMENSIONS; j++) {
-            transposedEvents[j*NUM_EVENTS+i] = myEvents[i*ALL_DIMENSIONS+j];
+        for(int j=0; j<NUM_DIMENSIONS; j++) {
+            transposedEvents[j*NUM_EVENTS+i] = myEvents[i*NUM_DIMENSIONS+j];
         }
     }
-    //memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    //memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     //free(temp);
     
     int iterations = 0;
@@ -155,15 +155,15 @@ int main(int argc, char* argv[])
     float* d_distanceMatrix;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
     float* d_E;// = AllocateEvents(myEvents);
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS));
     float* d_C;// = AllocateClusters(myClusters);
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_C, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_C, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
     float* d_nC;// = AllocateCM(cM);
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS));
-    int size = sizeof(float)*ALL_DIMENSIONS*NUM_EVENTS;
-    CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
-    //CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
-    size = sizeof(float)*ALL_DIMENSIONS*NUM_CLUSTERS;
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
+    int size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
+    //CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
+    size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
     CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
 
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutCreateTimer(&timer));
         CUT_SAFE_CALL(cutStartTimer(timer));
 
-        size = sizeof(float)*ALL_DIMENSIONS*NUM_CLUSTERS;
+        size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
 
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
@@ -200,11 +200,10 @@ int main(int argc, char* argv[])
         //dim3 BLOCK_DIM(1, NUM_THREADS, 1);
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-        //printf("Launching ComputeDistanceMatrix kernel\n");
-        //ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix);
-        //cudaThreadSynchronize();
-        //printf(cudaGetErrorString(cudaGetLastError()));
-        //printf("\n");
+        printf("Launching ComputeDistanceMatrix kernel\n");
+        ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_MATRIX  >>>(d_C, d_E, d_distanceMatrix);
+        cudaThreadSynchronize();
+        printCudaError();
         printf("Launching UpdateClusterCentersGPU kernel\n");
         UpdateClusterCentersGPU<<< NUM_BLOCKS, NUM_THREADS >>>(d_C, d_E, d_nC, d_distanceMatrix);
         cudaThreadSynchronize();
@@ -213,7 +212,7 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStopTimer(timer_gpu));
 
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-        CUDA_SAFE_CALL(cudaMemcpy(newClusters, d_nC, sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS, cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(newClusters, d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
         
         CUT_SAFE_CALL(cutStopTimer(timer));
@@ -229,10 +228,10 @@ int main(int argc, char* argv[])
         diff = 0.0;
         for(int i=0; i < NUM_CLUSTERS; i++){
             printf("Center %d: ",i);     
-            for(int k = 0; k < ALL_DIMENSIONS; k++){
-                printf("%f ",newClusters[i*ALL_DIMENSIONS + k]);
-                diff += fabs(myClusters[i*ALL_DIMENSIONS + k] - newClusters[i*ALL_DIMENSIONS + k]);
-                myClusters[i*ALL_DIMENSIONS + k] = newClusters[i*ALL_DIMENSIONS + k];
+            for(int k = 0; k < NUM_DIMENSIONS; k++){
+                printf("%f ",newClusters[i*NUM_DIMENSIONS + k]);
+                diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - newClusters[i*NUM_DIMENSIONS + k]);
+                myClusters[i*NUM_DIMENSIONS + k] = newClusters[i*NUM_DIMENSIONS + k];
             }
             printf("\n");
         }
@@ -256,8 +255,8 @@ int main(int argc, char* argv[])
     printf("C-means complete\n");
     printf("\n");
     for(int i=0; i < NUM_CLUSTERS; i++){
-        for(int k = 0; k < ALL_DIMENSIONS; k++)
-            printf("%f\t", myClusters[i*ALL_DIMENSIONS + k]);
+        for(int k = 0; k < NUM_DIMENSIONS; k++)
+            printf("%f\t", myClusters[i*NUM_DIMENSIONS + k]);
         printf("\n");
     }
 
@@ -279,9 +278,9 @@ int main(int argc, char* argv[])
     int newCount = 0;
     for(int i = 0; i < NUM_CLUSTERS; i++){
         if(finalClusterConfig[i]){
-            for(int j = 0; j < ALL_DIMENSIONS; j++){
-                newClusters[newCount * ALL_DIMENSIONS + j] = myClusters[i*ALL_DIMENSIONS + j];
-                printf("%f\t", myClusters[i*ALL_DIMENSIONS + j]);
+            for(int j = 0; j < NUM_DIMENSIONS; j++){
+                newClusters[newCount * NUM_DIMENSIONS + j] = myClusters[i*NUM_DIMENSIONS + j];
+                printf("%f\t", myClusters[i*NUM_DIMENSIONS + j]);
             }
             newCount++;
             printf("\n");
@@ -316,7 +315,7 @@ int main(int argc, char* argv[])
 }
 
 float* generateEvents(){
-    float* allEvents = (float*) malloc(NUM_EVENTS*ALL_DIMENSIONS*sizeof(float));
+    float* allEvents = (float*) malloc(NUM_EVENTS*NUM_DIMENSIONS*sizeof(float));
     //generateEvents around (10,10,10), (20, 10, 50), and (50, 50, 0)
     int i, j;
     for(i = 0; i < NUM_EVENTS; i++){
@@ -351,8 +350,8 @@ void generateInitialClusters(float* clusters, float* events){
     int seed;
     for(int i = 0; i < NUM_CLUSTERS; i++){
         seed = rand() % NUM_EVENTS;
-        for(int j = 0; j < ALL_DIMENSIONS; j++){
-            clusters[i*ALL_DIMENSIONS + j] = events[seed*ALL_DIMENSIONS + j];
+        for(int j = 0; j < NUM_DIMENSIONS; j++){
+            clusters[i*NUM_DIMENSIONS + j] = events[seed*NUM_DIMENSIONS + j];
         }
     }
     
@@ -364,21 +363,21 @@ __host__ float CalculateDistanceCPU(const float* clusters, const float* events, 
 
     float sum = 0;
 #if DISTANCE_MEASURE == 0
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        float tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        float tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += tmp*tmp;
     }
     sum = sqrt(sum);
 #endif
 #if DISTANCE_MEASURE == 1
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        float tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        float tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += abs(tmp);
     }
 #endif
 #if DISTANCE_MEASURE == 2
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        float tmp = abs(events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i]);
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        float tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         if(tmp > sum)
             sum = tmp;
     }
@@ -407,35 +406,35 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
     
     //float membershipValue, sum, denominator;
     float membershipValue, denominator;
-    float* numerator = (float*)malloc(sizeof(float)*ALL_DIMENSIONS);
+    float* numerator = (float*)malloc(sizeof(float)*NUM_DIMENSIONS);
     float* denominators = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
     float* distances = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
 
     
     for(int i = 0; i < NUM_CLUSTERS; i++){
       denominator = 0.0;
-      for(int j = 0; j < ALL_DIMENSIONS; j++)
+      for(int j = 0; j < NUM_DIMENSIONS; j++)
         numerator[j] = 0;
       for(int j = 0; j < NUM_EVENTS; j++){
         membershipValue = MembershipValue(oldClusters, events, i, j);
-        for(int k = 0; k < ALL_DIMENSIONS; k++){
-          numerator[k] += events[j*ALL_DIMENSIONS + k]*membershipValue;
+        for(int k = 0; k < NUM_DIMENSIONS; k++){
+          numerator[k] += events[j*NUM_DIMENSIONS + k]*membershipValue;
         }
         
         denominator += membershipValue;
       }  
-      for(int j = 0; j < ALL_DIMENSIONS; j++){
-          newClusters[i*ALL_DIMENSIONS + j] = numerator[j]/denominator;
+      for(int j = 0; j < NUM_DIMENSIONS; j++){
+          newClusters[i*NUM_DIMENSIONS + j] = numerator[j]/denominator;
       }  
     }
     
 
     /*
-    memset(newClusters,0.0,sizeof(float)*NUM_CLUSTERS*ALL_DIMENSIONS);    
+    memset(newClusters,0.0,sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);    
     memset(denominators,0.0,sizeof(float)*NUM_CLUSTERS);    
 
     for(int i = 0; i < NUM_EVENTS; i++){
-        for(int j = 0; j < ALL_DIMENSIONS; j++)
+        for(int j = 0; j < NUM_DIMENSIONS; j++)
             numerator[j] = 0;
 
         // Compute distance from this event to each cluster
@@ -457,17 +456,17 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
             }
 
             // Add contribution to the center for each dimension for this cluster
-            for(int k = 0; k < ALL_DIMENSIONS; k++){
-              newClusters[j*ALL_DIMENSIONS+k] += events[i*ALL_DIMENSIONS + k]*membershipValue;
+            for(int k = 0; k < NUM_DIMENSIONS; k++){
+              newClusters[j*NUM_DIMENSIONS+k] += events[i*NUM_DIMENSIONS + k]*membershipValue;
             }
 
             denominators[j] += membershipValue;
         }  
     }
     for(int k = 0; k < NUM_CLUSTERS; k++){
-        for(int j = 0; j < ALL_DIMENSIONS; j++) {
-            newClusters[k*ALL_DIMENSIONS + j] /= denominators[k];
-            //printf("%f ",newClusters[k*ALL_DIMENSIONS + j]);
+        for(int j = 0; j < NUM_DIMENSIONS; j++) {
+            newClusters[k*NUM_DIMENSIONS + j] /= denominators[k];
+            //printf("%f ",newClusters[k*NUM_DIMENSIONS + j]);
         }
         //printf("\n");
     } 
@@ -490,15 +489,15 @@ float* ParseSampleInput(const char* filename){
     }
     char myline[1024];
     
-    float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*ALL_DIMENSIONS);
+    float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     myfile = fopen(filename, "r");
 #if !LINE_LABELS
 
     for(int i = 0; i < NUM_EVENTS; i++){
         fgets(myline, 1024, myfile);
-        retVal[i*ALL_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
-        for(int j = 1; j < ALL_DIMENSIONS; j++){
-            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
+        retVal[i*NUM_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
+        for(int j = 1; j < NUM_DIMENSIONS; j++){
+            retVal[i*NUM_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
         }
     }
 #else
@@ -506,8 +505,8 @@ float* ParseSampleInput(const char* filename){
     for(int i = 0; i < NUM_EVENTS; i++){
         fgets(myline, 1024, myfile);
         strtok(myline, DELIMITER);
-        for(int j = 0; j < ALL_DIMENSIONS; j++){
-            retVal[i*ALL_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
+        for(int j = 0; j < NUM_DIMENSIONS; j++){
+            retVal[i*NUM_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
         }
     }
 #endif

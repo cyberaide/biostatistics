@@ -48,7 +48,7 @@ float CalculateQII(float* events, float* clusters, int cluster_index_I){
         }
     }
         
-    return (float)(((float)K1)*numMem - ((float)K2)*EI - ((float)K3)*ALL_DIMENSIONS);
+    return (float)(((float)K1)*numMem - ((float)K2)*EI - ((float)K3)*NUM_DIMENSIONS);
 
 }
 

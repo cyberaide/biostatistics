@@ -51,3 +51,7 @@ include ../../common/common.mk
 
 kmeans: $(OBJDIR)/kmeans.cu.o
 	$(LINK) -o $(TARGETDIR)/kmeans $(OBJDIR)/kmeans.cu.o $(LIB)
+
+cubin:
+	nvcc -cubin cmeans_kernel.cu -I../../common/inc/
+

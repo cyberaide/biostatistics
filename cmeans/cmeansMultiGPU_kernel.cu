@@ -9,8 +9,8 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
 
 	float membershipValue;//, denominator;
 	
-	__shared__ float numerators[ALL_DIMENSIONS*NUM_THREADS];
-	__shared__ float myClusters[ALL_DIMENSIONS*NUM_CLUSTERS];
+	__shared__ float numerators[NUM_DIMENSIONS*NUM_THREADS];
+	__shared__ float myClusters[NUM_DIMENSIONS*NUM_CLUSTERS];
 
     // Sum of the memberships computed by each thread
     // The sum of all of these denominators together is effectively the size of the cluster
@@ -20,11 +20,11 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
 
     // initialize numerators and denominators to 0
     denominators[tid] = 0;
-    for(int j = tid; j < ALL_DIMENSIONS*NUM_THREADS; j+=NUM_THREADS){
+    for(int j = tid; j < NUM_DIMENSIONS*NUM_THREADS; j+=NUM_THREADS){
         numerators[j] = 0;
     }
     // Copy cluster centers into shared memory
-    for(int j = tid; j < ALL_DIMENSIONS*NUM_CLUSTERS; j+=NUM_THREADS){
+    for(int j = tid; j < NUM_DIMENSIONS*NUM_CLUSTERS; j+=NUM_THREADS){
         myClusters[j] = oldClusters[j];
     }
 
@@ -43,9 +43,10 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
         #endif
 
         // Note: this access pattern for numerators and events is not coalesced (its accessing columns)
-        for(int k = 0; k < ALL_DIMENSIONS; k++){
-            //numerators[threadIdx.y*ALL_DIMENSIONS + threadIdx.x + k] += events[(threadIdx.x+k)*ALL_DIMENSIONS + j]*membershipValue;
-            numerators[tid*ALL_DIMENSIONS + k] += events[j*ALL_DIMENSIONS + k]*membershipValue;
+        #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
+        for(int k = 0; k < NUM_DIMENSIONS; k++){
+            numerators[tid*NUM_DIMENSIONS + k] += events[k*NUM_EVENTS + j]*membershipValue;
+            //numerators[tid*NUM_DIMENSIONS + k] += events[j*NUM_DIMENSIONS + k]*membershipValue;
         }
         denominators[tid] += membershipValue;
     } 
@@ -55,9 +56,9 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     // Sum up the numerators, one for each dimension	
     // (reducing all rows of numerators into the first row)
     // One thread per dimension
-	if(tid < ALL_DIMENSIONS){
+	if(tid < NUM_DIMENSIONS){
         for(int j = 1; j < NUM_THREADS; j++){
-            numerators[tid] += numerators[j*ALL_DIMENSIONS+tid];
+            numerators[tid] += numerators[j*NUM_DIMENSIONS+tid];
         }  
         //numerators[tid] = numerators[tid] / (float)NUM_THREADS;
 	}
@@ -73,29 +74,29 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     __syncthreads();
 
 	// Set the new center for this block	
-    if(tid < ALL_DIMENSIONS) {
-        //newClusters[blockIdx.x*ALL_DIMENSIONS + tid] = numerators[tid]/denominators[0];
+    if(tid < NUM_DIMENSIONS) {
+        //newClusters[blockIdx.x*NUM_DIMENSIONS + tid] = numerators[tid]/denominators[0];
         
         // The denominator will get handled by the host
-        newClusters[blockIdx.x*ALL_DIMENSIONS + tid] = numerators[tid];
+        newClusters[blockIdx.x*NUM_DIMENSIONS + tid] = numerators[tid];
     }
 }
 
 __global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix, int start, int stop) {
     
     // copy centers into shared memory	
-    __shared__ float myClusters[ALL_DIMENSIONS*NUM_CLUSTERS];
-    for(int j = threadIdx.x; j < ALL_DIMENSIONS*NUM_CLUSTERS; j+=320){
+    __shared__ float myClusters[NUM_DIMENSIONS*NUM_CLUSTERS];
+    for(int j = threadIdx.x; j < NUM_DIMENSIONS*NUM_CLUSTERS; j+=320){
         myClusters[j] = clusters[j];
     }
 
     /*
     int cluster = 0;
     int dim = 0;
-    for(int j = threadIdx.x; j < ALL_DIMENSIONS*NUM_CLUSTERS; j+= NUM_THREADS) {
-        cluster = j / ALL_DIMENSIONS;
-        dim = j % ALL_DIMENSIONS;
-        myClusters[dim*NUM_CLUSTERS+cluster] = clusters[cluster*ALL_DIMENSIONS+dim];
+    for(int j = threadIdx.x; j < NUM_DIMENSIONS*NUM_CLUSTERS; j+= NUM_THREADS) {
+        cluster = j / NUM_DIMENSIONS;
+        dim = j % NUM_DIMENSIONS;
+        myClusters[dim*NUM_CLUSTERS+cluster] = clusters[cluster*NUM_DIMENSIONS+dim];
     }
     */
     __syncthreads();
@@ -111,8 +112,8 @@ __global__ void ComputeDistanceMatrix(const float* clusters, const float* events
 __device__ float MembershipValueGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0;
     // Compute the distance from this event to the given cluster
-	myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
-    //myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
+	//myClustDist = CalculateDistanceGPU(clusters, events, clusterIndex, eventIndex);
+    myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
 	
 	float sum =0;
 	float otherClustDist;
@@ -122,8 +123,8 @@ __device__ float MembershipValueGPU(const float* clusters, const float* events, 
     // If each block handled a certain set of events rather than a cluster
     // we might be able to avoid this.
 	for(int j = 0; j< NUM_CLUSTERS; j++){
-		otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
-        //otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
+		//otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
+        otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
 		if(otherClustDist < 1e-10)
 			return 0.0;
@@ -138,22 +139,27 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 	float sum = 0;
 	float tmp;
 #if DISTANCE_MEASURE == 0
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        //tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*ALL_DIMENSIONS +i];
-        tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+    #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
+        //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += tmp*tmp;
     }
     sum = sqrt(sum);
 #endif
 #if DISTANCE_MEASURE == 1
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        tmp = events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i];
+    #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
+        //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += abs(tmp);
     }
 #endif
 #if DISTANCE_MEASURE == 2 
-    for(int i = 0; i < ALL_DIMENSIONS; i++){
-        tmp = abs(events[eventIndex*ALL_DIMENSIONS + i] - clusters[clusterIndex*ALL_DIMENSIONS + i]);
+    #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
+    for(int i = 0; i < NUM_DIMENSIONS; i++){
+        tmp = abs(events[i*NUM_EVENTS + eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
+        //tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         if(tmp > sum)
             sum = tmp;
     }
@@ -189,7 +195,7 @@ __device__ float CalculateQII(const float* events, const float* clusters, int cl
 	}
 	__syncthreads();
 
-	return ((((float)K1) * numMem[0]) - (((float)K2) * EI[0]) - (((float)K3) * ALL_DIMENSIONS));
+	return ((((float)K1) * numMem[0]) - (((float)K2) * EI[0]) - (((float)K3) * NUM_DIMENSIONS));
 
 }
 
@@ -241,12 +247,12 @@ __device__ float CalculateQIJ(const float* events, const float* clusters, int cl
 }
 
 __global__ void CalculateQMatrixGPU(const float* events, const float* clusters, float* matrix){
-	__shared__ float myClusters[NUM_CLUSTERS*ALL_DIMENSIONS];
+	__shared__ float myClusters[NUM_CLUSTERS*NUM_DIMENSIONS];
 	__shared__ float EI[Q_THREADS];
 	__shared__ float EJ[Q_THREADS];
 	__shared__ float numMem[Q_THREADS];
-	for(int j = 0; j < NUM_CLUSTERS*ALL_DIMENSIONS; j+= Q_THREADS){
-		if(j+threadIdx.x < NUM_CLUSTERS*ALL_DIMENSIONS){
+	for(int j = 0; j < NUM_CLUSTERS*NUM_DIMENSIONS; j+= Q_THREADS){
+		if(j+threadIdx.x < NUM_CLUSTERS*NUM_DIMENSIONS){
 			myClusters[j+threadIdx.x] = clusters[j+threadIdx.x];
 
 		}
@@ -269,12 +275,12 @@ __global__ void CalculateQMatrixGPU(const float* events, const float* clusters, 
 }
 
 __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix, int start_row){
-	__shared__ float myClusters[NUM_CLUSTERS*ALL_DIMENSIONS];
+	__shared__ float myClusters[NUM_CLUSTERS*NUM_DIMENSIONS];
 	__shared__ float EI[Q_THREADS];
 	__shared__ float EJ[Q_THREADS];
 	__shared__ float numMem[Q_THREADS];
-	for(int j = 0; j < NUM_CLUSTERS*ALL_DIMENSIONS; j+= Q_THREADS){
-		if(j+threadIdx.x < NUM_CLUSTERS*ALL_DIMENSIONS){
+	for(int j = 0; j < NUM_CLUSTERS*NUM_DIMENSIONS; j+= Q_THREADS){
+		if(j+threadIdx.x < NUM_CLUSTERS*NUM_DIMENSIONS){
 			myClusters[j+threadIdx.x] = clusters[j+threadIdx.x];
 
 		}

@@ -62,9 +62,9 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
 
 void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){
     
-    float* minArray = (float*)malloc(sizeof(float)*finalClusterCount*ALL_DIMENSIONS);
-    float* maxArray = (float*)malloc(sizeof(float)*finalClusterCount*ALL_DIMENSIONS);
-    for(int k = 0; k < finalClusterCount*ALL_DIMENSIONS; k++){
+    float* minArray = (float*)malloc(sizeof(float)*finalClusterCount*NUM_DIMENSIONS);
+    float* maxArray = (float*)malloc(sizeof(float)*finalClusterCount*NUM_DIMENSIONS);
+    for(int k = 0; k < finalClusterCount*NUM_DIMENSIONS; k++){
         minArray[k] = FLT_MAX;
         maxArray[k] = FLT_MIN;
     }
@@ -78,19 +78,19 @@ void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCoun
             if(MembershipValueReduced(clusters, events, k, i, finalClusterCount) >  VOLUME_INC_PARAMS[includeIndex]){
                 // include in volume calculation
                 occupancy[k]++;
-                for(int j = 0; j < ALL_DIMENSIONS; j++){
-                    if(maxArray[k*ALL_DIMENSIONS + j] < events[i*ALL_DIMENSIONS + j]){
-                        maxArray[k*ALL_DIMENSIONS + j] = events[i*ALL_DIMENSIONS + j];  
+                for(int j = 0; j < NUM_DIMENSIONS; j++){
+                    if(maxArray[k*NUM_DIMENSIONS + j] < events[i*NUM_DIMENSIONS + j]){
+                        maxArray[k*NUM_DIMENSIONS + j] = events[i*NUM_DIMENSIONS + j];  
                     }
-                    if(minArray[k*ALL_DIMENSIONS + j] > events[i*ALL_DIMENSIONS + j]){
-                        minArray[k*ALL_DIMENSIONS + j] = events[i*ALL_DIMENSIONS + j];  
+                    if(minArray[k*NUM_DIMENSIONS + j] > events[i*NUM_DIMENSIONS + j]){
+                        minArray[k*NUM_DIMENSIONS + j] = events[i*NUM_DIMENSIONS + j];  
                     }
                 }
             }
         }
-        volume[k] = maxArray[k*ALL_DIMENSIONS] - minArray[k*ALL_DIMENSIONS];
-        for(int i = 1; i < ALL_DIMENSIONS; i++){
-            volume[k] *=  (maxArray[k*ALL_DIMENSIONS + i] - minArray[k*ALL_DIMENSIONS + i]);
+        volume[k] = maxArray[k*NUM_DIMENSIONS] - minArray[k*NUM_DIMENSIONS];
+        for(int i = 1; i < NUM_DIMENSIONS; i++){
+            volume[k] *=  (maxArray[k*NUM_DIMENSIONS + i] - minArray[k*NUM_DIMENSIONS + i]);
         }
         density[k] = occupancy[k] / volume[k];
     }
@@ -116,18 +116,18 @@ void FindSphereCharacteristics(float* events, float* clusters, int finalClusterC
             }
             
         }
-        if(ALL_DIMENSIONS & 1) { // odd d => even sphere
+        if(NUM_DIMENSIONS & 1) { // odd d => even sphere
             
-            volume[k] = pow(2*PI, ((ALL_DIMENSIONS - 1) >> 1))*pow((maxDist/2), (ALL_DIMENSIONS-1)); 
+            volume[k] = pow(2*PI, ((NUM_DIMENSIONS - 1) >> 1))*pow((maxDist/2), (NUM_DIMENSIONS-1)); 
             int denom = 2;
-            for(int i = 4; i < ALL_DIMENSIONS; i+=2){
+            for(int i = 4; i < NUM_DIMENSIONS; i+=2){
                 denom *= i;
             }
             volume[k] /= denom;
         } else{
-            volume[k] = 2*pow(2*PI, ((ALL_DIMENSIONS - 2) >> 1))*pow((maxDist/2), (ALL_DIMENSIONS-1)); 
+            volume[k] = 2*pow(2*PI, ((NUM_DIMENSIONS - 2) >> 1))*pow((maxDist/2), (NUM_DIMENSIONS-1)); 
             int denom = 1;
-            for(int i = 3; i < ALL_DIMENSIONS; i+=2){
+            for(int i = 3; i < NUM_DIMENSIONS; i+=2){
                 denom *= i;
             }
             volume[k] /= denom;
@@ -150,8 +150,8 @@ void ReportSummary(float* clusters, int count, char* inFileName, float averageTi
         << " (s)\nTotal Time = " << totalTime << " (s)\n\n";
     for(int i = 0; i < count; i ++){
         myfile << "Cluster " << i << ": ";
-        for(int j = 0; j < ALL_DIMENSIONS; j++){
-            myfile << clusters[i*ALL_DIMENSIONS + j] << "\t";
+        for(int j = 0; j < NUM_DIMENSIONS; j++){
+            myfile << clusters[i*NUM_DIMENSIONS + j] << "\t";
         }
         myfile << endl;
     }
@@ -168,10 +168,10 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
     
 
     for(int i = 0; i < NUM_EVENTS; i++){
-        for(int j = 0; j < ALL_DIMENSIONS-1; j++){
-            myfile << events[i*ALL_DIMENSIONS + j] << ",";
+        for(int j = 0; j < NUM_DIMENSIONS-1; j++){
+            myfile << events[i*NUM_DIMENSIONS + j] << ",";
         }
-        myfile << events[i*ALL_DIMENSIONS + ALL_DIMENSIONS - 1];
+        myfile << events[i*NUM_DIMENSIONS + NUM_DIMENSIONS - 1];
         myfile << "\t";
         for(int j = 0; j < count-1; j++){
             myfile << MembershipValueReduced(clusters, events, j, i, count) << ","; 
@@ -181,10 +181,10 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
         
     }
     for(int i = 0; i < count; i++){
-        for(int j = 0; j < ALL_DIMENSIONS-1; j++){
-            myfile << clusters[i*ALL_DIMENSIONS + j] << ",";
+        for(int j = 0; j < NUM_DIMENSIONS-1; j++){
+            myfile << clusters[i*NUM_DIMENSIONS + j] << ",";
         }
-        myfile << clusters[i*ALL_DIMENSIONS+ALL_DIMENSIONS-1];
+        myfile << clusters[i*NUM_DIMENSIONS+NUM_DIMENSIONS-1];
         myfile << "\t";
         for(int j = 0; j < count; j++){
             if(j == i)
