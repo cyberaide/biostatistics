@@ -112,11 +112,6 @@ __device__ float MembershipValueGPU(const float* clusters, const float* events, 
 	
 	float sum =0;
 	float otherClustDist;
-    // Compute the distance to all other clusters
-    // Note: This is kind of inefficient, because the distance to every other cluster
-    // is being re-computed by every other block
-    // If each block handled a certain set of events rather than a cluster
-    // we might be able to avoid this.
 	for(int j = 0; j< NUM_CLUSTERS; j++){
 		//otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
@@ -129,11 +124,24 @@ __device__ float MembershipValueGPU(const float* clusters, const float* events, 
 	return 1.0/sum;
 }
 
+__device__ float MembershipValueDist(const float* clusters, const float* events, int clusterIndex, int eventIndex, float distance, float* distanceMatrix){
+	float sum =0;
+	float otherClustDist;
+	for(int j = 0; j< NUM_CLUSTERS; j++){
+		//otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);	
+        otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
+		if(otherClustDist < 1e-10)
+			return 0.0;
+		sum += pow((float)(distance/otherClustDist),float(2/(FUZZINESS-1)));
+	}
+	return 1/sum;
+}
+
 __device__ float CalculateDistanceGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex){
 
 	float sum = 0;
 	float tmp;
-#if DISTANCE_MEASURE == 0
+#if DISTANCE_MEASURE == 0 // Euclidean
     #pragma unroll 6 // Prevent compiler from unrolling this loop, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
         tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
@@ -142,17 +150,19 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
     }
     sum = sqrt(sum);
 #endif
-#if DISTANCE_MEASURE == 1
+#if DISTANCE_MEASURE == 1 // Absolute value
     #pragma unroll 6 // Prevent compiler from unrolling this loop, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
-        tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
+        //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += abs(tmp);
     }
 #endif
-#if DISTANCE_MEASURE == 2 
+#if DISTANCE_MEASURE == 2 // Maximum distance 
     #pragma unroll 6 // Prevent compiler from unrolling this loop, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
-        tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
+        tmp = abs(events[i*NUM_EVENTS + eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
+        //tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         if(tmp > sum)
             sum = tmp;
     }
@@ -162,17 +172,18 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 }
 
 
-__device__ float CalculateQII(const float* events, const float* clusters, int cluster_index_I, float* EI, float* numMem){
+__device__ float CalculateQII(const float* events, const float* clusters, int cluster_index_I, float* EI, float* numMem, float* distanceMatrix){
 	
 	EI[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
 	
 	for(int i = threadIdx.x; i < NUM_EVENTS; i+=Q_THREADS){
-		float distance = CalculateDistanceGPU(clusters, events, cluster_index_I, i);
-		float memVal = MembershipValueDist(clusters, events,  cluster_index_I, i, distance);
+        float distance = distanceMatrix[cluster_index_I*NUM_EVENTS+i];
+		//float distance = distanceMatrix(clusters, events, cluster_index_I, i);
+		float memVal = MembershipValueDist(clusters, events,  cluster_index_I, i, distance, distanceMatrix);
 		
 		if(memVal > MEMBER_THRESH){
-			EI[threadIdx.x] += pow(memVal, 2) * pow(distance, 2);
+			EI[threadIdx.x] += memVal*memVal * distance*distance;
 			numMem[threadIdx.x]++;
 		}
 	}
@@ -193,34 +204,31 @@ __device__ float CalculateQII(const float* events, const float* clusters, int cl
 }
 
 
-__device__ float CalculateQIJ(const float* events, const float* clusters, int cluster_index_I, int cluster_index_J, float * EI, float * EJ, float *numMem){
+__device__ float CalculateQIJ(const float* events, const float* clusters, int cluster_index_I, int cluster_index_J, float * EI, float * EJ, float *numMem, float* distanceMatrix){
 	
 	
 	EI[threadIdx.x] = 0;
 	EJ[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
 	
-	for(int i = 0; i < NUM_EVENTS; i+=Q_THREADS){
-		if(i+threadIdx.x < NUM_EVENTS){
-			float distance = CalculateDistanceGPU(clusters, events, cluster_index_I, i+threadIdx.x);
-			float memValI = MembershipValueDist(clusters, events, cluster_index_I, i+threadIdx.x, distance);
+	for(int i = threadIdx.x; i < NUM_EVENTS; i+=Q_THREADS){
+            float distance = distanceMatrix[cluster_index_I*NUM_EVENTS+i];
+			//float distance = CalculateDistanceGPU(clusters, events, cluster_index_I, i+threadIdx.x);
+			float memValI = MembershipValueDist(clusters, events, cluster_index_I, i, distance, distanceMatrix);
 		
 			if(memValI > MEMBER_THRESH){
-				EI[threadIdx.x] += pow(memValI, 2) * pow(distance, 2);
-				
+				EI[threadIdx.x] += memValI*memValI * distance*distance;
 			}
 			
-			distance = CalculateDistanceGPU(clusters, events, cluster_index_J, i+threadIdx.x);
-			float memValJ = MembershipValueDist(clusters, events, cluster_index_J, i+threadIdx.x, distance);
+            distance = distanceMatrix[cluster_index_J*NUM_EVENTS+i];
+			//distance = CalculateDistanceGPU(clusters, events, cluster_index_J, i);
+			float memValJ = MembershipValueDist(clusters, events, cluster_index_J, i, distance, distanceMatrix);
 			if(memValJ > MEMBER_THRESH){
-				EJ[threadIdx.x] += pow(memValJ, 2) * pow(distance, 2);
+				EJ[threadIdx.x] += memValJ*memValJ * distance*distance;
 			}
 			if(memValI > MEMBER_THRESH && memValJ > MEMBER_THRESH){
 				numMem[threadIdx.x]++;
 			}
-			
-		}
-		
 	
 	}
 	__syncthreads();
@@ -239,7 +247,7 @@ __device__ float CalculateQIJ(const float* events, const float* clusters, int cl
 
 }
 
-__global__ void CalculateQMatrixGPU(const float* events, const float* clusters, float* matrix){
+__global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix, float* distanceMatrix){
 	__shared__ float myClusters[NUM_CLUSTERS*NUM_DIMENSIONS];
 	__shared__ float EI[Q_THREADS];
 	__shared__ float EJ[Q_THREADS];
@@ -251,71 +259,13 @@ __global__ void CalculateQMatrixGPU(const float* events, const float* clusters, 
 		}
 	}
 	__syncthreads();
-	for(int j = 0; j < NUM_CLUSTERS; j++){
-			
-		if(blockIdx.x == j){
-			matrix[blockIdx.x*NUM_CLUSTERS + j ] = CalculateQII(events, myClusters, blockIdx.x, EI, numMem);
-				
-		} else{
-				
-			matrix[blockIdx.x*NUM_CLUSTERS + j] = CalculateQIJ(events, myClusters, blockIdx.x, j, EI, EJ, numMem);
-				
-		}
-			
-		__syncthreads();
-	}
-	
-}
-
-__global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix){
-	__shared__ float myClusters[NUM_CLUSTERS*NUM_DIMENSIONS];
-	__shared__ float EI[Q_THREADS];
-	__shared__ float EJ[Q_THREADS];
-	__shared__ float numMem[Q_THREADS];
-	for(int j = 0; j < NUM_CLUSTERS*NUM_DIMENSIONS; j+= Q_THREADS){
-		if(j+threadIdx.x < NUM_CLUSTERS*NUM_DIMENSIONS){
-			myClusters[j+threadIdx.x] = clusters[j+threadIdx.x];
-
-		}
-	}
-	__syncthreads();
-	//printf("blockIdx.x = %d, blockIdx.y = %d\n", blockIdx.x, blockIdx.y);
 	if(blockIdx.x == blockIdx.y){
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y ] = CalculateQII(events, myClusters, blockIdx.x, EI, numMem);
+		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y ] = CalculateQII(events, myClusters, blockIdx.x, EI, numMem, distanceMatrix);
 	}
 	else{
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, myClusters, blockIdx.x, blockIdx.y, EI, EJ, numMem);
+		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, myClusters, blockIdx.x, blockIdx.y, EI, EJ, numMem, distanceMatrix);
 	}	
 	
 	
 }
-
-/*__global__ void EvaluateSolutionGPU(float* matrix, long config, float* score){
-	float partial[NUM_CLUSTERS] = {0};
-	for(int i = 0; i < NUM_CLUSTERS; i++){
-		for(int j = 0; j < NUM_CLUSTERS; j++){
-			partial[i] += ((config & (1 << (NUM_CLUSTERS - j - 1))) == 0) ? 0 : matrix[i + j*NUM_CLUSTERS];
-		}
-	} 
-	float myScore = 0;
-	for(int i = 0; i < NUM_CLUSTERS; i++){
-		myScore += ((config & (1 << (NUM_CLUSTERS - i - 1))) == 0) ? 0 : partial[i];
-	}
-	*score = myScore;
-}*/
-
-
-
-__device__ float MembershipValueDist(const float* clusters, const float* events, int clusterIndex, int eventIndex, float distance){
-	float sum =0;
-	float otherClustDist;
-	for(int j = 0; j< NUM_CLUSTERS; j++){
-		otherClustDist = CalculateDistanceGPU(clusters, events, j, eventIndex);	
-		if(otherClustDist < .000001)
-			return 0.0;
-		sum += pow((float)(distance/otherClustDist),float(2/(FUZZINESS-1)));
-	}
-	return 1/sum;
-}
-
 

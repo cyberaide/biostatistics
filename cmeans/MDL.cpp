@@ -232,11 +232,11 @@ int* MDL(float* events, float* clusters, float* mdlTime, char* inputFile){
 }
 
 #ifndef MULTI_GPU
-int* MDLGPU(float* d_events, float* d_clusters, float* mdlTime, char* inputFile){
+int* MDLGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime, char* inputFile){
     
     printf("Calculating Q Matrix\n");
     
-    float* matrix = BuildQGPU(d_events, d_clusters, mdlTime);
+    float* matrix = BuildQGPU(d_events, d_clusters, distanceMatrix, mdlTime);
     //for(int i = 0; i < NUM_CLUSTERS; i++){
     //  for(int j = 0; j < NUM_CLUSTERS; j++){
     //      printf("%f\t", matrix[i*NUM_CLUSTERS + j]);

@@ -10,7 +10,7 @@
 #include <float.h>
 //#include <cmeans_kernel.cu>
 #include "timers.h"
-
+#include "MDL.h"
 
 /************************************************************************/
 /* Init CUDA                                                            */
@@ -61,7 +61,7 @@ bool InitCUDA(void)
         return false;
     }
 
-    device = 1;
+    device = 0;
     printf("Using Device %d\n",device);
     CUDA_SAFE_CALL(cudaSetDevice(device));
 
@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
 #if !MDL_on_GPU
     finalClusterConfig = MDL(myEvents, myClusters, &mdlTime, argv[1]);
 #else
-    finalClusterConfig = MDLGPU(d_E, d_nC, &mdlTime, argv[1]);
+    finalClusterConfig = MDLGPU(d_E, d_nC, d_distanceMatrix, &mdlTime, argv[1]);
     mdlTime /= 1000.0; // CUDA timer returns time in milliseconds, normalize to seconds
 #endif
 
@@ -521,7 +521,7 @@ void FreeMatrix(float* d_matrix){
     CUDA_SAFE_CALL(cudaFree(d_matrix));
 }
 
-float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
+float* BuildQGPU(float* d_events, float* d_clusters, float* d_distanceMatrix, float* mdlTime){
     float* d_matrix;
     int size = sizeof(float) * NUM_CLUSTERS*NUM_CLUSTERS;
 
@@ -537,7 +537,7 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime){
 
     dim3 grid(NUM_CLUSTERS, NUM_CLUSTERS);
     printf("Launching Q Matrix Kernel\n");
-    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix);
+    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, d_distanceMatrix);
     cudaThreadSynchronize();
     printCudaError();
 

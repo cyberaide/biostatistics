@@ -68,11 +68,9 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
 
 float* ParseSampleInput(const char* filename);
 
-int* MDL(float* events, float* clusters, float*, char* inputFile);
-int* MDLGPU(float* d_events, float* d_clusters, float*, char* inputFile);
 
 float FindScoreGPU(float* d_matrix, long config);
-float* BuildQGPU(float* d_events, float* d_clusters, float*);
+float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime);
 long TabuSearchGPU(float* d_matrix);
 void FreeMatrix(float* d_matrix);
 int bitCount (int* n);
