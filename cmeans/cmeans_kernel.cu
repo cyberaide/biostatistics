@@ -167,19 +167,16 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
             sum = tmp;
     }
 #endif
-
 	return sum;
 }
 
-
 __device__ float CalculateQII(const float* events, const float* clusters, int cluster_index_I, float* EI, float* numMem, float* distanceMatrix){
-	
 	EI[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
 	
 	for(int i = threadIdx.x; i < NUM_EVENTS; i+=Q_THREADS){
         float distance = distanceMatrix[cluster_index_I*NUM_EVENTS+i];
-		//float distance = distanceMatrix(clusters, events, cluster_index_I, i);
+        //float distance = CalculateDistanceGPU(clusters,events, cluster_index_I, i);
 		float memVal = MembershipValueDist(clusters, events,  cluster_index_I, i, distance, distanceMatrix);
 		
 		if(memVal > MEMBER_THRESH){
@@ -188,7 +185,6 @@ __device__ float CalculateQII(const float* events, const float* clusters, int cl
 		}
 	}
 	
-	//printf("block = %d, numMem = %f, EI = %f\n", blockIdx.x, numMem, EI);
 	__syncthreads();
 	
 	if(threadIdx.x == 0){
@@ -200,13 +196,9 @@ __device__ float CalculateQII(const float* events, const float* clusters, int cl
 	__syncthreads();
 
 	return ((((float)K1) * numMem[0]) - (((float)K2) * EI[0]) - (((float)K3) * NUM_DIMENSIONS));
-
 }
 
-
 __device__ float CalculateQIJ(const float* events, const float* clusters, int cluster_index_I, int cluster_index_J, float * EI, float * EJ, float *numMem, float* distanceMatrix){
-	
-	
 	EI[threadIdx.x] = 0;
 	EJ[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
@@ -244,7 +236,6 @@ __device__ float CalculateQIJ(const float* events, const float* clusters, int cl
 	__syncthreads();
 	float EB = (EI[0] > EJ[0]) ? EI[0] : EJ[0];
 	return ((-1*((float)K1)*numMem[0]) + ((float)K2)*EB);
-
 }
 
 __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix, float* distanceMatrix){
@@ -265,7 +256,4 @@ __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clu
 	else{
 		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, myClusters, blockIdx.x, blockIdx.y, EI, EJ, numMem, distanceMatrix);
 	}	
-	
-	
 }
-

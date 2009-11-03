@@ -557,10 +557,6 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* d_distanceMatrix, fl
     printf("Processing time for GPU: %f (ms) \n", *mdlTime);
     CUT_SAFE_CALL(cutDeleteTimer(timer));
         
-    const char * message = cudaGetErrorString(error);
-    printf("Error: %s\n", message);
-
-    
     FreeMatrix(d_matrix);
 
     printf("Q Matrix:\n");

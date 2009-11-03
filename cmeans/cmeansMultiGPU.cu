@@ -22,8 +22,6 @@ bool InitCUDA(void){return true;}
 
 #else
 
-
-
 bool InitCUDA(void)
 {
     int count = 0;
@@ -139,15 +137,8 @@ int main(int argc, char* argv[])
     }
     printf("---------------------------\n");
     
-    //if(!InitCUDA()) {
-    //    return 0;
-    //}
-    //CUT_DEVICE_INIT(argc, argv);
-    
     //srand((unsigned)(time(0)));
     srand(42);
-    
-    
     
     CUT_SAFE_CALL(cutStopTimer(timer_io));
     CUT_SAFE_CALL(cutStartTimer(timer_cpu));
@@ -200,6 +191,7 @@ int main(int argc, char* argv[])
     //   Recall that all variables declared inside an "omp parallel" scope are
     //   local to each CPU thread
     //
+    num_gpus = 1;
     omp_set_num_threads(num_gpus);  // create as many CPU threads as there are CUDA devices
     //omp_set_num_threads(2*num_gpus);// create twice as many CPU threads as there are CUDA devices
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators)
@@ -214,7 +206,6 @@ int main(int argc, char* argv[])
         cudaGetDevice(&gpu_id);
 
         printf("CPU thread %d (of %d) uses CUDA device %d\n", cpu_thread_id, num_cpu_threads, gpu_id);
-    
 
 #if !CPU_ONLY    
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
@@ -247,7 +238,6 @@ int main(int argc, char* argv[])
         if(cpu_thread_id == (num_gpus-1)) {
             finish = NUM_EVENTS;
         }
-        //start = 0; finish = NUM_EVENTS;
         printf("GPU %d, Starting Event: %d, Ending Event: %d\n",cpu_thread_id,start,finish);
 
         do{
@@ -370,8 +360,6 @@ int main(int argc, char* argv[])
                 printf("\n");
             }
             
-            //exit(0);  // NOTE - Stopping early until we figure out how to make it parallel!!!
-
             CUT_SAFE_CALL(cutStopTimer(timer_io));
         }
         
@@ -390,7 +378,9 @@ int main(int argc, char* argv[])
             CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
             CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
-            q_matrices[cpu_thread_id] = BuildQGPU(d_E, d_C, &mdlTime, cpu_thread_id, num_gpus);
+            
+            // Build Q matrix, each gpu handles NUM_DIMENSIONS/num_gpus rows of the matrix
+            q_matrices[cpu_thread_id] = BuildQGPU(d_E, d_C, d_distanceMatrix, &mdlTime, cpu_thread_id, num_gpus);
             
             #pragma omp barrier // sync threads
             
@@ -681,7 +671,7 @@ void FreeMatrix(float* d_matrix){
     CUDA_SAFE_CALL(cudaFree(d_matrix));
 }
 
-float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime, int gpu_id, int num_gpus){
+float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime, int gpu_id, int num_gpus){
     float* d_matrix;
     int size = sizeof(float) * NUM_CLUSTERS*NUM_CLUSTERS;
 
@@ -701,7 +691,7 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* mdlTime, int gpu_id,
     printf("GPU %d: Starting row for Q Matrix: %d\n",gpu_id,start_row);
 
     printf("Launching Q Matrix Kernel\n");
-    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, start_row);
+    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, distanceMatrix, start_row);
     cudaThreadSynchronize();
     printCudaError();
 
