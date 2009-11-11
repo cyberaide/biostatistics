@@ -196,12 +196,31 @@ main( int argc, char** argv) {
 
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
+    // TODO: Does it make any sense to use multiple blocks for this?
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
+    
+    // copy clusters from the device
+    CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
+    // copy all of the arrays from the structs
+    for(int i=0; i<original_num_clusters; i++) {
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
+        clusters[i].N = temp_clusters[i].N;
+        clusters[i].pi = temp_clusters[i].pi;
+        clusters[i].constant = temp_clusters[i].constant;
+    }
+    
+    for(int i=0; i<original_num_clusters; i++) {
+        printf("Initial mean: %f\n",clusters[i].means[0]);
+    }
+
     DEBUG("done.\n"); 
     DEBUG("Invoking constants kernel...",num_threads);
     // Computes the R matrix inverses, and the gaussian constant
-    constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
+    constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
     DEBUG("done.\n");
     
@@ -269,7 +288,7 @@ main( int argc, char** argv) {
 
             params_start = clock();
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
-            reestimate_parameters<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+            reestimate_parameters<<<num_clusters, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
             params_total += params_end - params_start;
@@ -279,7 +298,7 @@ main( int argc, char** argv) {
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_start = clock();
-            constants_kernel<<<NUM_BLOCKS, num_threads>>>(d_clusters,num_clusters,num_dimensions);
+            constants_kernel<<<num_clusters, num_threads>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
             constants_end = clock();
             constants_total += constants_end - constants_start;
@@ -313,6 +332,31 @@ main( int argc, char** argv) {
             DEBUG("Change in likelihood: %f\n",change);
 
             iters++;
+            
+            
+
+
+            // copy clusters from the device
+            CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
+            // copy all of the arrays from the structs
+            for(int i=0; i<num_clusters; i++) {
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
+                clusters[i].N = temp_clusters[i].N;
+                clusters[i].pi = temp_clusters[i].pi;
+                clusters[i].constant = temp_clusters[i].constant;
+            }
+            for(int i=0; i<num_clusters; i++) {
+                //printf("N: %f, mean: %f, variance: %f, Rinv: %f\n",clusters[i].N,clusters[i].means[0],clusters[i].R[0],clusters[i].Rinv[0]);
+            }
+            //printf("\n\n");
+
+
+
+
+
         }
         
         // copy clusters from the device
