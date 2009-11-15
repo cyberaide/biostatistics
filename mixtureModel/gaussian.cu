@@ -233,7 +233,8 @@ main( int argc, char** argv) {
     float likelihood, old_likelihood;
     int iters;
     
-    DEBUG("Gaussian.cu: epsilon = %f\n",epsilon);
+    epsilon = 1e-6;
+    PRINT("Gaussian.cu: epsilon = %f\n",epsilon);
 
     // Used to hold the result from regroup kernel
     float* likelihoods = (float*) malloc(sizeof(float)*NUM_BLOCKS);

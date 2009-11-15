@@ -14,7 +14,7 @@
 #define NUM_DIMENSIONS 24
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 100
+#define MAX_ITERS 1000
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
