@@ -18,7 +18,7 @@
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only

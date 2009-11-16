@@ -269,6 +269,8 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     __syncthreads();
     
     // Compute the constant
+    // Equivilent to: log(1/((2*PI)^(M/2)*det(R)^(1/2)))
+    // This constant is used in all E-step likelihood calculations
     if(tid == 0) {
         //determinant = fabs(determinant);
         clusters[c].constant = -num_dimensions*0.5*logf(2*PI) - 0.5*log_determinant;
@@ -387,7 +389,9 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     float temp;
     float thread_likelihood = 0.0;
     __shared__ float total_likelihoods[NUM_THREADS];
-    
+
+    __shared__ float pi[MAX_CLUSTERS];
+ 
     const int num_threads = blockDim.x;
     int num_pixels_per_block = num_events / NUM_BLOCKS;  
     const int tid = threadIdx.x;
@@ -407,7 +411,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     int data_index;
     
     total_likelihoods[tid] = 0.0;
-  
+
 #if EMU
     if(0) { 
         for(int c=0;c<num_clusters;c++) {
@@ -424,23 +428,34 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     }
 #endif
     
-    
-    // Compute likelihood for every event, for every cluster
+    // This loop computes the expectation of every event into every cluster
+    //
+    // P_nk = P(k|n) = L(x_n|mu_k,R_k)*P(k) / P(x_n)
+
+    // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
+    // However we use logs to prevent under/overflow
+    //  log-sum-exp formula:
+    //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
+
     for(int pixel=start_index; pixel<end_index; pixel += num_threads) {
-       
         data_index = pixel*num_dimensions;
-        // compute likelihood of pixel in cluster 'c'
+        
+        // Compute log-likelihood for every cluster
+        // L = constant*exp(-0.5*(x-u)*Rinv*(x-u))
+        // log_L = log_constant - 0.5*(x-u)*Rinv*(x-u)
+        // the constant stored in clusters[c].constant is already the log of the constant
         for(int c=0; c<num_clusters; c++) {
             like = 0.0;
-            // this does the loglike() function
+            // this does the loglikelihood calculation
             for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
+                    //like += (fcs_data[data_index+i]-1)*(fcs_data[data_index+j]-1)*1;
                     like += (fcs_data[data_index+i]-clusters[c].means[i])*(fcs_data[data_index+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
             }
-            temp = -0.5*like+clusters[c].constant;
+            temp = -0.5f*like+clusters[c].constant + logf(clusters[c].pi); // numerator of the probability computation
             clusters[c].p[pixel] = temp;
- 
+
             // Keep track of the maximum likelihood
             if(c == 0) {
                 max_likelihood = temp;
@@ -449,20 +464,19 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
                 max_likelihood = temp;
             }
         }
-        
+
+        // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
         denominator_sum = 0.0;
         for(int c=0; c<num_clusters; c++) {
-            //EMUPRINT("denominator_sum: %f\n",denominator_sum);
-            //EMUPRINT("clusters[c].p[pixel]: %f\n",clusters[c].p[pixel]);
-            temp = exp(clusters[c].p[pixel]-max_likelihood)*clusters[c].pi;
+            temp = expf(clusters[c].p[pixel]-max_likelihood);
             denominator_sum += temp;
-            clusters[c].p[pixel] = temp;
         }
-        thread_likelihood += log(denominator_sum) + max_likelihood;
+        temp = max_likelihood + logf(denominator_sum);
+        thread_likelihood += temp;
         
-        // Normalizes probabilities
+        // Divide by denominator, also effectively normalize probabilities
         for(int c=0; c<num_clusters; c++) {
-            clusters[c].p[pixel] /= (denominator_sum);
+            clusters[c].p[pixel] = expf(clusters[c].p[pixel] - temp);
             //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
         }
     }

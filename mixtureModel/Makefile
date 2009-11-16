@@ -36,7 +36,7 @@
 # Add source files here
 EXECUTABLE	:= gaussian
 # CUDA source files (compiled with cudacc)
-CUFILES_sm_13 := gaussian.cu
+CUFILES := gaussian.cu
 # CUDA dependency files
 CU_DEPS		:= \
     theta_kernel.cu gaussian.h

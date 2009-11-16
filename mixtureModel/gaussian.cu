@@ -98,10 +98,10 @@ main( int argc, char** argv) {
    
     // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
     int GPUCount;
-    int device = 0;
+    int device;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
     if (GPUCount > 1) {
-        device = 0;
+        device = 1;
         CUDA_SAFE_CALL(cudaSetDevice(device));
     }
     cudaDeviceProp prop;
@@ -199,6 +199,7 @@ main( int argc, char** argv) {
     // TODO: Does it make any sense to use multiple blocks for this?
     seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
+    CUT_CHECK_ERROR("Seed Kernel execution failed: ");
     
     // copy clusters from the device
     CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
@@ -222,6 +223,7 @@ main( int argc, char** argv) {
     // Computes the R matrix inverses, and the gaussian constant
     constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
+    CUT_CHECK_ERROR("Constants Kernel execution failed: ");
     DEBUG("done.\n");
     
     // copy clusters from the device
@@ -233,7 +235,7 @@ main( int argc, char** argv) {
     float likelihood, old_likelihood;
     int iters;
     
-    epsilon = 1e-6;
+    //epsilon = 1e-6;
     PRINT("Gaussian.cu: epsilon = %f\n",epsilon);
 
     // Used to hold the result from regroup kernel
@@ -256,7 +258,7 @@ main( int argc, char** argv) {
         // for each event and each cluster. Each event is independent,
         // so the events are distributed to different blocks 
         // (and hence different multiprocessors)
-        DEBUG("Invoking regroup kernel...");
+        DEBUG("Invoking regroup (E-step) kernel...");
         regroup_start = clock();
         regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
@@ -285,16 +287,18 @@ main( int argc, char** argv) {
         while(fabs(change) > epsilon && iters < MAX_ITERS) {
             old_likelihood = likelihood;
             
-            DEBUG("Invoking reestimate_parameters kernel...",num_threads);
+            DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
 
             params_start = clock();
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
             reestimate_parameters<<<num_clusters, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
+            CUT_CHECK_ERROR("M-step Kernel execution failed: ");
             params_total += params_end - params_start;
             params_iterations++;
             DEBUG("done.\n");
+            DEBUG("Model Parameters Kernel Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
@@ -302,22 +306,23 @@ main( int argc, char** argv) {
             constants_kernel<<<num_clusters, num_threads>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
             constants_end = clock();
+            CUT_CHECK_ERROR("Constants Kernel execution failed: ");
             constants_total += constants_end - constants_start;
             constants_iterations++;
             DEBUG("done.\n");
+            DEBUG("Constants Kernel Iteration Time: %f\n\n",((double)(constants_end-constants_start))/CLOCKS_PER_SEC);
 
-            // check if kernel execution generated an error
-            CUT_CHECK_ERROR("Kernel execution failed");
-        
-            DEBUG("Invoking regroup kernel...");
+            DEBUG("Invoking regroup (E-step) kernel...");
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
             regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
+            CUT_CHECK_ERROR("E-step Kernel execution failed: ");
             regroup_end = clock();
             regroup_total += regroup_end - regroup_start;
             regroup_iterations++;
             DEBUG("done.\n");
+            DEBUG("Regroup Kernel Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
         
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
@@ -336,7 +341,7 @@ main( int argc, char** argv) {
             
             
 
-
+            /*
             // copy clusters from the device
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*num_clusters,cudaMemcpyDeviceToHost));
             // copy all of the arrays from the structs
@@ -350,10 +355,10 @@ main( int argc, char** argv) {
                 clusters[i].constant = temp_clusters[i].constant;
             }
             for(int i=0; i<num_clusters; i++) {
-                //printf("N: %f, mean: %f, variance: %f, Rinv: %f\n",clusters[i].N,clusters[i].means[0],clusters[i].R[0],clusters[i].Rinv[0]);
+                printf("N: %f, mean: %f, variance: %f, Rinv: %f\n",clusters[i].N,clusters[i].means[0],clusters[i].R[0],clusters[i].Rinv[0]);
             }
-            //printf("\n\n");
-
+            printf("\n\n");
+            */
 
 
 
