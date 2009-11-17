@@ -81,16 +81,29 @@ main( int argc, char** argv) {
     
     // Read FCS data   
     PRINT("Parsing input file...");
-    float* fcs_data = readData(argv[2],&num_dimensions,&num_events);    
+    // This stores the data in a 1-D array with consecutive values being the dimensions from a single event
+    // (num_events by num_dimensions matrix)
+    float* fcs_data_by_event = readData(argv[2],&num_dimensions,&num_events);    
 
-    if(!fcs_data) {
+    if(!fcs_data_by_event) {
         printf("Error parsing input file. This could be due to an empty file ");
         printf("or an inconsistent number of dimensions. Aborting.\n");
         return 1;
     }
     
-    input_end = clock();
+    // Transpose the event data (allows coalesced access pattern in E-step kernel)
+    // This has consecutive values being from the same dimension of the data 
+    // (num_dimensions by num_events matrix)
+    float* fcs_data_by_dimension  = (float*) malloc(sizeof(float)*num_events*num_dimensions);
     
+    for(int e=0; e<num_events; e++) {
+        for(int d=0; d<num_dimensions; d++) {
+            fcs_data_by_dimension[d*num_events+e] = fcs_data_by_event[e*num_dimensions+d];
+        }
+    }    
+
+    input_end = clock();
+   
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
     
@@ -101,7 +114,7 @@ main( int argc, char** argv) {
     int device;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
     if (GPUCount > 1) {
-        device = 1;
+        device = 0;
         CUDA_SAFE_CALL(cudaSetDevice(device));
     }
     cudaDeviceProp prop;
@@ -178,16 +191,18 @@ main( int argc, char** argv) {
     double min_rissanen, rissanen;
     
     // allocate device memory for FCS data
-    float* d_fcs_data;
-    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data, mem_size));
+    float* d_fcs_data_by_event;
+    float* d_fcs_data_by_dimension;
+    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data_by_event, mem_size));
+    CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data_by_dimension, mem_size));
     DEBUG("Finished allocating memory on device for clusters.\n");
     // copy FCS to device
-    CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data, fcs_data, mem_size,cudaMemcpyHostToDevice) );
-
+    CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data_by_event, fcs_data_by_event, mem_size,cudaMemcpyHostToDevice) );
+    CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data_by_dimension, fcs_data_by_dimension, mem_size,cudaMemcpyHostToDevice) );
     DEBUG("Finished copying FCS data to device.\n");
+    
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,temp_clusters,sizeof(cluster)*original_num_clusters,cudaMemcpyHostToDevice));
-    
     DEBUG("Finished copying cluster data to device.\n");
    
     //////////////// Initialization done, starting kernels //////////////// 
@@ -197,7 +212,7 @@ main( int argc, char** argv) {
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
     // TODO: Does it make any sense to use multiple blocks for this?
-    seed_clusters<<< 1, num_threads >>>( d_fcs_data, d_clusters, num_dimensions, original_num_clusters, num_events);
+    seed_clusters<<< 1, num_threads >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
     
@@ -215,7 +230,7 @@ main( int argc, char** argv) {
     }
     
     for(int i=0; i<original_num_clusters; i++) {
-        printf("Initial mean: %f\n",clusters[i].means[0]);
+        //printf("Initial mean: %f\n",clusters[i].means[0]);
     }
 
     DEBUG("done.\n"); 
@@ -260,20 +275,22 @@ main( int argc, char** argv) {
         // (and hence different multiprocessors)
         DEBUG("Invoking regroup (E-step) kernel...");
         regroup_start = clock();
-        regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
+        regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
         regroup_end = clock();
         regroup_total += regroup_end - regroup_start;
         regroup_iterations++;
         DEBUG("done.\n");
+        DEBUG("Regroup Kernel Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
         // check if kernel execution generated an error
         CUT_CHECK_ERROR("Kernel execution failed");
+
 
         // Copy the likelihood totals from each block, sum them up to get a total
         CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
         likelihood = 0.0;
         for(int i=0;i<NUM_BLOCKS;i++) {
-            DEBUG("Likelihood #%d: %e\n",i,likelihood);
+            //DEBUG("Likelihood #%d: %e\n",i,likelihood);
             likelihood += likelihoods[i]; 
         }
 
@@ -291,7 +308,7 @@ main( int argc, char** argv) {
 
             params_start = clock();
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
-            reestimate_parameters<<<num_clusters, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events);
+            reestimate_parameters<<<num_clusters, num_threads>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
             CUT_CHECK_ERROR("M-step Kernel execution failed: ");
@@ -299,6 +316,7 @@ main( int argc, char** argv) {
             params_iterations++;
             DEBUG("done.\n");
             DEBUG("Model Parameters Kernel Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
+            //return 0; // RETURN FOR FASTER PROFILING
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
@@ -315,7 +333,7 @@ main( int argc, char** argv) {
             DEBUG("Invoking regroup (E-step) kernel...");
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
-            regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
+            regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
             CUT_CHECK_ERROR("E-step Kernel execution failed: ");
             regroup_end = clock();
@@ -544,9 +562,9 @@ main( int argc, char** argv) {
     
     for(int i=0; i<num_events; i++) {
         for(int d=0; d<num_dimensions-1; d++) {
-            fprintf(fresults,"%f,",fcs_data[i*num_dimensions+d]);
+            fprintf(fresults,"%f,",fcs_data_by_event[i*num_dimensions+d]);
         }
-        fprintf(fresults,"%f",fcs_data[i*num_dimensions+num_dimensions-1]);
+        fprintf(fresults,"%f",fcs_data_by_event[i*num_dimensions+num_dimensions-1]);
         fprintf(fresults,"\t");
         for(int c=0; c<ideal_num_clusters-1; c++) {
             fprintf(fresults,"%f,",saved_clusters[c].p[i]);
@@ -558,7 +576,8 @@ main( int argc, char** argv) {
     
  
     // cleanup memory
-    free(fcs_data);
+    free(fcs_data_by_event);
+    free(fcs_data_by_dimension);
     for(int i=0; i<original_num_clusters; i++) {
         free(clusters[i].means);
         free(clusters[i].R);
@@ -581,7 +600,8 @@ main( int argc, char** argv) {
     free(likelihoods);
     CUDA_SAFE_CALL(cudaFree(d_likelihoods));
  
-    CUDA_SAFE_CALL(cudaFree(d_fcs_data));
+    CUDA_SAFE_CALL(cudaFree(d_fcs_data_by_event));
+    CUDA_SAFE_CALL(cudaFree(d_fcs_data_by_dimension));
 
     for(int i=0; i<original_num_clusters; i++) {
         CUDA_SAFE_CALL(cudaFree(temp_clusters[i].means));

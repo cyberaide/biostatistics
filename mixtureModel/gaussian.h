@@ -9,12 +9,12 @@
 // Probably will run out of memory and make the computation intractable far before 512 clusters though
 #define MAX_CLUSTERS 512
 #define PI  3.1415926535897931
-#define	NUM_BLOCKS 24 
+#define	NUM_BLOCKS 16
 #define NUM_THREADS 256
 #define NUM_DIMENSIONS 24
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 1000
+#define MAX_ITERS 100
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro

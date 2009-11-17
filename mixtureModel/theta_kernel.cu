@@ -66,9 +66,10 @@ __device__ void spectralMean(float* fcs_data, int num_dimensions, int num_events
     int num_data_points = num_events*num_dimensions;
 
     // Sum up all the values for the dimension
-    for(int i=tid; i < num_data_points; i+= num_dimensions) {
+    for(int i=0; i < num_events; i++) {
         if(tid < num_dimensions) {
-            means[tid] += fcs_data[i];
+            //means[tid] += fcs_data[tid*num_events+i];
+            means[tid] += fcs_data[i*num_dimensions+tid];
         }  
     }
     
@@ -90,18 +91,17 @@ __device__ void averageVariance(float* fcs_data, float* means, int num_dimension
     __shared__ float total_variance;
     
     // Compute average variance for each dimension
-    for(int i=0; i < num_dimensions; i += num_threads) {
-        if(tid+i < num_dimensions) {
-            variances[tid] = 0.0;
-            // Sum up all the variance
-            for(int j=0; j < num_events; j++) {
-                // variance = (data - mean)^2
-                //variances[tid+i] += (fcs_data[j*num_dimensions + tid + i]-means[tid+i])*(fcs_data[j*num_dimensions + tid + i]-means[tid+i]);
-                variances[tid+i] += (fcs_data[j*num_dimensions + tid + i])*(fcs_data[j*num_dimensions + tid + i]);
-            }
-            variances[tid+i] /= (float) num_events;
-            variances[tid+i] -= means[tid+i]*means[tid+i];
+    if(tid < num_dimensions) {
+        variances[tid] = 0.0;
+        // Sum up all the variance
+        for(int j=0; j < num_events; j++) {
+            // variance = (data - mean)^2
+            //variances[tid+i] += (fcs_data[j*num_dimensions + tid + i]-means[tid+i])*(fcs_data[j*num_dimensions + tid + i]-means[tid+i]);
+            variances[tid] += (fcs_data[j*num_dimensions + tid])*(fcs_data[j*num_dimensions + tid]);
+            //variances[tid] += (fcs_data[tid*num_events + j])*(fcs_data[tid*num_events + j]);
         }
+        variances[tid] /= (float) num_events;
+        variances[tid] -= means[tid]*means[tid];
     }
     
     __syncthreads();
@@ -389,8 +389,12 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     float temp;
     float thread_likelihood = 0.0;
     __shared__ float total_likelihoods[NUM_THREADS];
-
-    __shared__ float pi[MAX_CLUSTERS];
+    
+    // Cached cluster parameters
+    __shared__ float means[NUM_DIMENSIONS];
+    __shared__ float Rinv[NUM_DIMENSIONS*NUM_DIMENSIONS];
+    float cluster_pi;
+    float constant;
  
     const int num_threads = blockDim.x;
     int num_pixels_per_block = num_events / NUM_BLOCKS;  
@@ -408,61 +412,68 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     
     //printf("Block Index: %d, Thread Index: %d, start_index: %d, end_index: %d\n",blockIdx.x,tid,start_index,end_index);
 
-    int data_index;
+    int data_offset;
     
     total_likelihoods[tid] = 0.0;
 
-#if EMU
-    if(0) { 
-        for(int c=0;c<num_clusters;c++) {
-            if(tid==0) {
-                printf("cluster[%d].Rinv matrix:\n",c);
-                for(int i=0;i<num_dimensions;i++) {
-                    for(int j=0; j<num_dimensions;j++) {
-                        printf("%.3f ",clusters->Rinv[i*num_dimensions+j]);
-                    }
-                    printf("\n");
-                }
-            }
-        }
-    }
-#endif
-    
+    __shared__ float* probs;
+
     // This loop computes the expectation of every event into every cluster
     //
-    // P_nk = P(k|n) = L(x_n|mu_k,R_k)*P(k) / P(x_n)
+    // P(k|n) = L(x_n|mu_k,R_k)*P(k) / P(x_n)
+    //
+    // Compute log-likelihood for every cluster for each event
+    // L = constant*exp(-0.5*(x-mu)*Rinv*(x-mu))
+    // log_L = log_constant - 0.5*(x-u)*Rinv*(x-mu)
+    // the constant stored in clusters[c].constant is already the log of the constant
+    for(int c=0; c<num_clusters; c++) {
+        // copy the means for this cluster into shared memory
+        if(tid < num_dimensions) {
+            means[tid] = clusters[c].means[tid];
+        }
 
-    // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
-    // However we use logs to prevent under/overflow
-    //  log-sum-exp formula:
-    //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
+        // copy the covariance inverse into shared memory
+        for(int i=tid; i < num_dimensions*num_dimensions; i+= num_threads) {
+            Rinv[i] = clusters[c].Rinv[i]; 
+        }
 
-    for(int pixel=start_index; pixel<end_index; pixel += num_threads) {
-        data_index = pixel*num_dimensions;
+        probs = clusters[c].p;
+
+        // Sync to wait for all params to be loaded to shared memory
+        __syncthreads();
+
+        cluster_pi = clusters[c].pi;
+        constant = clusters[c].constant;
         
-        // Compute log-likelihood for every cluster
-        // L = constant*exp(-0.5*(x-u)*Rinv*(x-u))
-        // log_L = log_constant - 0.5*(x-u)*Rinv*(x-u)
-        // the constant stored in clusters[c].constant is already the log of the constant
-        for(int c=0; c<num_clusters; c++) {
+        for(int event=start_index; event<end_index; event += num_threads) {
             like = 0.0;
             // this does the loglikelihood calculation
             for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
-                    //like += (fcs_data[data_index+i]-1)*(fcs_data[data_index+j]-1)*1;
-                    like += (fcs_data[data_index+i]-clusters[c].means[i])*(fcs_data[data_index+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
+                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
             }
-            temp = -0.5f*like+clusters[c].constant + logf(clusters[c].pi); // numerator of the probability computation
-            clusters[c].p[pixel] = temp;
+            clusters[c].p[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+            //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+        }
 
-            // Keep track of the maximum likelihood
-            if(c == 0) {
-                max_likelihood = temp;
-            } 
-            if( temp > max_likelihood) {
-                max_likelihood = temp;
-            }
+        // Make sure all threads done with their pixels b4 moving to next cluster
+        __syncthreads(); 
+    }
+
+    __syncthreads(); 
+    
+    // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
+    // However we use logs to prevent under/overflow
+    //  log-sum-exp formula:
+    //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
+    for(int pixel=start_index; pixel<end_index; pixel += num_threads) {
+        // find the maximum likelihood for this event
+        max_likelihood = clusters[0].p[pixel];
+        for(int c=1; c<num_clusters; c++) {
+            max_likelihood = fmaxf(max_likelihood,clusters[c].p[pixel]);
         }
 
         // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
@@ -589,6 +600,7 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
     if(tid < num_dimensions) {    
         sum = 0.0;
         for(int s=0; s<num_events; s++) {
+            //sum += fcs_data[tid*num_events+s]*clusters[c].p[s];
             sum += fcs_data[s*num_dimensions+tid]*clusters[c].p[s];
         }
         // Divide by # of elements in the cluster
@@ -612,8 +624,8 @@ reestimate_parameters(float* fcs_data, cluster* clusters, int num_dimensions, in
         data_index = 0;
 
         for(int j=0; j < num_events; j++) {
-            cov_sum += (fcs_data[data_index+row]-means[row])*(fcs_data[data_index+col]-means[col])*clusters[c].p[j]; 
-            data_index += num_dimensions;
+            //cov_sum += (fcs_data[row*num_events+j]-means[row])*(fcs_data[col*num_events+j]-means[col])*clusters[c].p[j]; 
+            cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*clusters[c].p[j]; 
         }
         if(clusters[c].N >= 1.0) {
             clusters[c].R[i] = cov_sum / clusters[c].N;
