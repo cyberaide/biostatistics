@@ -9,7 +9,7 @@
 // Probably will run out of memory and make the computation intractable far before 512 clusters though
 #define MAX_CLUSTERS 512
 #define PI  3.1415926535897931
-#define	NUM_BLOCKS 16
+#define	NUM_BLOCKS 64
 #define NUM_THREADS 256
 #define NUM_DIMENSIONS 24
 
