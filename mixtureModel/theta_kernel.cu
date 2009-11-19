@@ -228,9 +228,9 @@ __device__ void normalize_pi(cluster* clusters, int num_clusters) {
 
 
 __device__ void compute_constants(cluster* clusters, int num_clusters, int num_dimensions) {
-    const int tid = threadIdx.x;
-    const int num_threads = blockDim.x;
-    const int num_elements = num_dimensions*num_dimensions;
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+    int num_elements = num_dimensions*num_dimensions;
     
     __shared__ float determinant_arg; // only one thread computes the inverse so we need a shared argument
     
@@ -264,7 +264,6 @@ __device__ void compute_constants(cluster* clusters, int num_clusters, int num_d
     // Equivilent to: log(1/((2*PI)^(M/2)*det(R)^(1/2)))
     // This constant is used in all E-step likelihood calculations
     if(tid == 0) {
-        //determinant = fabs(determinant);
         clusters[c].constant = -num_dimensions*0.5*logf(2*PI) - 0.5*log_determinant;
     }
 }
@@ -334,11 +333,9 @@ seed_clusters( float* fcs_data, cluster* clusters, int num_dimensions, int num_c
         seed = 0.0;
     }
     
-    __syncthreads();
-    
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
-        clusters[c].pi = 1.0/num_clusters;
+        clusters[c].pi = 1.0/((float)num_clusters);
         clusters[c].N = ((float) num_events) / ((float)num_clusters);
         if(tid < num_dimensions) {
             clusters[c].means[tid] = fcs_data[((int)(c*seed))*num_dimensions+tid];
@@ -361,7 +358,7 @@ regroup(float* fcs_data, cluster* clusters, float* memberships, int num_dimensio
     float max_likelihood;
     float denominator_sum;
     float temp;
-    float thread_likelihood = 0.0;
+    float thread_likelihood = 0.0f;
     __shared__ float total_likelihoods[NUM_THREADS];
     
     // Cached cluster parameters
@@ -370,9 +367,9 @@ regroup(float* fcs_data, cluster* clusters, float* memberships, int num_dimensio
     float cluster_pi;
     float constant;
  
-    const int num_threads = blockDim.x;
+    int num_threads = blockDim.x;
     int num_pixels_per_block = num_events / NUM_BLOCKS;  
-    const int tid = threadIdx.x;
+    int tid = threadIdx.x;
     
     int start_index;
     int end_index;
@@ -537,7 +534,7 @@ mstep_means(float* fcs_data, cluster* clusters, float* memberships, int num_dime
     __shared__ float probs[128];
 
     // Compute new N
-    float sum = 0.0;
+    float sum = 0.0f;
     // Break all the events accross the threads, add up probabilities
     for(int event=tid; event < num_events; event += num_threads) {
         sum += memberships[c*num_events+event];
@@ -611,9 +608,13 @@ mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num
 
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
+
+    __shared__ float event[NUM_THREADS];
     
     float cov_sum = 0.0;
     int row,col;
+
+    __shared__ float membership;
 
     // Compute the covariance matrix of the data
     for(int i=tid; i < num_elements; i+= num_threads) {
@@ -623,8 +624,16 @@ mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num
         col = (i) % num_dimensions;
 
         for(int j=0; j < num_events; j++) {
-            //cov_sum += (fcs_data[row*num_events+j]-means[row])*(fcs_data[col*num_events+j]-means[col])*clusters[c].p[j]; 
+            /*
+            event[tid] = fcs_data[j*num_dimensions+tid]; // only need tid < num_dimensions, but this splits the warp
+            if(tid == num_dimensions) {
+                membership = memberships[c*num_events+j];
+            }
+            __syncthreads();*/
+
             cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*memberships[c*num_events+j]; 
+            //cov_sum += (event[row]-means[row])*(event[col]-means[col])*memberships[c*num_events+j]; 
+            //cov_sum += (event[row]-means[row])*(event[col]-means[col])*membership; 
         }
         if(clusters[c].N >= 1.0) { // Does it need to be >=1, or just something non-zero?
             clusters[c].R[i] = cov_sum / clusters[c].N;

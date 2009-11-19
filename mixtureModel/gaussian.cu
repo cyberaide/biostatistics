@@ -287,7 +287,7 @@ main( int argc, char** argv) {
         // (and hence different multiprocessors)
         DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
         regroup_start = clock();
-        regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data_by_dimension,d_clusters,d_memberships,num_dimensions,num_clusters,num_events,d_likelihoods);
+        regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,d_memberships,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
         regroup_end = clock();
         regroup_total += regroup_end - regroup_start;
@@ -345,7 +345,7 @@ main( int argc, char** argv) {
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
-            regroup<<<NUM_BLOCKS, num_threads>>>(d_fcs_data_by_dimension,d_clusters,d_memberships,num_dimensions,num_clusters,num_events,d_likelihoods);
+            regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,d_memberships,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
             CUT_CHECK_ERROR("E-step Kernel execution failed: ");
             regroup_end = clock();
@@ -368,7 +368,6 @@ main( int argc, char** argv) {
             DEBUG("Change in likelihood: %f\n",change);
 
             iters++;
-            
             
 
             /*

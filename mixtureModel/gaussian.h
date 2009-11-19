@@ -11,7 +11,7 @@
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 64
 #define NUM_THREADS 256
-#define NUM_DIMENSIONS 24
+#define NUM_DIMENSIONS 32
 
 // Maximum number of iterations for the EM convergence loop
 #define MAX_ITERS 100

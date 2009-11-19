@@ -51,3 +51,4 @@ C_DEPS		:= invert_matrix.h \
 # Rules and targets
 
 include ../../common/common.mk
+NVCCFLAGS += --ptxas-options=-v
