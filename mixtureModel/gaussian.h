@@ -55,7 +55,6 @@ typedef struct
     float *Rinv;   // Inverse of covariance matrix
     float avgvar;    // average variance
     float constant; // Normalizing constant
-    float *p;       // Probability that each pixel belongs to this cluster
 } cluster;
 
 int validateArguments(int argc, char** argv, int* num_clusters, FILE** infile, FILE** outfile);

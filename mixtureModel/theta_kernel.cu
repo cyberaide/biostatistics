@@ -356,7 +356,7 @@ seed_clusters( float* fcs_data, cluster* clusters, int num_dimensions, int num_c
 }
 
 __global__ void
-regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
+regroup(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
     float like;
     float max_likelihood;
     float denominator_sum;
@@ -423,7 +423,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
                     //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
             }
-            clusters[c].p[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+            memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
             //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
         }
 
@@ -439,15 +439,15 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
     //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
     for(int pixel=start_index; pixel<end_index; pixel += num_threads) {
         // find the maximum likelihood for this event
-        max_likelihood = clusters[0].p[pixel];
+        max_likelihood = memberships[pixel];
         for(int c=1; c<num_clusters; c++) {
-            max_likelihood = fmaxf(max_likelihood,clusters[c].p[pixel]);
+            max_likelihood = fmaxf(max_likelihood,memberships[c*num_events+pixel]);
         }
 
         // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
         denominator_sum = 0.0;
         for(int c=0; c<num_clusters; c++) {
-            temp = expf(clusters[c].p[pixel]-max_likelihood);
+            temp = expf(memberships[c*num_events+pixel]-max_likelihood);
             denominator_sum += temp;
         }
         temp = max_likelihood + logf(denominator_sum);
@@ -455,7 +455,7 @@ regroup(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters
         
         // Divide by denominator, also effectively normalize probabilities
         for(int c=0; c<num_clusters; c++) {
-            clusters[c].p[pixel] = expf(clusters[c].p[pixel] - temp);
+            memberships[c*num_events+pixel] = expf(memberships[c*num_events+pixel] - temp);
             //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
         }
     }
@@ -522,7 +522,7 @@ RESULT += parallelSum(tmp_buff, BLOCK_SIZE);
  * This should be launched with num_clusters blocks
  */
 __global__ void
-mstep_means(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+mstep_means(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events) {
     int tid = threadIdx.x;
     int num_threads = blockDim.x;
     int c = blockIdx.x;
@@ -534,14 +534,16 @@ mstep_means(float* fcs_data, cluster* clusters, int num_dimensions, int num_clus
     // Need to store the sum computed by each thread so in the end
     // a single thread can reduce to get the final sum
     __shared__ float temp_sums[NUM_THREADS];
+    __shared__ float probs[128];
 
     // Compute new N
-    temp_sums[tid] = 0.0;
+    float sum = 0.0;
     // Break all the events accross the threads, add up probabilities
     for(int event=tid; event < num_events; event += num_threads) {
-        temp_sums[tid] += clusters[c].p[event];
+        sum += memberships[c*num_events+event];
     }
-    
+    temp_sums[tid] = sum;
+ 
     __syncthreads();
     
     // Let the first thread add up all the intermediate sums
@@ -559,18 +561,16 @@ mstep_means(float* fcs_data, cluster* clusters, int num_dimensions, int num_clus
     // Synchronize because threads need to use clusters[c].N for means calculation    
     __syncthreads();
 
-    float sum;
     int active_threads = num_dimensions*events_per_iteration;
-    int event;
- 
+    int event = event_offset;
+
     // Compute means for each subcluster
     // All threads participate only if num_dimensions is an even multiple of num_threads
     // num_threads should be a multiple of 16 for the sake of performance
     if(tid < active_threads) {
         sum = 0.0;
-        event = event_offset;
         for(int i=tid; i < num_dimensions*num_events; i+= active_threads) {
-            sum += fcs_data[i]*clusters[c].p[event];
+            sum += fcs_data[i]*memberships[c*num_events+event];
             event += events_per_iteration;
         }
         temp_sums[tid] = sum;
@@ -593,7 +593,7 @@ mstep_means(float* fcs_data, cluster* clusters, int num_dimensions, int num_clus
  * Each block handles one matrix
  */
 __global__ void
-mstep_covariance(float* fcs_data, cluster* clusters, int num_dimensions, int num_clusters, int num_events) {
+mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events) {
     
     int tid = threadIdx.x; // easier variable name for our thread ID
     int num_threads = blockDim.x; // number of threads in the block
@@ -624,7 +624,7 @@ mstep_covariance(float* fcs_data, cluster* clusters, int num_dimensions, int num
 
         for(int j=0; j < num_events; j++) {
             //cov_sum += (fcs_data[row*num_events+j]-means[row])*(fcs_data[col*num_events+j]-means[col])*clusters[c].p[j]; 
-            cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*clusters[c].p[j]; 
+            cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*memberships[c*num_events+j]; 
         }
         if(clusters[c].N >= 1.0) { // Does it need to be >=1, or just something non-zero?
             clusters[c].R[i] = cov_sum / clusters[c].N;
