@@ -168,16 +168,15 @@ main( int argc, char** argv) {
     // First allocate structures on the host, CUDA malloc the arrays
     // Then CUDA malloc structures on the device and copy them over
     cluster* temp_clusters = (cluster*) malloc(sizeof(cluster)*original_num_clusters);
+    if(!temp_clusters) { printf("ERROR: Could not allocate memory for clusters.\n"); return 1; }
     for(int i=0; i<original_num_clusters;i++) {
         temp_clusters[i].N = 0.0;
         temp_clusters[i].pi = 0.0;
         temp_clusters[i].constant = 0.0;
+        temp_clusters[i].avgvar = 0.0;
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].means),sizeof(float)*num_dimensions));
-        if(!temp_clusters[i].means) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].R),sizeof(float)*num_dimensions*num_dimensions));
-        if(!temp_clusters[i].R) printf("ERROR: Could not allocate memory.\n");
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters[i].Rinv),sizeof(float)*num_dimensions*num_dimensions));
-        if(!temp_clusters[i].Rinv) printf("ERROR: Could not allocate memory.\n");
     }
     cluster* d_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_clusters, sizeof(cluster)*original_num_clusters));
@@ -185,7 +184,7 @@ main( int argc, char** argv) {
     CUDA_SAFE_CALL(cudaMalloc((void**) &d_memberships, sizeof(float)*num_events*original_num_clusters));
     DEBUG("Finished allocating memory on device for clusters.\n");
 
-    unsigned int mem_size = num_dimensions*num_events*sizeof(float);
+    int mem_size = num_dimensions*num_events*sizeof(float);
     
     double min_rissanen, rissanen;
     
@@ -320,7 +319,14 @@ main( int argc, char** argv) {
             params_start = clock();
             // This kernel computes a new N, means, and R based on the probabilities computed in regroup kernel
             mstep_means<<<num_clusters, 128>>>(d_fcs_data_by_event,d_clusters,d_memberships,num_dimensions,num_clusters,num_events);
-            mstep_covariance<<<num_clusters, num_threads>>>(d_fcs_data_by_event,d_clusters,d_memberships,num_dimensions,num_clusters,num_events);
+            
+            dim3 gridDim(num_clusters,num_dimensions*num_dimensions);
+            mstep_covariance1<<<gridDim, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,d_memberships,num_dimensions,num_clusters,num_events);
+            
+            // This method is fast on a 1.3 device with higher dimensionality (where num_dimensions^2 >= NUM_THREADS)
+            //  since each thread handles one spot in the matrix, low d data means low threads and wasted resources
+            //mstep_covariance2<<<num_clusters, NUM_THREADS>>>(d_fcs_data_by_event,d_clusters,d_memberships,num_dimensions,num_clusters,num_events);
+            
             cudaThreadSynchronize();
             params_end = clock();
             CUT_CHECK_ERROR("M-step Kernel execution failed: ");
@@ -333,7 +339,7 @@ main( int argc, char** argv) {
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_start = clock();
-            constants_kernel<<<num_clusters, num_threads>>>(d_clusters,num_clusters,num_dimensions);
+            constants_kernel<<<num_clusters, NUM_THREADS>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
             constants_end = clock();
             CUT_CHECK_ERROR("Constants Kernel execution failed: ");

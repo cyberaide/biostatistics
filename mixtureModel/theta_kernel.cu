@@ -531,7 +531,6 @@ mstep_means(float* fcs_data, cluster* clusters, float* memberships, int num_dime
     // Need to store the sum computed by each thread so in the end
     // a single thread can reduce to get the final sum
     __shared__ float temp_sums[NUM_THREADS];
-    __shared__ float probs[128];
 
     // Compute new N
     float sum = 0.0f;
@@ -583,14 +582,15 @@ mstep_means(float* fcs_data, cluster* clusters, float* memberships, int num_dime
         clusters[c].means[tid] = temp_sums[tid] / clusters[c].N;
     }
 }
-    
+   
+
 /*
  * Computes the covariance matrices of the data (R matrix)
  * Must be launched with as many blocks as there are clusters
  * Each block handles one matrix
  */
 __global__ void
-mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events) {
+mstep_covariance2(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events) {
     
     int tid = threadIdx.x; // easier variable name for our thread ID
     int num_threads = blockDim.x; // number of threads in the block
@@ -605,16 +605,11 @@ mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num
     if(tid < num_dimensions) {
         means[tid] = clusters[c].means[tid];
     }
-
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
 
-    __shared__ float event[NUM_THREADS];
-    
     float cov_sum = 0.0;
     int row,col;
-
-    __shared__ float membership;
 
     // Compute the covariance matrix of the data
     for(int i=tid; i < num_elements; i+= num_threads) {
@@ -624,13 +619,6 @@ mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num
         col = (i) % num_dimensions;
 
         for(int j=0; j < num_events; j++) {
-            /*
-            event[tid] = fcs_data[j*num_dimensions+tid]; // only need tid < num_dimensions, but this splits the warp
-            if(tid == num_dimensions) {
-                membership = memberships[c*num_events+j];
-            }
-            __syncthreads();*/
-
             cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*memberships[c*num_events+j]; 
             //cov_sum += (event[row]-means[row])*(event[col]-means[col])*memberships[c*num_events+j]; 
             //cov_sum += (event[row]-means[row])*(event[col]-means[col])*membership; 
@@ -649,6 +637,60 @@ mstep_covariance(float* fcs_data, cluster* clusters, float* memberships, int num
     // The amount added is scaled down based on COVARIANCE_DYNAMIC_RANGE constant defined at top of this file
     if(tid < num_dimensions) {
         clusters[c].R[tid*num_dimensions+tid] += clusters[c].avgvar;
+    }
+}
+ 
+/*
+ * Computes the covariance matrices of the data (R matrix)
+ * Must be launched with as many blocks as there are clusters
+ * Each block handles one matrix
+ */
+__global__ void
+mstep_covariance1(float* fcs_data, cluster* clusters, float* memberships, int num_dimensions, int num_clusters, int num_events) {
+    int tid = threadIdx.x; // easier variable name for our thread ID
+    int c = blockIdx.x; // what cluster is this block handling
+    int row = blockIdx.y / num_dimensions;
+    int col = blockIdx.y % num_dimensions; 
+    int matrix_index = row * num_dimensions + col;
+ 
+    // Store the means in shared memory to speed up the covariance computations
+    __shared__ float means[NUM_DIMENSIONS];
+    // copy the means for this cluster into shared memory
+    if(tid < num_dimensions) {
+        means[tid] = clusters[c].means[tid];
+    }
+
+    // Sync to wait for all params to be loaded to shared memory
+    __syncthreads();
+
+    __shared__ float temp_sums[NUM_THREADS];
+    
+    float cov_sum = 0.0;
+
+    for(int event=tid; event < num_events; event+=NUM_THREADS) {
+        cov_sum += (fcs_data[row*num_events+event]-means[row])*(fcs_data[col*num_events+event]-means[col])*memberships[c*num_events+event]; 
+    }
+    temp_sums[tid] = cov_sum;
+
+    __syncthreads();
+    
+    if(tid == 0) {
+        cov_sum = 0.0;
+        for(int i=0; i < NUM_THREADS; i++) {
+            cov_sum += temp_sums[i];
+        }
+        if(clusters[c].N >= 1.0) { // Does it need to be >=1, or just something non-zero?
+            clusters[c].R[matrix_index] = cov_sum / clusters[c].N;
+        } else {
+            clusters[c].R[matrix_index] = 0.0; // what should the variance be for an empty cluster...?
+        }
+
+        // Regularize matrix - adds some variance to the diagonals
+        // Helps keep covariance matrix non-singular (so it can be inverted)
+        // The amount added is scaled down based on COVARIANCE_DYNAMIC_RANGE constant defined at top of this file
+        if(row == col) {
+            clusters[c].R[matrix_index] += clusters[c].avgvar;
+        }
     }
 }
 
