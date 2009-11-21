@@ -13,8 +13,14 @@
 #define NUM_THREADS 256
 #define NUM_DIMENSIONS 32
 
+// Which GPU to use, if more than 1
+#define DEVICE 1
+//#define DEVICE 1
+
+#define DIAG_ONLY 0
+
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 100
+#define MAX_ITERS 10
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
@@ -48,14 +54,19 @@
 
 typedef struct 
 {
-    float N;        // expected # of pixels in cluster
-    float pi;       // probability of cluster in GMM
-    float *means;   // Spectral mean for the cluster
-    float *R;      // Covariance matrix
-    float *Rinv;   // Inverse of covariance matrix
-    float avgvar;    // average variance
-    float constant; // Normalizing constant
-} cluster;
+    // Key for array lengths
+    //  N = number of events
+    //  M = number of clusters
+    //  D = number of dimensions
+    float* N;        // expected # of pixels in cluster: [M]
+    float* pi;       // probability of cluster in GMM: [M]
+    float* constant; // Normalizing constant [M]
+    float* avgvar;    // average variance [M]
+    float* means;   // Spectral mean for the cluster: [M*D]
+    float* R;      // Covariance matrix: [M*D*D]
+    float* Rinv;   // Inverse of covariance matrix: [M*D*D]
+    float* memberships; // Fuzzy memberships: [N*M]
+} clusters_t;
 
 int validateArguments(int argc, char** argv, int* num_clusters, FILE** infile, FILE** outfile);
 void printUsage(char** argv);
