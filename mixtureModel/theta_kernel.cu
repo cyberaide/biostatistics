@@ -446,7 +446,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
         // Divide by denominator, also effectively normalize probabilities
         for(int c=0; c<num_clusters; c++) {
             clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - temp);
-            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters[c].p[pixel]);
+            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters->memberships[c*num_events+pixel]);
         }
     }
     
@@ -640,6 +640,19 @@ mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
 }
    
 
+__device__ void compute_row_col(int n, int* row, int* col) {
+    int i = 0;
+    for(int r=0; r < n; r++) {
+        for(int c=0; c <= r; c++) {
+            if(i == blockIdx.y) {  
+                *row = r;
+                *col = c;
+                return;
+            }
+            i++;
+        }
+    }
+}
  
 /*
  * Computes the covariance matrices of the data (R matrix)
@@ -649,14 +662,23 @@ mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
 __global__ void
 mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events) {
     int tid = threadIdx.x; // easier variable name for our thread ID
-    int c = blockIdx.x; // what cluster is this block handling
-    int row = blockIdx.y / num_dimensions;
-    int col = blockIdx.y % num_dimensions; 
-    //int col = row; // for diagonal covariance matrix...
+
+    // Determine what row,col this matrix is handling, also handles the symmetric element
+    int row,col,c;
+    compute_row_col(num_dimensions, &row, &col);
+    //row = blockIdx.y / num_dimensions;
+    //col = blockIdx.y % num_dimensions;
+
+    __syncthreads();
+    
+    c = blockIdx.x; // Determines what cluster this block is handling    
+
     int matrix_index = row * num_dimensions + col;
 
     #if DIAG_ONLY
     if(row != col) {
+        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0;
+        matrix_index = col*num_dimensions+row;
         clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0;
         return;
     }
@@ -689,8 +711,15 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
             cov_sum += temp_sums[i];
         }
         if(clusters->N[c] >= 1.0) { // Does it need to be >=1, or just something non-zero?
-            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum / clusters->N[c];
+            cov_sum /= clusters->N[c];
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
+            // Set the symmetric value
+            matrix_index = col*num_dimensions+row;
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
         } else {
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0; // what should the variance be for an empty cluster...?
+            // Set the symmetric value
+            matrix_index = col*num_dimensions+row;
             clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0; // what should the variance be for an empty cluster...?
         }
 

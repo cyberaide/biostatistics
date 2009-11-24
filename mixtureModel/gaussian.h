@@ -14,9 +14,10 @@
 #define NUM_DIMENSIONS 32
 
 // Which GPU to use, if more than 1
-#define DEVICE 1
+#define DEVICE 0
 //#define DEVICE 1
 
+// Using only diagonal covariance matrix, thus all dimensions are considered independent
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop

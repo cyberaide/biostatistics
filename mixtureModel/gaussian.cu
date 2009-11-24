@@ -372,7 +372,9 @@ main( int argc, char** argv) {
             //CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters.means,sizeof(float)*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
             */
 
-            dim3 gridDim2(num_clusters,num_dimensions*num_dimensions);
+            // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
+            dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
+            //dim3 gridDim2(num_clusters,num_dimensions*num_dimensions);
             mstep_covariance1<<<gridDim2, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             //return 1;
             
