@@ -38,7 +38,7 @@
  * Device code.
  */
 
-#define COVARIANCE_DYNAMIC_RANGE 1E4
+#define COVARIANCE_DYNAMIC_RANGE 1E6
 
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
@@ -206,14 +206,10 @@ __device__ void normalize_pi(clusters_t* clusters, int num_clusters) {
     
     __syncthreads();
     
-    if(threadIdx.x < num_clusters) {
-        if(sum > 0.0) {
-            clusters->pi[threadIdx.x] /= sum;
-        } else {
-            clusters->pi[threadIdx.x] = 0.0;
-        }
+    for(int c=threadIdx.x; c < num_clusters; c += blockDim.x) {
+        clusters->pi[threadIdx.x] /= sum;
     }
-    
+ 
     __syncthreads();
 }
 
@@ -316,23 +312,10 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     } 
     __syncthreads();    
     
-    // Calculate a seed value for the means
-    float seed;
-    if(num_clusters > 1) {
-        seed = (num_events-1.0)/(num_clusters-1.0); // cause of the NaNs? Technically shouldn't happen but possibly rounding error on gpu?
-    } else {
-        seed = 0.0;
-    }
-    
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
-        clusters->pi[c] = 1.0/((float)num_clusters);
-        clusters->N[c] = ((float) num_events) / ((float)num_clusters);
         if(tid < num_dimensions) {
             clusters->means[c*num_dimensions+tid] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+tid];
-            //clusters->means[c*num_dimensions+tid] = fcs_data[c*num_dimensions+tid];
-            //clusters->means[c*num_dimensions+tid] = fcs_data[((int)(c*seed))*num_dimensions+tid];
-            //clusters[c].means[tid] = means[tid];
         }
           
         for(int i=tid; i < num_elements; i+= num_threads) {
@@ -340,6 +323,8 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
             clusters->R[c*num_dimensions*num_dimensions+i] = covs[i] + avgvar/COVARIANCE_DYNAMIC_RANGE;
         }
         if(tid == 0) {
+            clusters->pi[c] = 1.0/((float)num_clusters);
+            clusters->N[c] = ((float) num_events) / ((float)num_clusters);
             clusters->avgvar[c] = avgvar / COVARIANCE_DYNAMIC_RANGE;
         }
     }
@@ -361,13 +346,18 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     float constant;
  
     int num_threads = blockDim.x;
-    int num_pixels_per_block = num_events / NUM_BLOCKS;  
+
+    // Break up the events evenly between the blocks
+    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    // Make sure the events being accessed by the block are aligned to a multiple of 16
+    num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     int tid = threadIdx.x;
     
     int start_index;
     int end_index;
     start_index = blockIdx.x * num_pixels_per_block + tid;
     
+    // Last block will handle the leftover events
     if(blockIdx.x == NUM_BLOCKS-1) {
         end_index = num_events;
     } else {
@@ -421,7 +411,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
         __syncthreads(); 
     }
 
-    __syncthreads(); 
+    __syncthreads();
     
     // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
     // However we use logs to prevent under/overflow
@@ -639,7 +629,13 @@ mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     }
 }
    
-
+/*
+ * Computes the row and col of a square matrix based on the index into
+ * a lower triangular (with diagonal) matrix
+ * 
+ * Used to determine what row/col should be computed for covariance
+ * based on a block index.
+ */
 __device__ void compute_row_col(int n, int* row, int* col) {
     int i = 0;
     for(int r=0; r < n; r++) {
@@ -723,7 +719,7 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
             clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0; // what should the variance be for an empty cluster...?
         }
 
-        // Regularize matrix - adds some variance to the diagonals
+        // Regularize matrix - adds some variance to the diagonal elements
         // Helps keep covariance matrix non-singular (so it can be inverted)
         // The amount added is scaled down based on COVARIANCE_DYNAMIC_RANGE constant defined at top of this file
         if(row == col) {

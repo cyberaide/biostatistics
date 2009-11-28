@@ -205,7 +205,7 @@ main( int argc, char** argv) {
     
     int mem_size = num_dimensions*num_events*sizeof(float);
     
-    double min_rissanen, rissanen;
+    float min_rissanen, rissanen;
     
     // allocate device memory for FCS data
     float* d_fcs_data_by_event;
@@ -226,7 +226,7 @@ main( int argc, char** argv) {
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
     // TODO: Does it make any sense to use multiple blocks for this?
-    seed_clusters<<< 1, num_threads >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
+    seed_clusters<<< 1, NUM_THREADS >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
     DEBUG("done.\n"); 
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
@@ -450,9 +450,6 @@ main( int argc, char** argv) {
             printf("\n\n");
             */
 
-
-
-
         }
         
         // copy clusters from the device
@@ -468,7 +465,7 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters.memberships, temp_clusters.memberships, sizeof(float)*num_events*num_clusters,cudaMemcpyDeviceToHost));
         
         // Calculate Rissanen Score
-        rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*log((double)num_events*num_dimensions);
+        rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
         PRINT("\nRissanen Score: %e\n",rissanen);
         
         
@@ -509,6 +506,8 @@ main( int argc, char** argv) {
             min_c2 = 1;
             DEBUG("Number of non-empty clusters: %d\n",num_clusters); 
             // For all combinations of subclasses...
+            // If the number of clusters got really big might need to do a non-exhaustive search
+            // Even with 100*99/2 combinations this doesn't seem to take too long
             for(int c1=0; c1<num_clusters;c1++) {
                 for(int c2=c1+1; c2<num_clusters;c2++) {
                     // compute distance function between the 2 clusters
@@ -546,11 +545,11 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.Rinv, clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.memberships, clusters.memberships, sizeof(float)*num_events*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(d_clusters,&temp_clusters,sizeof(clusters_t),cudaMemcpyHostToDevice));
-        }
+        } // GMM reduction block 
         reduce_end = clock();
         reduce_total += reduce_end - reduce_start;
         reduce_iterations++;
-    }
+    } // outer loop from M to 1 clusters
     PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
  
     
@@ -805,24 +804,17 @@ void printCluster(clusters_t clusters, int c, int num_dimensions) {
 }
 
 float cluster_distance(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, int num_dimensions) {
-    float log_determinant;
     // Add the clusters together, this updates pi,means,R,N and stores in temp_cluster
     add_clusters(clusters,c1,c2,temp_cluster,num_dimensions);
-    // Copy R to Rinv matrix
-    memcpy(temp_cluster.Rinv,temp_cluster.R,sizeof(float)*num_dimensions*num_dimensions);
-    // Invert the matrix
-    invert_cpu(temp_cluster.Rinv,num_dimensions,&log_determinant);
-    // Compute the constant
-    temp_cluster.constant[0] = (-num_dimensions)*0.5*logf(2*PI)-0.5*log_determinant;
     
     return clusters.N[c1]*clusters.constant[c1] + clusters.N[c2]*clusters.constant[c2] - temp_cluster.N[0]*temp_cluster.constant[0];
 }
 
 void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, int num_dimensions) {
-    double wt1,wt2;
+    float wt1,wt2;
  
-    wt1 = ((double) clusters.N[c1]) / ((double)(clusters.N[c1] + clusters.N[c2]));
-    wt2 = 1 - wt1;
+    wt1 = (clusters.N[c1]) / (clusters.N[c1] + clusters.N[c2]);
+    wt2 = 1.0f - wt1;
     
     // Compute new weighted means
     for(int i=0; i<num_dimensions;i++) {
@@ -850,6 +842,17 @@ void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, 
     
     // compute N
     temp_cluster.N[0] = clusters.N[c1] + clusters.N[c2];
+
+    float log_determinant;
+    // Copy R to Rinv matrix
+    memcpy(temp_cluster.Rinv,temp_cluster.R,sizeof(float)*num_dimensions*num_dimensions);
+    // Invert the matrix
+    invert_cpu(temp_cluster.Rinv,num_dimensions,&log_determinant);
+    // Compute the constant
+    temp_cluster.constant[0] = (-num_dimensions)*0.5*logf(2*PI)-0.5*log_determinant;
+    
+    // avgvar same for all clusters
+    temp_cluster.avgvar[0] = clusters.avgvar[0];
 }
 
 void copy_cluster(clusters_t dest, int c_dest, clusters_t src, int c_src, int num_dimensions) {

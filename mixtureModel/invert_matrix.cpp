@@ -27,13 +27,13 @@ void invert_cpu(float* data, int actualsize, float* log_determinant)  {
     int n = actualsize;
     *log_determinant = 0.0;
 
-    DEBUG("\n\nR matrix before inversion:\n");
+    /*DEBUG("\n\nR matrix before inversion:\n");
     for(int i=0; i<n; i++) {
         for(int j=0; j<n; j++) {
             DEBUG("%.4f ",data[i*n+j]);
         }
         DEBUG("\n");
-    }
+    }*/
     
     if (actualsize == 1) { // special case, dimensionality == 1
         *log_determinant = logf(data[0]);
@@ -88,13 +88,13 @@ void invert_cpu(float* data, int actualsize, float* log_determinant)  {
                 data[j*maxsize+i] = sum;
             }
 
-        DEBUG("\n\nR matrix after inversion:\n");
+        /*DEBUG("\n\nR matrix after inversion:\n");
         for(int i=0; i<n; i++) {
             for(int j=0; j<n; j++) {
                 DEBUG("%.2f ",data[i*n+j]);
             }
             DEBUG("\n");
-        }
+        }*/
     } else {
         PRINT("Error: Invalid dimensionality for invert(...)\n");
     }
