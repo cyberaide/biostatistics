@@ -311,11 +311,19 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
             covs[i] = sum;
     } 
     __syncthreads();    
-    
+   
+    float seed;
+    if(num_clusters > 1) {
+        seed = (num_events-1.0f)/(num_clusters-1.0f);
+    } else {
+        seed = 0.0;
+    }
+     
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
         if(tid < num_dimensions) {
-            clusters->means[c*num_dimensions+tid] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+tid];
+            //clusters->means[c*num_dimensions+tid] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+tid];
+            clusters->means[c*num_dimensions+tid] = fcs_data[(int)(c*seed)*num_dimensions+tid];
         }
           
         for(int i=tid; i < num_elements; i+= num_threads) {
