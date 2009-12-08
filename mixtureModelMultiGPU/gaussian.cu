@@ -53,6 +53,22 @@ void cleanup_profile_t(profile_t* p) {
     CUT_SAFE_CALL(cutDeleteTimer(p->memcpy));
 }
 
+void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int num_dimensions, int num_events) {
+    float seed;
+    if(num_clusters > 1) {
+        seed = (num_events-1.0f)/(num_clusters-1.0f);
+    } else {
+        seed = 0.0;
+    }
+    // Sets the means from evenly distributed points in the input data
+    for(int c=0; c < num_clusters; c++) {
+        for(int d=0; d < num_dimensions; d++) {
+            //clusters->means[c*num_dimensions+d] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+d];
+            clusters->means[c*num_dimensions+d] = fcs_data[((int)(c*seed))*num_dimensions+d];
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
@@ -311,19 +327,19 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(clusters[0].Rinv, temp_clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*original_num_clusters,cudaMemcpyDeviceToHost));
             //CUDA_SAFE_CALL(cudaMemcpy(clusters[0].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
 
+            seed_clusters(&clusters[0],fcs_data_by_event,original_num_clusters,num_dimensions,num_events);
+            DEBUG("Starting Clusters\n");
             for(int c=0; c < original_num_clusters; c++) {
-                printf("Cluster #%d\n",c);
+                DEBUG("Cluster #%d\n",c);
 
-                printf("\tN: %f\n",clusters[0].N[c]); 
+                DEBUG("\tN: %f\n",clusters[0].N[c]); 
 
                 // means
-                printf("\tMeans: ");
+                DEBUG("\tMeans: ");
                 for(int d=0; d < num_dimensions; d++) {
-                    printf("%.2f ",clusters[0].means[c*num_dimensions+d]);
+                    DEBUG("%.2f ",clusters[0].means[c*num_dimensions+d]);
                 }
-                printf("\n");
-
-
+                DEBUG("\n");
             }
         }
 
