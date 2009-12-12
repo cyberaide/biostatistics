@@ -165,7 +165,6 @@ int main(int argc, char* argv[])
     CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
     size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
     CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
-
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
 #endif
     float diff;
@@ -287,9 +286,8 @@ int main(int argc, char* argv[])
         }
     }
     
+    FindCharacteristics(myEvents, newClusters, newCount, argv[1]);
     CUT_SAFE_CALL(cutStopTimer(timer_io));
-
-    FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
     
     free(newClusters);
     free(myClusters);
@@ -302,11 +300,11 @@ int main(int argc, char* argv[])
 
     CUT_SAFE_CALL(cutStopTimer(timer_total));
     printf("\n\n"); 
-    printf("Total Time (ms): %f\n.",cutGetTimerValue(timer_total));
-    printf("I/O Time (ms): %f\n.",cutGetTimerValue(timer_io));
-    printf("GPU memcpy Time (ms): %f\n.",cutGetTimerValue(timer_memcpy));
-    printf("CPU processing Time (ms): %f\n.",cutGetTimerValue(timer_cpu));
-    printf("GPU processing Time (ms): %f\n.",cutGetTimerValue(timer_gpu));
+    printf("Total Time (ms): %f\n",cutGetTimerValue(timer_total));
+    printf("I/O Time (ms): %f\n",cutGetTimerValue(timer_io));
+    printf("GPU memcpy Time (ms): %f\n",cutGetTimerValue(timer_memcpy));
+    printf("CPU processing Time (ms): %f\n",cutGetTimerValue(timer_cpu));
+    printf("GPU processing Time (ms): %f\n",cutGetTimerValue(timer_gpu));
     printf("\n\n"); 
     
     //CUT_EXIT(argc, argv);

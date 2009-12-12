@@ -74,16 +74,11 @@ long TabuSearchGPU(float* d_matrix);
 void FreeMatrix(float* d_matrix);
 int bitCount (int* n);
 
-
 void FindSphereCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int);
 void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int);
-
-void FindCharacteristics(float* events, float* clusters, int finalClusterCount, float averageTime, float mdlTime, int numIterations, char* inFileName, clock_t total_start);
-
-
+void FindCharacteristics(float* events, float* clusters, int finalClusterCount, char* inFileName);
 void ReportResults(float* events, float* clusters, int count, char* inFileName);
-
-void ReportSummary(float* clusters, int count, char* inFileName, float averageTime, float mdlTime, int iterations, clock_t total_start);
+void ReportSummary(float* clusters, int count, char* inFileName);
 
 
 #endif

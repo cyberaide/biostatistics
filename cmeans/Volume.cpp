@@ -18,7 +18,7 @@
 
 using namespace std;
 
-void FindCharacteristics(float* events, float* clusters, int finalClusterCount, float averageTime, float mdlTime, int numIterations, char* inFileName, clock_t total_start){
+void FindCharacteristics(float* events, float* clusters, int finalClusterCount, char* inFileName){
 
     float* clusterVolumes = (float*)malloc(sizeof(float) * finalClusterCount);
     float* clusterDensities = (float*)malloc(sizeof(float) * finalClusterCount);
@@ -45,7 +45,7 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
     }
     charFile.close();
 
-    ReportSummary(clusters, finalClusterCount, inFileName, averageTime, mdlTime, numIterations, total_start);
+    ReportSummary(clusters, finalClusterCount, inFileName);
 
     ReportResults(events, clusters, finalClusterCount, inFileName);
 
@@ -130,18 +130,13 @@ void FindSphereCharacteristics(float* events, float* clusters, int finalClusterC
     }
 }
 
-void ReportSummary(float* clusters, int count, char* inFileName, float averageTime, float mdlTime, int iterations, clock_t total_start){
+void ReportSummary(float* clusters, int count, char* inFileName){
     ofstream myfile;
     
     char logFileName [512];
     sprintf(logFileName, "%s_summary_log_%d_%d_%d", inFileName, NUM_CLUSTERS,  CPU_ONLY, MDL_on_GPU);
     cout << "Log file name = " << logFileName << endl;
     myfile.open(logFileName);
-    float totalTime = (float)(clock() - total_start)/(float)(CLOCKS_PER_SEC);
-    myfile << "Average c-means iteration time = " << averageTime 
-        << " (ms) for " << iterations << " iterations."
-        << "\nMDL matrix generation time = " << mdlTime 
-        << " (s)\nTotal Time = " << totalTime << " (s)\n\n";
     for(int i = 0; i < count; i ++){
         myfile << "Cluster " << i << ": ";
         for(int j = 0; j < NUM_DIMENSIONS; j++){

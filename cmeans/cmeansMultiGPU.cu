@@ -413,7 +413,7 @@ int main(int argc, char* argv[])
             
             fflush(stdout);
             //exit(1);
-            //FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
+            FindCharacteristics(myEvents, newClusters, newCount, argv[1]);
             stopTimer(timer_io);
         }
         printf("\n\n"); 
