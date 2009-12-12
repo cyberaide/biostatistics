@@ -1,5 +1,11 @@
 #include <stdlib.h>
-#include "cmeans.h"
+
+#ifdef MULTI_GPU
+    #include "cmeansMultiGPU.h"
+#else
+    #include "cmeans.h"
+#endif
+
 #include <float.h>
 #include <iostream>
 #include <fstream>
@@ -9,13 +15,10 @@
 #include <cuda_runtime.h>
 #include <cutil.h>
 //#include <cmeans_kernel.cu>
-#include "timers.h"
 
 using namespace std;
 
 void FindCharacteristics(float* events, float* clusters, int finalClusterCount, float averageTime, float mdlTime, int numIterations, char* inFileName, clock_t total_start){
-
-    CUT_SAFE_CALL(cutStartTimer(timer_io));
 
     float* clusterVolumes = (float*)malloc(sizeof(float) * finalClusterCount);
     float* clusterDensities = (float*)malloc(sizeof(float) * finalClusterCount);
@@ -26,29 +29,21 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
     cout << "Characteristics Log file name = " << charFileName << endl;
     charFile.open(charFileName);
     fflush(stdout); 
-    CUT_SAFE_CALL(cutStopTimer(timer_io));
     
     for(unsigned i = 0; i < sizeof(VOLUME_INC_PARAMS)/sizeof(float); i++){
-        CUT_SAFE_CALL(cutStartTimer(timer_cpu));
 #if !VOLUME_TYPE
         FindBoxCharacteristics(events, clusters, finalClusterCount, clusterVolumes, clusterDensities, clusterOccupancies, i);
 #else
         FindSphereCharacteristics(events, clusters, finalClusterCount, clusterVolumes, clusterDensities, clusterOccupancies, i);
 #endif
         
-        CUT_SAFE_CALL(cutStopTimer(timer_cpu));
-        CUT_SAFE_CALL(cutStartTimer(timer_io));
-
         for( int j = 0; j < finalClusterCount; j++){
             charFile << j << ", " << VOLUME_INC_PARAMS[i] << ", " 
                  << clusterVolumes[j] << ", " << clusterDensities[j] 
                  << ", " << clusterOccupancies[j]/NUM_EVENTS << endl;
         }
-        CUT_SAFE_CALL(cutStopTimer(timer_io));
     }
     charFile.close();
-
-    CUT_SAFE_CALL(cutStartTimer(timer_io));
 
     ReportSummary(clusters, finalClusterCount, inFileName, averageTime, mdlTime, numIterations, total_start);
 
@@ -57,7 +52,6 @@ void FindCharacteristics(float* events, float* clusters, int finalClusterCount, 
     free(clusterVolumes);
     free(clusterDensities);
     free(clusterOccupancies);
-    CUT_SAFE_CALL(cutStopTimer(timer_io));
 }
 
 void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){
@@ -206,8 +200,6 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
 
 
 float MembershipValueReduced(const float* clusters, const float* events, int clusterIndex, int eventIndex, int validClusters){
-    CUT_SAFE_CALL(cutStopTimer(timer_io));    
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     float myClustDist = CalculateDistanceCPU(clusters, events, clusterIndex, eventIndex);
     float sum =0;
     float otherClustDist;
@@ -217,7 +209,5 @@ float MembershipValueReduced(const float* clusters, const float* events, int clu
             return 0.0;
         sum += pow((float)(myClustDist/otherClustDist),float(2/(FUZZINESS-1)));
     }
-    CUT_SAFE_CALL(cutStopTimer(timer_io));    
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     return 1/sum;
 }

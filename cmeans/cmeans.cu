@@ -61,7 +61,7 @@ bool InitCUDA(void)
         return false;
     }
 
-    device = 0;
+    device = DEVICE;
     printf("Using Device %d\n",device);
     CUDA_SAFE_CALL(cudaSetDevice(device));
 
@@ -227,13 +227,13 @@ int main(int argc, char* argv[])
         
         diff = 0.0;
         for(int i=0; i < NUM_CLUSTERS; i++){
-            printf("Center %d: ",i);     
+            //printf("Center %d: ",i);     
             for(int k = 0; k < NUM_DIMENSIONS; k++){
-                printf("%f ",newClusters[i*NUM_DIMENSIONS + k]);
+                //printf("%f ",newClusters[i*NUM_DIMENSIONS + k]);
                 diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - newClusters[i*NUM_DIMENSIONS + k]);
                 myClusters[i*NUM_DIMENSIONS + k] = newClusters[i*NUM_DIMENSIONS + k];
             }
-            printf("\n");
+            //printf("\n");
         }
         printf("Iteration %d Diff = %f\n", iterations, diff);
 

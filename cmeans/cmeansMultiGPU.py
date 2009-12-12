@@ -129,6 +129,11 @@ if __name__ == '__main__':
 
     # Run the cmeans program
     if not error:
+        import time
+        print "Launching cmeansMultiGPU"
+        start = time.time()
         cmd = '../../bin/linux/release/cmeansMultiGPU "%s"' % params['INPUT_FILE']
         print cmd
         os.system(cmd)
+        finish = time.time()
+        print "Time: %f" % (finish-start)

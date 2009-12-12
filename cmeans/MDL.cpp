@@ -3,6 +3,7 @@
 #else
     #include "cmeans.h"
 #endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
@@ -200,30 +201,20 @@ int bitCount (int* n)  {
 }
 
 int* MDL(float* events, float* clusters, float* mdlTime, char* inputFile){
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     float* matrix = (float*) malloc (sizeof(float) * NUM_CLUSTERS * NUM_CLUSTERS);
     
     printf("Starting MDL\n");
     clock_t cpu_start, cpu_stop;
-        cpu_start = clock();
-
+    cpu_start = clock();
         
     CalculateQMatrix(events, clusters, matrix);
 
     cpu_stop = clock();
-    printf("Processing time for CPU: %f (s) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC));
+    printf("Q Matrix Processing time for CPU: %f (s) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC));
     *mdlTime = (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC);
-    //for(int i = 0; i < NUM_CLUSTERS; i++){
-    //  for(int j = 0; j < NUM_CLUSTERS; j++){
-    //      printf("%f\t", matrix[i*NUM_CLUSTERS + j]);
-    //  }
-    //  printf("\n");
-    //}
+    
     printf("Searching...\n");
-    
     int* finalConfig = TabuSearch(matrix, inputFile);
-    
-    CUT_SAFE_CALL(cutStopTimer(timer_cpu));
     
     free(matrix);
     

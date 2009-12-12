@@ -7,6 +7,9 @@
 #define CPU_ONLY $CPU_ONLY$
 #define MDL_on_GPU $MDL_ON_GPU$
 
+// Which GPU device to use
+#define DEVICE 1
+
 // number of clusters
 #define NUM_CLUSTERS $NUM_CLUSTERS$
 

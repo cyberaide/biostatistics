@@ -82,23 +82,15 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     }
 }
 
+// TODO: could be reorganized with more blocks, resources are underutilized with number of clusters is small
 __global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix, int start, int stop) {
     
     // copy centers into shared memory	
-    __shared__ float myClusters[NUM_DIMENSIONS*NUM_CLUSTERS];
-    for(int j = threadIdx.x; j < NUM_DIMENSIONS*NUM_CLUSTERS; j+=320){
-        myClusters[j] = clusters[j];
+    __shared__ float myClusters[NUM_DIMENSIONS];
+    for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=320){
+        myClusters[j] = clusters[blockIdx.x*NUM_DIMENSIONS+j];
     }
 
-    /*
-    int cluster = 0;
-    int dim = 0;
-    for(int j = threadIdx.x; j < NUM_DIMENSIONS*NUM_CLUSTERS; j+= NUM_THREADS) {
-        cluster = j / NUM_DIMENSIONS;
-        dim = j % NUM_DIMENSIONS;
-        myClusters[dim*NUM_CLUSTERS+cluster] = clusters[cluster*NUM_DIMENSIONS+dim];
-    }
-    */
     __syncthreads();
 
     // For each event
@@ -141,7 +133,8 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 #if DISTANCE_MEASURE == 0
     #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
-        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[i];
+        //tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
         //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += tmp*tmp;
     }
@@ -150,7 +143,8 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 #if DISTANCE_MEASURE == 1
     #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
-        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
+        tmp = events[i*NUM_EVENTS+eventIndex] - clusters[i];
+        //tmp = events[i*NUM_EVENTS+eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS +i];
         //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += abs(tmp);
     }
@@ -158,7 +152,8 @@ __device__ float CalculateDistanceGPU(const float* clusters, const float* events
 #if DISTANCE_MEASURE == 2 
     #pragma unroll 6 // Prevent compiler from unrolling this loop too much, eats up too many registers
     for(int i = 0; i < NUM_DIMENSIONS; i++){
-        tmp = abs(events[i*NUM_EVENTS + eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
+        tmp = abs(events[i*NUM_EVENTS + eventIndex] - clusters[i]);
+        //tmp = abs(events[i*NUM_EVENTS + eventIndex] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         //tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         if(tmp > sum)
             sum = tmp;

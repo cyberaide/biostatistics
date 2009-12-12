@@ -10,66 +10,7 @@
 #include <string.h>
 #include <float.h>
 //#include <cmeans_kernel.cu>
-#include "timers.h"
 #include "MDL.h"
-
-/************************************************************************/
-/* Init CUDA                                                            */
-/************************************************************************/
-#if __DEVICE_EMULATION__
-
-bool InitCUDA(void){return true;}
-
-#else
-
-bool InitCUDA(void)
-{
-    int count = 0;
-    int i = 0;
-    int device = -1;
-    int num_procs = 0;
-
-    cudaGetDeviceCount(&count);
-    if(count == 0) {
-        fprintf(stderr, "There is no device.\n");
-        return false;
-    }
-
-    printf("There are %d devices.\n",count);
-    for(i = 0; i < count; i++) {
-        cudaDeviceProp prop;
-        if(cudaGetDeviceProperties(&prop, i) == cudaSuccess) {
-            printf("Device #%d, Version: %d.%d\n",i,prop.major,prop.minor);
-            // Check if CUDA capable device
-            if(prop.major >= 1) {
-                if(prop.multiProcessorCount > num_procs) {
-                    device = i;
-                    num_procs = prop.multiProcessorCount;
-                }
-            }
-        }
-    }
-    if(device == -1) {
-        fprintf(stderr, "There is no device supporting CUDA.\n");
-        return false;
-    }
-
-    device = 0;
-    printf("Using Device %d\n",device);
-    CUDA_SAFE_CALL(cudaSetDevice(device));
-
-    printf("CUDA initialized.\n");
-    return true;
-}
-
-#endif
-
-unsigned int timer_io; // Timer for I/O, such as reading FCS file and outputting result files
-unsigned int timer_memcpy; // Timer for GPU <---> CPU memory copying
-unsigned int timer_cpu; // Timer for processing on CPU
-unsigned int timer_gpu; // Timer for kernels on the GPU
-unsigned int timer_total; // Total time
-
 
 void printCudaError() {
     cudaError_t error = cudaGetLastError();
@@ -78,26 +19,64 @@ void printCudaError() {
     }
 }
 
+typedef struct {
+    cudaEvent_t start;
+    cudaEvent_t stop;
+    float* et;
+} cudaTimer_t;
+
+void createTimer(cudaTimer_t* timer) {
+    #pragma omp critical (create_timer) 
+    {
+        cudaEventCreate(&(timer->start));
+        cudaEventCreate(&(timer->stop));
+        timer->et = (float*) malloc(sizeof(float));
+        *(timer->et) = 0.0f;
+    }
+}
+
+void deleteTimer(cudaTimer_t timer) {
+    #pragma omp critical (delete_timer) 
+    {
+        cudaEventDestroy(timer.start);
+        cudaEventDestroy(timer.stop);
+        free(timer.et);
+    }
+}
+
+void startTimer(cudaTimer_t timer) {
+    cudaEventRecord(timer.start,0);
+}
+
+void stopTimer(cudaTimer_t timer) {
+    cudaEventRecord(timer.stop,0);
+    cudaEventSynchronize(timer.stop);
+    float tmp;
+    cudaEventElapsedTime(&tmp,timer.start,timer.stop);
+    *(timer.et) += tmp;
+}
+
+float getTimerValue(cudaTimer_t timer) {
+    return *(timer.et);
+}
+
 /************************************************************************/
 /* C-means Main                                                            */
 /************************************************************************/
 int main(int argc, char* argv[])
 {
+    cudaTimer_t timer_io; // Timer for I/O, such as reading FCS file and outputting result files
+    cudaTimer_t timer_total; // Total time
    
-    CUT_SAFE_CALL(cutCreateTimer(&timer_io));
-    CUT_SAFE_CALL(cutCreateTimer(&timer_memcpy));
-    CUT_SAFE_CALL(cutCreateTimer(&timer_cpu));
-    CUT_SAFE_CALL(cutCreateTimer(&timer_gpu));
-    CUT_SAFE_CALL(cutCreateTimer(&timer_total));
+    createTimer(&timer_io);
+    createTimer(&timer_total);
     
-    CUT_SAFE_CALL(cutStartTimer(timer_total));
-    CUT_SAFE_CALL(cutStartTimer(timer_io));
+    startTimer(timer_total);
+    startTimer(timer_io);
     
     // [program name]  [data file]
     if(argc != 2){
         printf("Usage Error: must supply data file. e.g. programe_name @opt(flags) file.in\n");
-        //char tmp45[8];
-        //scanf(tmp45, "%s");
         return 1;
     }
 
@@ -114,9 +93,7 @@ int main(int argc, char* argv[])
     
     int num_gpus = 0;       // number of CUDA GPUs
 
-    /////////////////////////////////////////////////////////////////
     // determine the number of CUDA capable GPUs
-    //
     cudaGetDeviceCount(&num_gpus);
     if(num_gpus < 1)
     {
@@ -124,9 +101,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    /////////////////////////////////////////////////////////////////
     // display CPU and GPU configuration
-    //
     printf("number of host CPUs:\t%d\n", omp_get_num_procs());
     printf("number of CUDA devices:\t%d\n", num_gpus);
     for(int i = 0; i < num_gpus; i++)
@@ -140,12 +115,8 @@ int main(int argc, char* argv[])
     //srand((unsigned)(time(0)));
     srand(42);
     
-    CUT_SAFE_CALL(cutStopTimer(timer_io));
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
+    stopTimer(timer_io);
     
-    clock_t total_start;
-    total_start = clock();
-
     // Allocate arrays for the cluster centers
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
     float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
@@ -175,12 +146,7 @@ int main(int argc, char* argv[])
             transposedEvents[j*NUM_EVENTS+i] = myEvents[i*NUM_DIMENSIONS+j];
         }
     }
-    //memcpy(myEvents,temp,sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
-    //free(temp);
-    
-    
-    CUT_SAFE_CALL(cutStopTimer(timer_cpu));
-    
+   
     ////////////////////////////////////////////////////////////////
     // run as many CPU threads as there are CUDA devices
     //   each CPU thread controls a different device, processing its
@@ -191,11 +157,15 @@ int main(int argc, char* argv[])
     //   Recall that all variables declared inside an "omp parallel" scope are
     //   local to each CPU thread
     //
-    num_gpus = 1;
+    //num_gpus = 1;
     omp_set_num_threads(num_gpus);  // create as many CPU threads as there are CUDA devices
     //omp_set_num_threads(2*num_gpus);// create twice as many CPU threads as there are CUDA devices
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators)
     {
+        cudaTimer_t timer_memcpy; // Timer for GPU <---> CPU memory copying
+        cudaTimer_t timer_cpu; // Timer for processing on CPU
+        cudaTimer_t timer_gpu; // Timer for kernels on the GPU
+        
         unsigned int cpu_thread_id = omp_get_thread_num();
         unsigned int num_cpu_threads = omp_get_num_threads();
         printf("hello from thread %d of %d\n",cpu_thread_id,num_cpu_threads);
@@ -204,11 +174,16 @@ int main(int argc, char* argv[])
         int gpu_id = -1;
         cudaSetDevice(cpu_thread_id % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
         cudaGetDevice(&gpu_id);
+       
+        #pragma omp barrier
+ 
+        createTimer(&timer_memcpy);
+        createTimer(&timer_cpu);
+        createTimer(&timer_gpu);
 
         printf("CPU thread %d (of %d) uses CUDA device %d\n", cpu_thread_id, num_cpu_threads, gpu_id);
-
 #if !CPU_ONLY    
-        CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+        startTimer(timer_memcpy);
         float* d_distanceMatrix;
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
         float* d_E;// = AllocateEvents(myEvents);
@@ -224,12 +199,12 @@ int main(int argc, char* argv[])
         CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
         size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
-        CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+        stopTimer(timer_memcpy);
 #endif
         clock_t cpu_start, cpu_stop;
         cpu_start = clock();
         printf("Starting C-means\n");
-        float averageTime = 0;
+        float averageTime = 0.0f;
         int iterations = 0;
         
         // Compute starting/finishing indexes for the events for each gpu
@@ -242,31 +217,40 @@ int main(int argc, char* argv[])
 
         do{
 #if CPU_ONLY
-            CUT_SAFE_CALL(cutStartTimer(timer_cpu));
-            clock_t cpu_start, cpu_stop;
-            cpu_start = clock();
+            startTimer(timer_cpu);
+            if (cpu_thread_id == 0) {
+                clock_t cpu_start, cpu_stop;
+                cpu_start = clock();
 
-            UpdateClusterCentersCPU(myClusters, myEvents, newClusters);
+                UpdateClusterCentersCPU(myClusters, myEvents, newClusters);
 
-            cpu_stop = clock();
-            printf("Processing time for CPU: %f (ms) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
-            averageTime += (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC)*(float)1e3;
-            CUT_SAFE_CALL(cutStopTimer(timer_cpu));
+                cpu_stop = clock();
+                printf("Processing time for CPU: %f (ms) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+                averageTime += (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC)*(float)1e3;
+                
+                for(int i=0; i < NUM_CLUSTERS; i++){
+                    for(int k = 0; k < NUM_DIMENSIONS; k++){
+                        diff += fabs(newClusters[i*NUM_DIMENSIONS + k] - myClusters[i*NUM_DIMENSIONS + k]);
+                    }
+                }
+                memcpy(myClusters,newClusters,sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
+            }
+            stopTimer(timer_cpu);
 #else
-            unsigned int timer = 0;
-            CUT_SAFE_CALL(cutCreateTimer(&timer));
-            CUT_SAFE_CALL(cutStartTimer(timer));
+            cudaTimer_t timer;
+            createTimer(&timer);
+            startTimer(timer);
 
             size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
 
             // Copy the cluster centers to the GPU
-            CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+            startTimer(timer_memcpy);
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
-            CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+            stopTimer(timer_memcpy);
             
             dim3 BLOCK_DIM(1, NUM_THREADS, 1);
 
-            CUT_SAFE_CALL(cutStartTimer(timer_gpu));
+            startTimer(timer_gpu);
             printf("Launching ComputeDistanceMatrix kernel\n");
             ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix, start, finish);
             cudaThreadSynchronize();
@@ -276,23 +260,22 @@ int main(int argc, char* argv[])
             cudaThreadSynchronize();
             printCudaError();
             
-            CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+            stopTimer(timer_gpu);
             
             // Copy partial centers and denominators to host
-            CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+            startTimer(timer_memcpy);
             cudaMemcpy(tempClusters[cpu_thread_id], d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost);
             cudaMemcpy(tempDenominators[cpu_thread_id], d_denoms, sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
             printCudaError();
-            CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+            stopTimer(timer_memcpy);
             
-            CUT_SAFE_CALL(cutStopTimer(timer));
-            float thisTime = cutGetTimerValue(timer);
+            stopTimer(timer);
+            float thisTime = getTimerValue(timer);
             printf("Processing time for GPU %d: %f (ms) \n", cpu_thread_id, thisTime);
             averageTime += thisTime;
-            CUT_SAFE_CALL(cutDeleteTimer(timer));
+            deleteTimer(timer);
 
-#endif
-            CUT_SAFE_CALL(cutStartTimer(timer_cpu));
+            startTimer(timer_cpu);
         
             #pragma omp barrier
             if(cpu_thread_id == 0) {
@@ -330,14 +313,14 @@ int main(int argc, char* argv[])
                 memcpy(myClusters,tempClusters[cpu_thread_id],sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
                 printf("Diff = %f\n", diff);
                 printf("Done with iteration #%d\n", iterations);
+                fflush(stdout);
             }
+            stopTimer(timer_cpu);
             
+#endif
             #pragma omp barrier
             iterations++;
-            
-            CUT_SAFE_CALL(cutStopTimer(timer_cpu));
             printf("\n");
-
         } while(abs(diff) > THRESHOLD && iterations < 150); 
 
         if(cpu_thread_id == 0) {        
@@ -346,7 +329,7 @@ int main(int argc, char* argv[])
             }
             cpu_stop = clock();
             
-            CUT_SAFE_CALL(cutStartTimer(timer_io));
+            startTimer(timer_io);
             
             averageTime /= iterations;
             printf("\nTotal Processing time: %f (s) \n", (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC));
@@ -360,7 +343,7 @@ int main(int argc, char* argv[])
                 printf("\n");
             }
             
-            CUT_SAFE_CALL(cutStopTimer(timer_io));
+            stopTimer(timer_io);
         }
         
         #pragma omp barrier // sync threads 
@@ -375,9 +358,9 @@ int main(int argc, char* argv[])
            
             // Copy the latest clusters to the device 
             //  (the current ones on the device are 1 iteration old) 
-            CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+            startTimer(timer_memcpy);
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
-            CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+            stopTimer(timer_memcpy);
             
             // Build Q matrix, each gpu handles NUM_DIMENSIONS/num_gpus rows of the matrix
             q_matrices[cpu_thread_id] = BuildQGPU(d_E, d_C, d_distanceMatrix, &mdlTime, cpu_thread_id, num_gpus);
@@ -393,10 +376,10 @@ int main(int argc, char* argv[])
                     memcpy(q_matrix_ptr,q_matrices_ptr,sizeof(float)*num_matrix_elements);   
                     free(q_matrices[i]);
                 }
-                CUT_SAFE_CALL(cutStartTimer(timer_cpu));
+                startTimer(timer_cpu);
                 printf("Searching for optimal configuration...\n");
                 finalClusterConfig = TabuSearch(q_matrix, argv[1]);
-                CUT_SAFE_CALL(cutStopTimer(timer_cpu));
+                stopTimer(timer_cpu);
 
                 printf("Q Matrix:\n");
                 for(int row=0; row < NUM_CLUSTERS; row++) {
@@ -413,7 +396,7 @@ int main(int argc, char* argv[])
 
  
         if(cpu_thread_id == 0) {        
-            CUT_SAFE_CALL(cutStartTimer(timer_io));
+            startTimer(timer_io);
 
             printf("Final Clusters are:\n");
             int newCount = 0;
@@ -428,30 +411,31 @@ int main(int argc, char* argv[])
                 }
             }
             
-            CUT_SAFE_CALL(cutStopTimer(timer_io));
             fflush(stdout);
-            exit(1);
-            FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
-            
-            #if !CPU_ONLY
-                CUDA_SAFE_CALL(cudaFree(d_E));
-                CUDA_SAFE_CALL(cudaFree(d_C));
-                CUDA_SAFE_CALL(cudaFree(d_nC));
-            #endif
-
-            CUT_SAFE_CALL(cutStopTimer(timer_total));
-            printf("\n\n"); 
-            printf("Total Time (ms): %f\n.",cutGetTimerValue(timer_total));
-            printf("I/O Time (ms): %f\n.",cutGetTimerValue(timer_io));
-            printf("GPU memcpy Time (ms): %f\n.",cutGetTimerValue(timer_memcpy));
-            printf("CPU processing Time (ms): %f\n.",cutGetTimerValue(timer_cpu));
-            printf("GPU processing Time (ms): %f\n.",cutGetTimerValue(timer_gpu));
-            printf("\n\n"); 
-            
-            //CUT_EXIT(argc, argv);
-            printf("\n\n");
+            //exit(1);
+            //FindCharacteristics(myEvents, newClusters, newCount, averageTime, mdlTime, iterations, argv[1], total_start);
+            stopTimer(timer_io);
         }
+        printf("\n\n"); 
+        printf("Thread %d: GPU memcpy Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_memcpy));
+        printf("Thread %d: CPU processing Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_cpu));
+        printf("Thread %d: GPU processing Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_gpu));
+        
+        #if !CPU_ONLY
+            CUDA_SAFE_CALL(cudaFree(d_E));
+            CUDA_SAFE_CALL(cudaFree(d_C));
+            CUDA_SAFE_CALL(cudaFree(d_nC));
+        #endif
+    
+        #pragma omp barrier
+        printf("Thread %d done.\n",cpu_thread_id);
     } // end of omp_parallel block
+    stopTimer(timer_total);
+    
+    printf("Total Time (ms): %f\n",getTimerValue(timer_total));
+    printf("I/O Time (ms): %f\n",getTimerValue(timer_io));
+    printf("\n\n"); 
+    
     free(newClusters);
     free(myClusters);
     free(myEvents);
@@ -675,17 +659,17 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, floa
     float* d_matrix;
     int size = sizeof(float) * NUM_CLUSTERS*NUM_CLUSTERS;
 
-    unsigned int timer = 0;
-    CUT_SAFE_CALL(cutCreateTimer(&timer));
-    CUT_SAFE_CALL(cutStartTimer(timer));
-    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-
+    cudaTimer_t timer_gpu;
+    cudaTimer_t timer_memcpy;
+    createTimer(&timer_gpu);
+    createTimer(&timer_memcpy);
+    
+    startTimer(timer_memcpy);
     cudaMalloc((void**)&d_matrix, size);
     printCudaError();
-
-    CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
-    CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-
+    stopTimer(timer_memcpy);
+    
+    startTimer(timer_gpu);
     dim3 grid(NUM_CLUSTERS / num_gpus, NUM_CLUSTERS);
     int start_row = gpu_id*(NUM_CLUSTERS/num_gpus);
     printf("GPU %d: Starting row for Q Matrix: %d\n",gpu_id,start_row);
@@ -694,25 +678,27 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, floa
     CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, distanceMatrix, start_row);
     cudaThreadSynchronize();
     printCudaError();
+    stopTimer(timer_gpu);
 
-    CUT_SAFE_CALL(cutStopTimer(timer_gpu));
-    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+    startTimer(timer_memcpy);
     float* matrix = (float*)malloc(size);
     printf("Copying results to CPU\n");
     cudaError_t error = cudaMemcpy(matrix, d_matrix, size, cudaMemcpyDeviceToHost);
     cudaThreadSynchronize();
     printf(cudaGetErrorString(cudaGetLastError()));
     printf("\n");
-    CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+    stopTimer(timer_memcpy);
 
-    CUT_SAFE_CALL(cutStopTimer(timer));
-    *mdlTime = cutGetTimerValue(timer);
-    printf("Processing time for GPU: %f (ms) \n", *mdlTime);
-    CUT_SAFE_CALL(cutDeleteTimer(timer));
+    stopTimer(timer_gpu);
+    *mdlTime = getTimerValue(timer_gpu);
+        *mdlTime = 0.0;
+    printf("Processing time for MDL GPU: %f (ms) \n", *mdlTime);
+    printf("Memcpy time for MDL GPU: %f (ms) \n", getTimerValue(timer_memcpy));
+    
+    deleteTimer(timer_gpu);
+    deleteTimer(timer_memcpy);
         
-    const char * message = cudaGetErrorString(error);
-    printf("Error: %s\n", message);
-
+    printCudaError();
     
     FreeMatrix(d_matrix);
     return matrix;
