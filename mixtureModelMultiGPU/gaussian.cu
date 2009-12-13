@@ -25,32 +25,74 @@ float cluster_distance(clusters_t clusters, int c1, int c2, clusters_t temp_clus
 void copy_cluster(clusters_t dest, int c_dest, clusters_t src, int c_src, int num_dimensions);
 void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, int num_dimensions);
 
+// Since cutil timers aren't thread safe, we do it manually with cuda events
+typedef struct {
+    cudaEvent_t start;
+    cudaEvent_t stop;
+    float* et;
+} cudaTimer_t;
+
+void createTimer(cudaTimer_t* timer) {
+    #pragma omp critical (create_timer) 
+    {
+        cudaEventCreate(&(timer->start));
+        cudaEventCreate(&(timer->stop));
+        timer->et = (float*) malloc(sizeof(float));
+        *(timer->et) = 0.0f;
+    }
+}
+
+void deleteTimer(cudaTimer_t timer) {
+    #pragma omp critical (delete_timer) 
+    {
+        cudaEventDestroy(timer.start);
+        cudaEventDestroy(timer.stop);
+        free(timer.et);
+    }
+}
+
+void startTimer(cudaTimer_t timer) {
+    cudaEventRecord(timer.start,0);
+}
+
+void stopTimer(cudaTimer_t timer) {
+    cudaEventRecord(timer.stop,0);
+    cudaEventSynchronize(timer.stop);
+    float tmp;
+    cudaEventElapsedTime(&tmp,timer.start,timer.stop);
+    *(timer.et) += tmp;
+}
+
+float getTimerValue(cudaTimer_t timer) {
+    return *(timer.et);
+}
+
 // Structure to hold the timers for the different kernel.
 //  One of these structs per GPU for profiling.
 typedef struct {
-    unsigned int e_step;
-    unsigned int m_step;
-    unsigned int constants;
-    unsigned int reduce;
-    unsigned int memcpy;
+    cudaTimer_t e_step;
+    cudaTimer_t m_step;
+    cudaTimer_t constants;
+    cudaTimer_t reduce;
+    cudaTimer_t memcpy;
 } profile_t;
 
 // Creates the CUDA timers inside the profile_t struct
 void init_profile_t(profile_t* p) {
-    CUT_SAFE_CALL(cutCreateTimer(&(p->e_step)));
-    CUT_SAFE_CALL(cutCreateTimer(&(p->m_step)));
-    CUT_SAFE_CALL(cutCreateTimer(&(p->constants)));
-    CUT_SAFE_CALL(cutCreateTimer(&(p->reduce)));
-    CUT_SAFE_CALL(cutCreateTimer(&(p->memcpy)));
+    createTimer(&(p->e_step));
+    createTimer(&(p->m_step));
+    createTimer(&(p->constants));
+    createTimer(&(p->reduce));
+    createTimer(&(p->memcpy));
 }
 
 // Deletes the timers in the profile_t struct
 void cleanup_profile_t(profile_t* p) {
-    CUT_SAFE_CALL(cutDeleteTimer(p->e_step));
-    CUT_SAFE_CALL(cutDeleteTimer(p->m_step));
-    CUT_SAFE_CALL(cutDeleteTimer(p->constants));
-    CUT_SAFE_CALL(cutDeleteTimer(p->reduce));
-    CUT_SAFE_CALL(cutDeleteTimer(p->memcpy));
+    deleteTimer(p->e_step);
+    deleteTimer(p->m_step);
+    deleteTimer(p->constants);
+    deleteTimer(p->reduce);
+    deleteTimer(p->memcpy);
 }
 
 void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int num_dimensions, int num_events) {
@@ -76,20 +118,20 @@ int
 main( int argc, char** argv) {
     int original_num_clusters, desired_num_clusters, ideal_num_clusters, stop_number;
     
-    // For profiling input parsing
-    clock_t input_start, input_end;
-    
     int regroup_iterations = 0;
     int params_iterations = 0;
     int constants_iterations = 0;
     int reduce_iterations = 0;
     
     // Keep track of total time
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
+    unsigned int timer_total;
+    cutCreateTimer( &timer_total);
+    cutStartTimer( timer_total);
    
-    input_start = clock();
+    // Keep track of I/O time
+    unsigned int timer_io;
+    cutCreateTimer( &timer_io);
+    cutStartTimer( timer_io);
     
     // Validate the command-line arguments, parse # of clusters, etc 
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
@@ -105,7 +147,6 @@ main( int argc, char** argv) {
     } else {
         stop_number = desired_num_clusters;
     }
-    
 
     int num_dimensions;
     int num_events;
@@ -133,7 +174,7 @@ main( int argc, char** argv) {
         }
     }    
 
-    input_end = clock();
+    cutStopTimer( timer_io);
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
@@ -254,7 +295,6 @@ main( int argc, char** argv) {
         // Copy Cluster data to device
         CUDA_SAFE_CALL(cudaMemcpy(d_clusters,&temp_clusters,sizeof(clusters_t),cudaMemcpyHostToDevice));
         DEBUG("Finished copying cluster data to device.\n");
-
         
         // determine how many events this gpu will handle
         int events_per_gpu = num_events / num_gpus;
@@ -307,11 +347,11 @@ main( int argc, char** argv) {
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Computes the R matrix inverses, and the gaussian constant
-            cutStartTimer(timers.constants);
+            startTimer(timers.constants);
             constants_kernel<<<original_num_clusters, NUM_THREADS>>>(d_clusters,original_num_clusters,num_dimensions);
             constants_iterations++;
             cudaThreadSynchronize();
-            cutStopTimer(timers.constants);
+            stopTimer(timers.constants);
             CUT_CHECK_ERROR("Constants Kernel execution failed: ");
             DEBUG("done.\n");
         
@@ -380,10 +420,10 @@ main( int argc, char** argv) {
             // so the events are distributed to different blocks 
             // (and hence different multiprocessors)
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
-            cutStartTimer(timers.e_step);
+            startTimer(timers.e_step);
             regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
-            cutStopTimer(timers.e_step);
+            stopTimer(timers.e_step);
             if(tid == 0) {
                 regroup_iterations++;
             }
@@ -418,7 +458,7 @@ main( int argc, char** argv) {
                 }
                 
                 DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
-                cutStartTimer(timers.m_step);
+                startTimer(timers.m_step);
                 // This kernel computes a new N, pi isn't updated until compute_constants though
                 mstep_N<<<num_clusters, 256>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,my_num_events);
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
@@ -490,7 +530,7 @@ main( int argc, char** argv) {
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R,clusters[0].R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
                 
                 cudaThreadSynchronize();
-                cutStopTimer(timers.m_step);
+                stopTimer(timers.m_step);
                 CUT_CHECK_ERROR("M-step Kernel execution failed: ");
                 if(tid == 0) {
                     params_iterations++;
@@ -501,10 +541,10 @@ main( int argc, char** argv) {
                 
                 DEBUG("Invoking constants kernel...",num_threads);
                 // Inverts the R matrices, computes the constant, normalizes cluster probabilities
-                cutStartTimer(timers.constants);
+                startTimer(timers.constants);
                 constants_kernel<<<num_clusters, NUM_THREADS>>>(d_clusters,num_clusters,num_dimensions);
                 cudaThreadSynchronize();
-                cutStopTimer(timers.constants);
+                stopTimer(timers.constants);
                 CUT_CHECK_ERROR("Constants Kernel execution failed: ");
                 if(tid ==0){
                     constants_iterations++;
@@ -513,12 +553,12 @@ main( int argc, char** argv) {
                 DEBUG("Constants Kernel Iteration Time: %f\n\n",((double)(constants_end-constants_start))/CLOCKS_PER_SEC);
 
                 DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
-                cutStartTimer(timers.e_step);
+                startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
                 regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("E-step Kernel execution failed: ");
-                cutStopTimer(timers.e_step);
+                stopTimer(timers.e_step);
                 if(tid==0) {
                     regroup_iterations++;
                 }
@@ -591,7 +631,7 @@ main( int argc, char** argv) {
             #pragma omp barrier
            
             /**************** Reduce GMM Order ********************/
-            cutStartTimer(timers.reduce);
+            startTimer(timers.reduce);
             // Don't want to reduce order on the last iteration
             if(num_clusters > stop_number) {
                 if(tid == 0) {
@@ -656,7 +696,7 @@ main( int argc, char** argv) {
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.memberships,temp_memberships, sizeof(float)*my_num_events*num_clusters,cudaMemcpyHostToDevice));
 
             } // GMM reduction block 
-            cutStopTimer(timers.reduce);
+            stopTimer(timers.reduce);
             if(tid==0) {
                 reduce_iterations++;
             }
@@ -668,7 +708,7 @@ main( int argc, char** argv) {
         #pragma omp barrier 
     
         // Print some profiling information
-        printf("GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n",tid,cutGetTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) cutGetTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,cutGetTimerValue(timers.m_step) / 1000.0,params_iterations, (double) cutGetTimerValue(timers.m_step) / (double) params_iterations / 1000.0,cutGetTimerValue(timers.constants) / 1000.0,constants_iterations, (double) cutGetTimerValue(timers.constants) / (double) constants_iterations / 1000.0);
+        printf("GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n",tid,getTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) getTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,getTimerValue(timers.m_step) / 1000.0,params_iterations, (double) getTimerValue(timers.m_step) / (double) params_iterations / 1000.0,getTimerValue(timers.constants) / 1000.0,constants_iterations, (double) getTimerValue(timers.constants) / (double) constants_iterations / 1000.0);
 
         cleanup_profile_t(&timers);
 
@@ -699,11 +739,9 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaFree(d_clusters));
     } // end of parallel block
 
-    CUT_SAFE_CALL(cutStopTimer(timer));
-    PRINT( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
-    CUT_SAFE_CALL(cutDeleteTimer(timer));
     
-    
+    cutStartTimer(timer_io);
+ 
     char* result_suffix = ".results";
     char* summary_suffix = ".summary";
     int filenamesize1 = strlen(argv[3]) + strlen(result_suffix) + 1;
@@ -742,25 +780,6 @@ main( int argc, char** argv) {
         fprintf(outf,"\n\n");
     }
     
-    // Print profiling information
-    /*
-    printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
-    printf("      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    printf("     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    printf(" Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
-    printf("   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
-    printf("GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
-   
-    // Write profiling info to summary file
-    fprintf(outf,"Program Component\tTotal\tIters\tTime Per Iteration\n");
-    fprintf(outf,"      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    fprintf(outf,"     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    fprintf(outf," Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
-    fprintf(outf,"   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
-    fprintf(outf,"GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
-    fclose(outf);
-    */  
-    
     // Open another output file for the event level clustering results
     FILE* fresults = fopen(result_filename,"w");
     
@@ -776,6 +795,8 @@ main( int argc, char** argv) {
         fprintf(fresults,"%f",saved_clusters.memberships[(ideal_num_clusters-1)*num_events+i]);
         fprintf(fresults,"\n");
     }
+    
+    cutStopTimer(timer_io);
     
     // cleanup host memory
     free(fcs_data_by_event);
@@ -802,6 +823,14 @@ main( int argc, char** argv) {
     free(saved_clusters.memberships);
     
     free(shared_likelihoods);
+    
+    PRINT( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
+    cutDeleteTimer(timer_io);
+
+    cutStopTimer(timer_total);
+    PRINT( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
+    cutDeleteTimer(timer_total);
+
     return 0;
 }
 
