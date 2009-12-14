@@ -49,6 +49,8 @@ CCFILES		:= \
 # Rules and targets
 include ../../common/common.mk
 
+NVCCFLAGS += --ptxas-options=-v
+
 kmeans: $(OBJDIR)/kmeans.cu.o
 	$(LINK) -o $(TARGETDIR)/kmeans $(OBJDIR)/kmeans.cu.o $(LIB)
 

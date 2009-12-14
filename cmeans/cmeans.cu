@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         printf("Launching ComputeDistanceMatrix kernel\n");
-        ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_MATRIX  >>>(d_C, d_E, d_distanceMatrix);
+        ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_MATRIX >>>(d_C, d_E, d_distanceMatrix);
         cudaThreadSynchronize();
         printCudaError();
         printf("Launching UpdateClusterCentersGPU kernel\n");

@@ -38,19 +38,16 @@ EXECUTABLE	:= cmeansMultiGPU
 # CUDA source files (compiled with cudacc)
 CUFILES := cmeansMultiGPU.cu cmeansMultiGPU_kernel.cu
 # CUDA dependency files
-CU_DEPS		:= \
-		cmeans.h \
-		cmeansMultiGPUcu.h \
-		
+CU_DEPS		:= cmeans.h cmeansMultiGPUcu.h
 
 # C/C++ source files (compiled with gcc / c++)
-CCFILES		:= \
-		MDL.cpp \
-		Volume.cpp \
+CCFILES		:= MDL.cpp Volume.cpp 
 
 ################################################################################
 # Rules and targets
 include ../../common/common.mk
+
+NVCCFLAGS += --ptxas-options=-v
 NVCCFLAGS += -Xcompiler -fopenmp
 CXXFLAGS += -DMULTI_GPU
 LIB += -lgomp

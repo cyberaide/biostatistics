@@ -3,7 +3,7 @@
 
 __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* distanceMatrix, float* denominator_result, int start_event, int finish_event);
 
-__device__ float MembershipValueGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex, const float* distanceMatrix);
+__device__ float MembershipValueGPU(const float* events, int clusterIndex, int eventIndex, const float* distanceMatrix);
 
 __device__ float CalculateDistanceGPU(const float* clusters, const float* events, int clusterIndex, int eventIndex);
 
@@ -15,6 +15,6 @@ __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clu
 
 __global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix, int start, int stop);
 
-__device__ float MembershipValueDist(const float* clusters, const float* events, float* distanceMatrix, int clusterIndex, int eventIndex, float distance);
+__device__ float MembershipValueDist(const float* events, float* distanceMatrix, int clusterIndex, int eventIndex, float distance);
 
 #endif
