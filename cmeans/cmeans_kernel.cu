@@ -152,7 +152,7 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
 	return sum;
 }
 
-__device__ float CalculateQII(const float* events, const float* clusters, int cluster_index_I, float* EI, float* numMem, float* distanceMatrix){
+__device__ float CalculateQII(const float* events, int cluster_index_I, float* EI, float* numMem, float* distanceMatrix){
 	EI[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
 	
@@ -179,7 +179,7 @@ __device__ float CalculateQII(const float* events, const float* clusters, int cl
 	return ((((float)K1) * numMem[0]) - (((float)K2) * EI[0]) - (((float)K3) * NUM_DIMENSIONS));
 }
 
-__device__ float CalculateQIJ(const float* events, const float* clusters, int cluster_index_I, int cluster_index_J, float * EI, float * EJ, float *numMem, float* distanceMatrix){
+__device__ float CalculateQIJ(const float* events, int cluster_index_I, int cluster_index_J, float * EI, float * EJ, float *numMem, float* distanceMatrix){
 	EI[threadIdx.x] = 0;
 	EJ[threadIdx.x] = 0;
 	numMem[threadIdx.x] = 0;
@@ -218,21 +218,14 @@ __device__ float CalculateQIJ(const float* events, const float* clusters, int cl
 }
 
 __global__ void CalculateQMatrixGPUUpgrade(const float* events, const float* clusters, float* matrix, float* distanceMatrix){
-	__shared__ float myClusters[NUM_CLUSTERS*NUM_DIMENSIONS];
 	__shared__ float EI[Q_THREADS];
 	__shared__ float EJ[Q_THREADS];
 	__shared__ float numMem[Q_THREADS];
-	for(int j = 0; j < NUM_CLUSTERS*NUM_DIMENSIONS; j+= Q_THREADS){
-		if(j+threadIdx.x < NUM_CLUSTERS*NUM_DIMENSIONS){
-			myClusters[j+threadIdx.x] = clusters[j+threadIdx.x];
-
-		}
-	}
-	__syncthreads();
+	
 	if(blockIdx.x == blockIdx.y){
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y ] = CalculateQII(events, myClusters, blockIdx.x, EI, numMem, distanceMatrix);
+		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y ] = CalculateQII(events, blockIdx.x, EI, numMem, distanceMatrix);
 	}
 	else{
-		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, myClusters, blockIdx.x, blockIdx.y, EI, EJ, numMem, distanceMatrix);
+		matrix[blockIdx.x*NUM_CLUSTERS + blockIdx.y] = CalculateQIJ(events, blockIdx.x, blockIdx.y, EI, EJ, numMem, distanceMatrix);
 	}	
 }

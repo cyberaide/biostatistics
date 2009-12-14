@@ -384,7 +384,7 @@ int main(int argc, char* argv[])
                 printf("Q Matrix:\n");
                 for(int row=0; row < NUM_CLUSTERS; row++) {
                     for(int col=0; col < NUM_CLUSTERS; col++) {
-                        printf("%f ",q_matrix[row*NUM_CLUSTERS+col]);
+                        printf("%.2e ",q_matrix[row*NUM_CLUSTERS+col]);
                     }
                     printf("\n");
                 }
@@ -691,7 +691,6 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, floa
 
     stopTimer(timer_gpu);
     *mdlTime = getTimerValue(timer_gpu);
-        *mdlTime = 0.0;
     printf("Processing time for MDL GPU: %f (ms) \n", *mdlTime);
     printf("Memcpy time for MDL GPU: %f (ms) \n", getTimerValue(timer_memcpy));
     

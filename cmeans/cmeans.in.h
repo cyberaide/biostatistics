@@ -37,7 +37,7 @@
 const float VOLUME_INC_PARAMS[] = {0.05,0.1,0.15};
 
 // number of Threads and blocks
-#define Q_THREADS 92 // number of threads per block building Q
+#define Q_THREADS 192 // number of threads per block building Q
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
 #define NUM_THREADS_MATRIX 320
 #define NUM_BLOCKS NUM_CLUSTERS
