@@ -404,7 +404,7 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
 }
 
 __global__ void
-regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
+regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events, float* likelihood) {
     
     // Cached cluster parameters
     __shared__ float means[NUM_DIMENSIONS];
@@ -415,6 +415,8 @@ regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
  
     int start_index;
     int end_index;
+
+    int c = blockIdx.y;
 
     compute_indices(num_events,&start_index,&end_index);
     
@@ -428,46 +430,43 @@ regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
     // L = constant*exp(-0.5*(x-mu)*Rinv*(x-mu))
     // log_L = log_constant - 0.5*(x-u)*Rinv*(x-mu)
     // the constant stored in clusters[c].constant is already the log of the constant
-    for(int c=0; c<num_clusters; c++) {
-        // copy the means for this cluster into shared memory
-        if(tid < num_dimensions) {
-            means[tid] = clusters->means[c*num_dimensions+tid];
-        }
+    
+    // copy the means for this cluster into shared memory
+    if(tid < num_dimensions) {
+        means[tid] = clusters->means[c*num_dimensions+tid];
+    }
 
-        // copy the covariance inverse into shared memory
-        for(int i=tid; i < num_dimensions*num_dimensions; i+= NUM_THREADS) {
-            Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
-        }
+    // copy the covariance inverse into shared memory
+    for(int i=tid; i < num_dimensions*num_dimensions; i+= NUM_THREADS) {
+        Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
+    }
+    
+    cluster_pi = clusters->pi[c];
+    constant = clusters->constant[c];
 
-        // Sync to wait for all params to be loaded to shared memory
-        __syncthreads();
+    // Sync to wait for all params to be loaded to shared memory
+    __syncthreads();
 
-        cluster_pi = clusters->pi[c];
-        constant = clusters->constant[c];
-        
-        for(int event=start_index; event<end_index; event += NUM_THREADS) {
-            like = 0.0f;
-            // this does the loglikelihood calculation
-            #if DIAG_ONLY
+    
+    for(int event=start_index; event<end_index; event += NUM_THREADS) {
+        like = 0.0f;
+        // this does the loglikelihood calculation
+        #if DIAG_ONLY
+            for(int j=0; j<num_dimensions; j++) {
+                like += (fcs_data[j*num_events+event]-means[j]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
+            }
+        #else
+            for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
-                    like += (fcs_data[j*num_events+event]-means[j]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
+                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
-            #else
-                for(int i=0; i<num_dimensions; i++) {
-                    for(int j=0; j<num_dimensions; j++) {
-                        like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
-                        //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
-                        //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
-                    }
-                }
-            #endif
-            //clusters->memberships[c*num_events+event] = -0.5f * like + clusters->constant[c] + logf(clusters->pi[c]); // numerator of the probability computation
-            clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
-            //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
-        }
-
-        // Make sure all threads done with their pixels b4 moving to next cluster
-        __syncthreads(); 
+            }
+        #endif
+        //clusters->memberships[c*num_events+event] = -0.5f * like + clusters->constant[c] + logf(clusters->pi[c]); // numerator of the probability computation
+        clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+        //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
     }
 }
 

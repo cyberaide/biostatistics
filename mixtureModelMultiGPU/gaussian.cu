@@ -423,7 +423,7 @@ main( int argc, char** argv) {
             // (and hence different multiprocessors)
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
             startTimer(timers.e_step);
-            regroup1<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+            regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events,d_likelihoods);
             regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
             stopTimer(timers.e_step);
@@ -558,7 +558,7 @@ main( int argc, char** argv) {
                 DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
                 startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
-                regroup1<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+                regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events,d_likelihoods);
                 regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("E-step Kernel execution failed: ");
