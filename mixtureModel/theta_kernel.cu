@@ -338,6 +338,197 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     }
 }
 
+__device__ float parallelSum(float* data, const unsigned int ndata) {
+  const unsigned int tid = threadIdx.x;
+  float t;
+
+  __syncthreads();
+
+  // Butterfly sum.  ndata MUST be a power of 2.
+  for(unsigned int bit = ndata >> 1; bit > 0; bit >>= 1) {
+    t = data[tid] + data[tid^bit];  __syncthreads();
+    data[tid] = t;                  __syncthreads();
+  }
+  return data[tid];
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Parallel reduction, for when all you want is the sum of a certain
+// quantity computed for every 1 to N.  CODE should be something in terms
+// of n.  The resulting sum will be placed in RESULT.
+// tmp_buff, base_off, RESULT, and n must be previously defined, however 
+// they will be overwritten during the execution of the macro.
+#define REDUCE(N, CODE, RESULT)                                \
+base_off = 0;                                                  \
+RESULT = 0.0f;                                                 \
+while (base_off + BLOCK_SIZE < N) {                            \
+  n = base_off + tid;                                          \
+  tmp_buff[tid] = CODE;                                        \
+  RESULT += parallelSum(tmp_buff, BLOCK_SIZE);                 \
+  base_off += BLOCK_SIZE;                                      \
+}                                                              \
+n = base_off + tid;                                            \
+if (n < N) {tmp_buff[tid] = CODE;}                             \
+else {tmp_buff[tid] = 0.0f;}                                   \
+RESULT += parallelSum(tmp_buff, BLOCK_SIZE);
+///////////////////////////////////////////////////////////////////////////
+
+__device__ void compute_indices(int num_events, int* start, int* stop) {
+    // Break up the events evenly between the blocks
+    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    // Make sure the events being accessed by the block are aligned to a multiple of 16
+    num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
+    
+    *start = blockIdx.x * num_pixels_per_block + threadIdx.x;
+    
+    // Last block will handle the leftover events
+    if(blockIdx.x == NUM_BLOCKS-1) {
+        *stop = num_events;
+    } else {
+        *stop = (blockIdx.x+1) * num_pixels_per_block;
+    }
+}
+
+__global__ void
+regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events, float* likelihood) {
+    
+    // Cached cluster parameters
+    __shared__ float means[NUM_DIMENSIONS];
+    __shared__ float Rinv[NUM_DIMENSIONS*NUM_DIMENSIONS];
+    float cluster_pi;
+    float constant;
+    const unsigned int tid = threadIdx.x;
+ 
+    int start_index;
+    int end_index;
+
+    int c = blockIdx.y;
+
+    compute_indices(num_events,&start_index,&end_index);
+    
+    float like;
+
+    // This loop computes the expectation of every event into every cluster
+    //
+    // P(k|n) = L(x_n|mu_k,R_k)*P(k) / P(x_n)
+    //
+    // Compute log-likelihood for every cluster for each event
+    // L = constant*exp(-0.5*(x-mu)*Rinv*(x-mu))
+    // log_L = log_constant - 0.5*(x-u)*Rinv*(x-mu)
+    // the constant stored in clusters[c].constant is already the log of the constant
+    
+    // copy the means for this cluster into shared memory
+    if(tid < num_dimensions) {
+        means[tid] = clusters->means[c*num_dimensions+tid];
+    }
+
+    // copy the covariance inverse into shared memory
+    for(int i=tid; i < num_dimensions*num_dimensions; i+= NUM_THREADS) {
+        Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
+    }
+    
+    cluster_pi = clusters->pi[c];
+    constant = clusters->constant[c];
+
+    // Sync to wait for all params to be loaded to shared memory
+    __syncthreads();
+
+    
+    for(int event=start_index; event<end_index; event += NUM_THREADS) {
+        like = 0.0f;
+        // this does the loglikelihood calculation
+        #if DIAG_ONLY
+            for(int j=0; j<num_dimensions; j++) {
+                like += (fcs_data[j*num_events+event]-means[j]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
+            }
+        #else
+            for(int i=0; i<num_dimensions; i++) {
+                for(int j=0; j<num_dimensions; j++) {
+                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
+                    //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
+                }
+            }
+        #endif
+        //clusters->memberships[c*num_events+event] = -0.5f * like + clusters->constant[c] + logf(clusters->pi[c]); // numerator of the probability computation
+        clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+        //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+    }
+}
+
+    
+__global__ void
+regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
+    float temp;
+    float thread_likelihood = 0.0f;
+    __shared__ float total_likelihoods[NUM_THREADS];
+    float max_likelihood;
+    float denominator_sum;
+    
+    // Break up the events evenly between the blocks
+    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    // Make sure the events being accessed by the block are aligned to a multiple of 16
+    num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
+    int tid = threadIdx.x;
+    
+    int start_index;
+    int end_index;
+    start_index = blockIdx.x * num_pixels_per_block + tid;
+    
+    // Last block will handle the leftover events
+    if(blockIdx.x == NUM_BLOCKS-1) {
+        end_index = num_events;
+    } else {
+        end_index = (blockIdx.x+1) * num_pixels_per_block;
+    }
+    
+    total_likelihoods[tid] = 0.0;
+
+    // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
+    // However we use logs to prevent under/overflow
+    //  log-sum-exp formula:
+    //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
+    for(int pixel=start_index; pixel<end_index; pixel += NUM_THREADS) {
+        // find the maximum likelihood for this event
+        max_likelihood = clusters->memberships[pixel];
+        for(int c=1; c<num_clusters; c++) {
+            max_likelihood = fmaxf(max_likelihood,clusters->memberships[c*num_events+pixel]);
+        }
+
+        // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
+        denominator_sum = 0.0;
+        for(int c=0; c<num_clusters; c++) {
+            temp = expf(clusters->memberships[c*num_events+pixel]-max_likelihood);
+            denominator_sum += temp;
+        }
+        temp = max_likelihood + logf(denominator_sum);
+        thread_likelihood += temp;
+        
+        // Divide by denominator, also effectively normalize probabilities
+        for(int c=0; c<num_clusters; c++) {
+            clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - temp);
+            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters->memberships[c*num_events+pixel]);
+        }
+    }
+    
+    total_likelihoods[tid] = thread_likelihood;
+    __syncthreads();
+
+    /* 
+    float retval = 0.0;
+    // Reduce all the total_likelihoods to a single total
+    if(tid == 0) {
+        for(int i=0; i<NUM_THREADS; i++) {
+            retval += total_likelihoods[i];
+        }
+        likelihood[blockIdx.x] = retval;
+    }*/
+    temp = parallelSum(total_likelihoods,NUM_THREADS);
+    if(tid == 0) {
+        likelihood[blockIdx.x] = temp;
+    }
+}
+
 __global__ void
 regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
     float like;
@@ -473,40 +664,6 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
 }
 
 
-__device__ float parallelSum(float* data, const unsigned int ndata) {
-  const unsigned int tid = threadIdx.x;
-  float t;
-
-  __syncthreads();
-
-  // Butterfly sum.  ndata MUST be a power of 2.
-  for(unsigned int bit = ndata >> 1; bit > 0; bit >>= 1) {
-    t = data[tid] + data[tid^bit];  __syncthreads();
-    data[tid] = t;                  __syncthreads();
-  }
-  return data[tid];
-}
-
-///////////////////////////////////////////////////////////////////////////
-// Parallel reduction, for when all you want is the sum of a certain
-// quantity computed for every 1 to N.  CODE should be something in terms
-// of n.  The resulting sum will be placed in RESULT.
-// tmp_buff, base_off, RESULT, and n must be previously defined, however 
-// they will be overwritten during the execution of the macro.
-#define REDUCE(N, CODE, RESULT)                                \
-base_off = 0;                                                  \
-RESULT = 0.0f;                                                 \
-while (base_off + BLOCK_SIZE < N) {                            \
-  n = base_off + tid;                                          \
-  tmp_buff[tid] = CODE;                                        \
-  RESULT += parallelSum(tmp_buff, BLOCK_SIZE);                 \
-  base_off += BLOCK_SIZE;                                      \
-}                                                              \
-n = base_off + tid;                                            \
-if (n < N) {tmp_buff[tid] = CODE;}                             \
-else {tmp_buff[tid] = 0.0f;}                                   \
-RESULT += parallelSum(tmp_buff, BLOCK_SIZE);
-///////////////////////////////////////////////////////////////////////////
 
 
 
