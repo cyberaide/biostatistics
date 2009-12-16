@@ -403,7 +403,8 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
        {
          Sig->SubSig[i].means[b1] = 0;
          for(s=0; s<Data->npixels; s++) {
-             Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1]*Data->w[s];
+             Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1];
+             //Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1]*Data->w[s];
              //printf("clusters[%d].p[%d]: %.2f\n",i,s,Data->p[s][i]);
          }
          Sig->SubSig[i].means[b1] /= Sig->SubSig[i].N;

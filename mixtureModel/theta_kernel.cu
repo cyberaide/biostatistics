@@ -404,13 +404,21 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
         for(int event=start_index; event<end_index; event += num_threads) {
             like = 0.0;
             // this does the loglikelihood calculation
-            for(int i=0; i<num_dimensions; i++) {
+            #if DIAG_ONLY
                 for(int j=0; j<num_dimensions; j++) {
-                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+                    like += (fcs_data[j*num_events+event]-means[j]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
                     //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
                     //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
                 }
-            }
+            #else
+                for(int i=0; i<num_dimensions; i++) {
+                    for(int j=0; j<num_dimensions; j++) {
+                        like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+                        //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
+                        //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
+                    }
+                }
+            #endif
             clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
             //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
         }

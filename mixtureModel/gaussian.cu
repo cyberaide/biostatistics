@@ -231,34 +231,20 @@ main( int argc, char** argv) {
     DEBUG("done.\n"); 
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
    
-    /* 
-    // copy clusters from the device
-    CUDA_SAFE_CALL(cudaMemcpy(temp_clusters, d_clusters, sizeof(cluster)*original_num_clusters,cudaMemcpyDeviceToHost));
-    // copy all of the arrays from the structs
-    for(int i=0; i<original_num_clusters; i++) {
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].means, temp_clusters[i].means, sizeof(float)*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].R, temp_clusters[i].R, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].Rinv, temp_clusters[i].Rinv, sizeof(float)*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
-        CUDA_SAFE_CALL(cudaMemcpy(clusters[i].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
-        clusters[i].N = temp_clusters[i].N;
-        clusters[i].pi = temp_clusters[i].pi;
-        clusters[i].constant = temp_clusters[i].constant;
-    }
+    // Copy the means from the device
+    CUDA_SAFE_CALL(cudaMemcpy(clusters.means, temp_clusters.means, sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyDeviceToHost));
    
-    for(int i=0; i<original_num_clusters; i++) {
-        for(int col=0; col<num_dimensions; col++) {
-            printf("%.2f ",clusters[i].means[col]);
-        }
-        printf("\n");
-        for(int row=0; row<num_dimensions; row++) {
-            for(int col=0; col<num_dimensions; col++) {
-                printf("%.2f ",clusters[i].R[row*num_dimensions+col]);
-            }
-            printf("\n");
+    for(int c=0; c < original_num_clusters; c++) {
+        printf("Cluster #%d\n",c);
+
+        // means
+        printf("\tMeans: ");
+        for(int d=0; d < num_dimensions; d++) {
+            printf("%.2f ",clusters.means[c*num_dimensions+d]);
         }
         printf("\n");
     }
-    */
+
 
 
     DEBUG("Invoking constants kernel...",num_threads);
