@@ -192,6 +192,7 @@ main( int argc, char** argv) {
         PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
     }
     
+    num_gpus = 1;
     
     int num_threads = NUM_THREADS;
 
@@ -244,7 +245,8 @@ main( int argc, char** argv) {
             printf("ERROR: Number of threads did not match number of GPUs. Perhaps not enough CPU cores?");
             exit(1);
         }
-        cudaSetDevice(tid);
+        //cudaSetDevice(tid);
+        cudaSetDevice(1);
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, tid);
         PRINT("CPU thread %d (of %d) using device %d: %s\n", tid, num_gpus, tid, prop.name);
@@ -421,7 +423,8 @@ main( int argc, char** argv) {
             // (and hence different multiprocessors)
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
             startTimer(timers.e_step);
-            regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+            regroup1<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+            regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
             stopTimer(timers.e_step);
             if(tid == 0) {
@@ -460,7 +463,7 @@ main( int argc, char** argv) {
                 DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
                 startTimer(timers.m_step);
                 // This kernel computes a new N, pi isn't updated until compute_constants though
-                mstep_N<<<num_clusters, 256>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,my_num_events);
+                mstep_N<<<num_clusters, NUM_THREADS>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
                 
                 // TODO: figure out the omp reduction pragma...
@@ -555,7 +558,8 @@ main( int argc, char** argv) {
                 DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
                 startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
-                regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+                regroup1<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+                regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("E-step Kernel execution failed: ");
                 stopTimer(timers.e_step);

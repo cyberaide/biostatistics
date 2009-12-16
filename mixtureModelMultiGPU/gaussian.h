@@ -10,7 +10,7 @@
 #define MAX_CLUSTERS 512
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 64
-#define NUM_THREADS 256
+#define NUM_THREADS 256 // should be a power of 2 for parallel reductions to work
 #define NUM_DIMENSIONS 32
 
 // Which GPU to use, if more than 1
@@ -18,7 +18,7 @@
 //#define DEVICE 1
 
 // Using only diagonal covariance matrix, thus all dimensions are considered independent
-#define DIAG_ONLY 0
+#define DIAG_ONLY 1
 
 // Maximum number of iterations for the EM convergence loop
 #define MAX_ITERS 100
