@@ -57,9 +57,15 @@ float* readData(char* f, int* ndims, int* nevents) {
 
         lines.erase(lines.begin()); // Remove first line, assumed to be header
         int num_events = (int)lines.size();
+        int pad_size = 64 - (num_events % 64);
+        if(pad_size == 64) pad_size = 0;
+        //int pad_size = 0;
+
+        printf("Number of events in input file: %d\n",num_events);
+        printf("Number of padding events added for alignment: %d\n",pad_size);
 
         // Allocate space for all the FCS data
-        data = (float*)malloc(sizeof(float) * num_dims * num_events);
+        data = (float*)malloc(sizeof(float) * num_dims * (num_events+pad_size));
         if(!data){
             printf("Cannot allocate enough memory for FCS data.\n");
             return NULL;
@@ -77,6 +83,13 @@ float* readData(char* f, int* ndims, int* nevents) {
                 temp = strtok(NULL, ",");
             }
         }
+
+        for(int i = num_events; i < num_events+pad_size; i++) {
+            for(int j = 0; j < num_dims; j++) {
+                data[i * num_dims + j] = 0.0f;
+            }
+        }
+        num_events += pad_size;
 
         *ndims = num_dims;
         *nevents = num_events;

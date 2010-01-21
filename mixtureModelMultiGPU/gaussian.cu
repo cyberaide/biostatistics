@@ -14,7 +14,7 @@
 // includes, kernels
 #include <gaussian_kernel.cu>
 
-#include <cublas.h>
+//#include <cublas.h>
 
 // Function prototypes
 extern "C" float* readData(char* f, int* ndims, int*nevents);
@@ -75,6 +75,7 @@ typedef struct {
     cudaTimer_t constants;
     cudaTimer_t reduce;
     cudaTimer_t memcpy;
+    cudaTimer_t cpu;
 } profile_t;
 
 // Creates the CUDA timers inside the profile_t struct
@@ -84,6 +85,7 @@ void init_profile_t(profile_t* p) {
     createTimer(&(p->constants));
     createTimer(&(p->reduce));
     createTimer(&(p->memcpy));
+    createTimer(&(p->cpu));
 }
 
 // Deletes the timers in the profile_t struct
@@ -93,6 +95,7 @@ void cleanup_profile_t(profile_t* p) {
     deleteTimer(p->constants);
     deleteTimer(p->reduce);
     deleteTimer(p->memcpy);
+    deleteTimer(p->cpu);
 }
 
 void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int num_dimensions, int num_events) {
@@ -192,7 +195,7 @@ main( int argc, char** argv) {
         PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
     }
     
-    num_gpus = 1;
+    //num_gpus = 1;
     
     int num_threads = NUM_THREADS;
 
@@ -245,18 +248,17 @@ main( int argc, char** argv) {
             printf("ERROR: Number of threads did not match number of GPUs. Perhaps not enough CPU cores?");
             exit(1);
         }
-        //cudaSetDevice(tid);
-        cudaSetDevice(1);
+        cudaSetDevice(tid);
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, tid);
         PRINT("CPU thread %d (of %d) using device %d: %s\n", tid, num_gpus, tid, prop.name);
         
         // Initialize this device for CUBLAS
-        cublasStatus status;
+        /*cublasStatus status;
         status = cublasInit();
         if(status != CUBLAS_STATUS_SUCCESS) {
             printf("!!! CUBLAS initialization error\n");
-        }
+        }*/
 
         // Timers for profiling
         profile_t timers;
@@ -304,7 +306,17 @@ main( int argc, char** argv) {
         if(tid == num_gpus-1) {
             my_num_events += num_events % num_gpus; // last gpu has to handle the remaining uneven events
         }
+
+        /*
+        if(tid == 0) {
+            my_num_events = 78656; 
+        } else if(tid == 1) {
+            my_num_events = (1<<17) - 78656;
+        }
+        */
+
         DEBUG("GPU %d will handling %d events\n",tid,my_num_events);
+        printf("GPU %d will handling %d events\n",tid,my_num_events);
 
         // Temporary array, holds memberships from device before putting it in the shared clusters.memberships        
         float* temp_memberships = (float*) malloc(sizeof(float)*my_num_events*original_num_clusters);
@@ -416,14 +428,13 @@ main( int argc, char** argv) {
         for(int num_clusters=original_num_clusters; num_clusters >= stop_number; num_clusters--) {
             /*************** EM ALGORITHM *****************************/
             
-            // do initial regrouping
-            // Regrouping means calculate a cluster membership probability
-            // for each event and each cluster. Each event is independent,
-            // so the events are distributed to different blocks 
-            // (and hence different multiprocessors)
-            DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
+            // do initial E-step
+            // Calculates a cluster membership probability
+            // for each event and each cluster.
+            DEBUG("Invoking E-step kernels...");
             startTimer(timers.e_step);
-            regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events,d_likelihoods);
+            regroup1<<<dim3(16,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
+            //regroup1<<<dim3((int)ceilf((float)my_num_events/(float)NUM_THREADS),num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
             regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
             stopTimer(timers.e_step);
@@ -431,7 +442,6 @@ main( int argc, char** argv) {
                 regroup_iterations++;
             }
             DEBUG("done.\n");
-            DEBUG("Regroup Kernel Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
 
@@ -465,6 +475,7 @@ main( int argc, char** argv) {
                 // This kernel computes a new N, pi isn't updated until compute_constants though
                 mstep_N<<<num_clusters, NUM_THREADS>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
+                stopTimer(timers.m_step);
                 
                 // TODO: figure out the omp reduction pragma...
                 // Reduce N for all clusters, copy back to device
@@ -480,9 +491,11 @@ main( int argc, char** argv) {
                 #pragma omp barrier
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N,clusters[0].N,sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
 
+                startTimer(timers.m_step);
                 dim3 gridDim1(num_clusters,num_dimensions);
                 mstep_means<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
+                stopTimer(timers.m_step);
                 // Reduce means for all clusters, copy back to device
                 #pragma omp barrier
                 if(tid == 0) {
@@ -496,7 +509,11 @@ main( int argc, char** argv) {
                     for(int c=0; c < num_clusters; c++) {
                         DEBUG("Cluster %d  Means:",c,clusters[0].N[c]);
                         for(int d=0; d < num_dimensions; d++) {
-                            clusters[0].means[c*num_dimensions+d] /= clusters[0].N[c];
+                            if(clusters[0].N[c] > 0.5f) {
+                                clusters[0].means[c*num_dimensions+d] /= clusters[0].N[c];
+                            } else {
+                                clusters[0].means[c*num_dimensions+d] = 0.0f;
+                            }
                             DEBUG(" %f",clusters[0].means[c*num_dimensions+d]);
                         }
                         DEBUG("\n");
@@ -505,14 +522,12 @@ main( int argc, char** argv) {
                 #pragma omp barrier
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters[0].means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyHostToDevice));
 
+                startTimer(timers.m_step);
                 // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
                 dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
-                //dim3 gridDim2(num_clusters,num_dimensions*num_dimensions);
                 mstep_covariance1<<<gridDim2, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
-                // This method is fast on a 1.3 device with higher dimensionality (where num_dimensions^2 >= NUM_THREADS)
-                //  since each thread handles one spot in the matrix, low d data means low threads and wasted resources
-                //mstep_covariance2<<<num_clusters, NUM_THREADS>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
                 CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].R,temp_clusters.R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+                stopTimer(timers.m_step);
                 // Reduce R for all clusters, copy back to device
                 #pragma omp barrier
                 if(tid == 0) {
@@ -524,8 +539,20 @@ main( int argc, char** argv) {
                         }
                     }
                     for(int c=0; c < num_clusters; c++) {
-                        for(int d=0; d < num_dimensions*num_dimensions; d++) {
-                            clusters[0].R[c*num_dimensions*num_dimensions+d] /= clusters[0].N[c];
+                        if(clusters[0].N[c] > 0.5f) {
+                            for(int d=0; d < num_dimensions*num_dimensions; d++) {
+                                clusters[0].R[c*num_dimensions*num_dimensions+d] /= clusters[0].N[c];
+                            }
+                        } else {
+                            for(int i=0; i < num_dimensions; i++) {
+                                for(int j=0; j < num_dimensions; j++) {
+                                    if(i == j) {
+                                        clusters[0].R[c*num_dimensions*num_dimensions+i*num_dimensions+j] = 1.0;
+                                    } else {
+                                        clusters[0].R[c*num_dimensions*num_dimensions+i*num_dimensions+j] = 0.0;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -533,13 +560,11 @@ main( int argc, char** argv) {
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R,clusters[0].R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
                 
                 cudaThreadSynchronize();
-                stopTimer(timers.m_step);
                 CUT_CHECK_ERROR("M-step Kernel execution failed: ");
                 if(tid == 0) {
                     params_iterations++;
                 }
                 DEBUG("done.\n");
-                DEBUG("Model Parameters Kernel Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
                 //return 0; // RETURN FOR FASTER PROFILING
                 
                 DEBUG("Invoking constants kernel...",num_threads);
@@ -553,12 +578,12 @@ main( int argc, char** argv) {
                     constants_iterations++;
                 }
                 DEBUG("done.\n");
-                DEBUG("Constants Kernel Iteration Time: %f\n\n",((double)(constants_end-constants_start))/CLOCKS_PER_SEC);
 
                 DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
                 startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
-                regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events,d_likelihoods);
+                regroup1<<<dim3(16,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
+                //regroup1<<<dim3((int)ceilf((float)my_num_events/(float)NUM_THREADS),num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
                 regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("E-step Kernel execution failed: ");
@@ -567,7 +592,6 @@ main( int argc, char** argv) {
                     regroup_iterations++;
                 }
                 DEBUG("done.\n");
-                DEBUG("Regroup Kernel Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
             
                 // check if kernel execution generated an error
                 CUT_CHECK_ERROR("Kernel execution failed");
@@ -641,7 +665,7 @@ main( int argc, char** argv) {
                 if(tid == 0) {
                     // First eliminate any "empty" clusters 
                     for(int i=num_clusters-1; i >= 0; i--) {
-                        if(clusters[0].N[i] < 1.0) {
+                        if(clusters[0].N[i] < 0.5) {
                             DEBUG("Cluster #%d has less than 1 data point in it.\n",i);
                             for(int j=i; j < num_clusters-1; j++) {
                                 copy_cluster(clusters[0],j,clusters[0],j+1,num_dimensions);
@@ -764,13 +788,14 @@ main( int argc, char** argv) {
     FILE* outf = fopen(summary_filename,"w");
     if(!outf) {
         printf("ERROR: Unable to open file '%s' for writing.\n",argv[3]);
+        return -1;
     }
 
     // Print the clusters with the lowest rissanen score to the console and output file
     for(int c=0; c<ideal_num_clusters; c++) {
-        if(saved_clusters.N[c] == 0.0) {
-            continue;
-        }
+        //if(saved_clusters.N[c] == 0.0) {
+        //    continue;
+        //}
         if(ENABLE_PRINT) {
             // Output the final cluster stats to the console
             PRINT("Cluster #%d\n",c);
@@ -778,26 +803,32 @@ main( int argc, char** argv) {
             PRINT("\n\n");
         }
 
-        // Output the final cluster stats to the output file        
-        fprintf(outf,"Cluster #%d\n",c);
-        writeCluster(outf,saved_clusters,c,num_dimensions);
-        fprintf(outf,"\n\n");
+        if(ENABLE_OUTPUT) {
+            // Output the final cluster stats to the output file        
+            fprintf(outf,"Cluster #%d\n",c);
+            writeCluster(outf,saved_clusters,c,num_dimensions);
+            fprintf(outf,"\n\n");
+        }
     }
-    
-    // Open another output file for the event level clustering results
-    FILE* fresults = fopen(result_filename,"w");
-    
-    for(int i=0; i<num_events; i++) {
-        for(int d=0; d<num_dimensions-1; d++) {
-            fprintf(fresults,"%f,",fcs_data_by_event[i*num_dimensions+d]);
+    fclose(outf);
+   
+    if(ENABLE_OUTPUT) { 
+        // Open another output file for the event level clustering results
+        FILE* fresults = fopen(result_filename,"w");
+        
+        for(int i=0; i<num_events; i++) {
+            for(int d=0; d<num_dimensions-1; d++) {
+                fprintf(fresults,"%f,",fcs_data_by_event[i*num_dimensions+d]);
+            }
+            fprintf(fresults,"%f",fcs_data_by_event[i*num_dimensions+num_dimensions-1]);
+            fprintf(fresults,"\t");
+            for(int c=0; c<ideal_num_clusters-1; c++) {
+                fprintf(fresults,"%f,",saved_clusters.memberships[c*num_events+i]);
+            }
+            fprintf(fresults,"%f",saved_clusters.memberships[(ideal_num_clusters-1)*num_events+i]);
+            fprintf(fresults,"\n");
         }
-        fprintf(fresults,"%f",fcs_data_by_event[i*num_dimensions+num_dimensions-1]);
-        fprintf(fresults,"\t");
-        for(int c=0; c<ideal_num_clusters-1; c++) {
-            fprintf(fresults,"%f,",saved_clusters.memberships[c*num_events+i]);
-        }
-        fprintf(fresults,"%f",saved_clusters.memberships[(ideal_num_clusters-1)*num_events+i]);
-        fprintf(fresults,"\n");
+        fclose(fresults);
     }
     
     cutStopTimer(timer_io);

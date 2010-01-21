@@ -38,7 +38,7 @@
  * Device code.
  */
 
-#define COVARIANCE_DYNAMIC_RANGE 1E6
+#define COVARIANCE_DYNAMIC_RANGE 1E3
 
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
@@ -205,7 +205,11 @@ __device__ void compute_pi(clusters_t* clusters, int num_clusters) {
     __syncthreads();
     
     for(int c=threadIdx.x; c < num_clusters; c += blockDim.x) {
-        clusters->pi[threadIdx.x] = clusters->N[c] / sum;
+        if(clusters->N[c] < 0.5f) {
+            clusters->pi[threadIdx.x] = 1e-10;
+        } else {
+            clusters->pi[threadIdx.x] = clusters->N[c] / sum;
+        }
     }
  
     __syncthreads();
@@ -231,11 +235,19 @@ __device__ void compute_constants(clusters_t* clusters, int num_clusters, int nu
     }
     
     __syncthreads(); 
-    
-    invert(matrix,num_dimensions,&determinant_arg);
-
+    #if DIAG_ONLY
+        if(tid == 0) { 
+            determinant_arg = 1.0f;
+            for(int i=0; i < num_dimensions; i++) {
+                determinant_arg *= matrix[i*num_dimensions+i];
+                matrix[i*num_dimensions+i] = 1.0f / matrix[i*num_dimensions+i];
+            }
+            determinant_arg = logf(determinant_arg);
+        }
+    #else 
+        invert(matrix,num_dimensions,&determinant_arg);
+    #endif
     __syncthreads(); 
-    
     log_determinant = determinant_arg;
     
     // Copy the matrx from shared memory back into the cluster memory
@@ -249,7 +261,7 @@ __device__ void compute_constants(clusters_t* clusters, int num_clusters, int nu
     // Equivilent to: log(1/((2*PI)^(M/2)*det(R)^(1/2)))
     // This constant is used in all E-step likelihood calculations
     if(tid == 0) {
-        clusters->constant[c] = -num_dimensions*0.5*logf(2*PI) - 0.5*log_determinant;
+        clusters->constant[c] = -num_dimensions*0.5f*logf(2.0f*PI) - 0.5f*log_determinant;
     }
 }
 
@@ -389,14 +401,14 @@ RESULT += parallelSum(tmp_buff, BLOCK_SIZE);
 
 __device__ void compute_indices(int num_events, int* start, int* stop) {
     // Break up the events evenly between the blocks
-    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    int num_pixels_per_block = num_events / gridDim.x;
     // Make sure the events being accessed by the block are aligned to a multiple of 16
     num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     
     *start = blockIdx.x * num_pixels_per_block + threadIdx.x;
     
     // Last block will handle the leftover events
-    if(blockIdx.x == NUM_BLOCKS-1) {
+    if(blockIdx.x == gridDim.x-1) {
         *stop = num_events;
     } else {
         *stop = (blockIdx.x+1) * num_pixels_per_block;
@@ -404,7 +416,7 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
 }
 
 __global__ void
-regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events, float* likelihood) {
+regroup1(float* data, clusters_t* clusters, int num_dimensions, int num_events) {
     
     // Cached cluster parameters
     __shared__ float means[NUM_DIMENSIONS];
@@ -446,31 +458,26 @@ regroup1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_even
 
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
-
     
     for(int event=start_index; event<end_index; event += NUM_THREADS) {
-        like = 0.0f;
+       like = 0.0f;
         // this does the loglikelihood calculation
         #if DIAG_ONLY
             for(int j=0; j<num_dimensions; j++) {
-                like += (fcs_data[j*num_events+event]-means[j]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
+                like += (data[j*num_events+event]-means[j]) * (data[j*num_events+event]-means[j]) * Rinv[j*num_dimensions+j];
             }
         #else
             for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
-                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
-                    //like += (fcs_data[event*num_dimensions+i]-means[i]) * (fcs_data[event*num_dimensions+j]-means[j]) * Rinv[i*num_dimensions+j];
-                    //like += (fcs_data[event*num_dimensions+i]-clusters[c].means[i])*(fcs_data[event*num_dimensions+j]-clusters[c].means[j])*clusters[c].Rinv[i*num_dimensions+j];
+                    like += (data[i*num_events+event]-means[i]) * (data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
                 }
             }
         #endif
-        //clusters->memberships[c*num_events+event] = -0.5f * like + clusters->constant[c] + logf(clusters->pi[c]); // numerator of the probability computation
-        clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
-        //probs[event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+        // numerator of the E-step probability computation
+        clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi);
     }
 }
 
-    
 __global__ void
 regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
     float temp;
@@ -480,7 +487,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
     float denominator_sum;
     
     // Break up the events evenly between the blocks
-    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    int num_pixels_per_block = num_events / gridDim.x;
     // Make sure the events being accessed by the block are aligned to a multiple of 16
     num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     int tid = threadIdx.x;
@@ -490,7 +497,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
     start_index = blockIdx.x * num_pixels_per_block + tid;
     
     // Last block will handle the leftover events
-    if(blockIdx.x == NUM_BLOCKS-1) {
+    if(blockIdx.x == gridDim.x-1) {
         end_index = num_events;
     } else {
         end_index = (blockIdx.x+1) * num_pixels_per_block;
@@ -499,7 +506,11 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
     total_likelihoods[tid] = 0.0;
 
     // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
-    // However we use logs to prevent under/overflow
+    //  log(a+b) != log(a) + log(b) so we need to do the log of the sum of the exponentials
+
+    //  For the sake of numerical stability, we first find the max and scale the values
+    //  That way, the maximum value ever going into the exp function is 0 and we avoid overflow
+
     //  log-sum-exp formula:
     //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
     for(int pixel=start_index; pixel<end_index; pixel += NUM_THREADS) {
@@ -515,12 +526,13 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
             temp = expf(clusters->memberships[c*num_events+pixel]-max_likelihood);
             denominator_sum += temp;
         }
-        temp = max_likelihood + logf(denominator_sum);
-        thread_likelihood += temp;
+        denominator_sum = max_likelihood + logf(denominator_sum);
+        thread_likelihood += denominator_sum;
         
         // Divide by denominator, also effectively normalize probabilities
+        // exp(log(p) - log(denom)) == p / denom
         for(int c=0; c<num_clusters; c++) {
-            clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - temp);
+            clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - denominator_sum);
             //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters->memberships[c*num_events+pixel]);
         }
     }
