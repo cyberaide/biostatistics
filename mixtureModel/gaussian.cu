@@ -1,3 +1,13 @@
+/*
+ * Gaussian Mixture Model Clustering wtih CUDA
+ *
+ * Author: Andrew Pangborn
+ *
+ * Department of Computer Engineering
+ * Rochester Institute of Technology
+ * 
+ */
+
 // includes, system
 #include <stdlib.h>
 #include <stdio.h>
@@ -31,9 +41,9 @@ int
 main( int argc, char** argv) {
     int original_num_clusters, desired_num_clusters, stop_number;
     
-    // For profiling input parsing
-    clock_t input_start, input_end;
-    
+    // For profiling the seed kernel
+    clock_t seed_start, seed_end, seed_total;
+
     // For profiling the regroup kernel
     clock_t regroup_start, regroup_end, regroup_total;
     int regroup_iterations = 0;
@@ -56,12 +66,23 @@ main( int argc, char** argv) {
     reduce_total = reduce_iterations = 0;
     
     // Keep track of total time
-    unsigned int timer = 0;
-    CUT_SAFE_CALL( cutCreateTimer( &timer));
-    CUT_SAFE_CALL( cutStartTimer( timer));
-   
-    input_start = clock();
+    unsigned int total_timer = 0;
+    CUT_SAFE_CALL(cutCreateTimer(&total_timer));
+    CUT_SAFE_CALL(cutStartTimer(total_timer));
     
+    // For profiling input parsing
+    unsigned int io_timer = 0;
+    CUT_SAFE_CALL(cutCreateTimer(&io_timer));
+    
+    // For CPU processing
+    unsigned int cpu_timer = 0;
+    CUT_SAFE_CALL(cutCreateTimer(&cpu_timer));
+
+    // Keep track of gpu memcpying
+    unsigned int memcpy_timer = 0;
+    CUT_SAFE_CALL(cutCreateTimer(&memcpy_timer));
+   
+    CUT_SAFE_CALL(cutStartTimer(io_timer));
     // Validate the command-line arguments, parse # of clusters, etc 
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
     
@@ -77,7 +98,6 @@ main( int argc, char** argv) {
         stop_number = desired_num_clusters;
     }
     
-
     int num_dimensions;
     int num_events;
     
@@ -104,31 +124,40 @@ main( int argc, char** argv) {
         }
     }    
 
-    input_end = clock();
+    CUT_SAFE_CALL(cutStopTimer(io_timer));
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
     
     PRINT("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
    
+    CUT_SAFE_CALL(cutStartTimer(cpu_timer));
     // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
     int GPUCount;
     int device;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
-    if (GPUCount > 1) {
+    if(GPUCount == 0) {
+        PRINT("Only 1 CUDA device found, defaulting to it.\n");
+        device = 0;
+    } else if (GPUCount > 1 && DEVICE <= GPUCount) {
+        PRINT("Multiple CUDA devices found, selecting device %d\n",DEVICE);
         device = DEVICE;
-        CUDA_SAFE_CALL(cudaSetDevice(device));
+    } else {
+        printf("Fatal Error: Unable to set device to %d, not enough GPUs.\n",DEVICE);
+        exit(2);
     }
+    CUDA_SAFE_CALL(cudaSetDevice(DEVICE));
+    
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    //PRINT("\nUsing device - %s\n\n", prop.name);
+    printf("\nUsing device - %s\n\n", prop.name);
     
     cublasStatus status;
     status = cublasInit();
     if(status != CUBLAS_STATUS_SUCCESS) {
         printf("!!! CUBLAS initialization error\n");
     }
-    
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, device);
-    PRINT("\nUsing device - %s\n\n", prop.name);
     
     int num_threads = NUM_THREADS;
 
@@ -174,10 +203,12 @@ main( int argc, char** argv) {
     scratch_cluster.memberships = (float*) malloc(sizeof(float)*num_events);
 
     DEBUG("Finished allocating memory on host for clusters.\n");
+    CUT_SAFE_CALL(cutStopTimer(cpu_timer));
     
     // Setup the cluster data structures on device
     // First allocate structures on the host, CUDA malloc the arrays
     // Then CUDA malloc structures on the device and copy them over
+    CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
     clusters_t temp_clusters;
     CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.N),sizeof(float)*original_num_clusters));
     CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.pi),sizeof(float)*original_num_clusters));
@@ -195,13 +226,14 @@ main( int argc, char** argv) {
     
     // Copy Cluster data to device
     CUDA_SAFE_CALL(cudaMemcpy(d_clusters,&temp_clusters,sizeof(clusters_t),cudaMemcpyHostToDevice));
+    CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
     DEBUG("Finished copying cluster data to device.\n");
 
     // for cublas result for means: M x D
-    float* h_C = (float*) calloc(num_dimensions*original_num_clusters,sizeof(float));
-    float* d_C;
-    CUDA_SAFE_CALL(cudaMalloc((void**) &(d_C), sizeof(float)*original_num_clusters*num_dimensions)); 
-    CUDA_SAFE_CALL(cudaMemcpy(d_C,h_C,sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
+    //float* h_C = (float*) calloc(num_dimensions*original_num_clusters,sizeof(float));
+    //float* d_C;
+    //CUDA_SAFE_CALL(cudaMalloc((void**) &(d_C), sizeof(float)*original_num_clusters*num_dimensions)); 
+    //CUDA_SAFE_CALL(cudaMemcpy(d_C,h_C,sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
     
     int mem_size = num_dimensions*num_events*sizeof(float);
     
@@ -210,12 +242,14 @@ main( int argc, char** argv) {
     // allocate device memory for FCS data
     float* d_fcs_data_by_event;
     float* d_fcs_data_by_dimension;
+    CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
     CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data_by_event, mem_size));
     CUDA_SAFE_CALL(cudaMalloc( (void**) &d_fcs_data_by_dimension, mem_size));
     DEBUG("Finished allocating memory on device for clusters.\n");
     // copy FCS to device
     CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data_by_event, fcs_data_by_event, mem_size,cudaMemcpyHostToDevice) );
     CUDA_SAFE_CALL(cudaMemcpy( d_fcs_data_by_dimension, fcs_data_by_dimension, mem_size,cudaMemcpyHostToDevice) );
+    CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
     DEBUG("Finished copying FCS data to device.\n");
     
    
@@ -226,36 +260,20 @@ main( int argc, char** argv) {
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
     // TODO: Does it make any sense to use multiple blocks for this?
+    seed_start = clock();
     seed_clusters<<< 1, 256 >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
     DEBUG("done.\n"); 
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
    
-    // Copy the means from the device
-    CUDA_SAFE_CALL(cudaMemcpy(clusters.means, temp_clusters.means, sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyDeviceToHost));
-   
-    for(int c=0; c < original_num_clusters; c++) {
-        printf("Cluster #%d\n",c);
-
-        // means
-        printf("\tMeans: ");
-        for(int d=0; d < num_dimensions; d++) {
-            printf("%.2f ",clusters.means[c*num_dimensions+d]);
-        }
-        printf("\n");
-    }
-
-
-
     DEBUG("Invoking constants kernel...",num_threads);
     // Computes the R matrix inverses, and the gaussian constant
     constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
     CUT_CHECK_ERROR("Constants Kernel execution failed: ");
     DEBUG("done.\n");
-    
-    // copy clusters from the device
-    //CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters, d_clusters, sizeof(clusters_t),cudaMemcpyDeviceToHost));
+    seed_end = clock();
+    seed_total = seed_end - seed_start;
     
     // Calculate an epsilon value
     //int ndata_points = num_events*num_dimensions;
@@ -302,12 +320,16 @@ main( int argc, char** argv) {
 
 
         // Copy the likelihood totals from each block, sum them up to get a total
+        CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
         CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+        CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
+        CUT_SAFE_CALL(cutStartTimer(cpu_timer));
         likelihood = 0.0;
         for(int i=0;i<NUM_BLOCKS;i++) {
             likelihood += likelihoods[i]; 
         }
         DEBUG("Likelihood: %e\n",likelihood);
+        CUT_SAFE_CALL(cutStopTimer(cpu_timer));
 
         float change = epsilon*2;
         
@@ -323,14 +345,18 @@ main( int argc, char** argv) {
             params_start = clock();
             // This kernel computes a new N, pi isn't updated until compute_constants though
             mstep_N<<<num_clusters, 256>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
+            CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters,d_clusters,sizeof(clusters_t),cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
+            CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
             // This kernel computes new means
             //mstep_means1<<<num_clusters, NUM_THREADS>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
 
             dim3 gridDim1(num_clusters,num_dimensions);
             mstep_means2<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
+            CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
             
             /*
             // Alternative way to calculate the means via matrix multiplication
@@ -408,7 +434,10 @@ main( int argc, char** argv) {
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
         
+            CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(likelihoods,d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+            CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
+            CUT_SAFE_CALL(cutStartTimer(cpu_timer));
             likelihood = 0.0;
             for(int i=0;i<NUM_BLOCKS;i++) {
                 likelihood += likelihoods[i]; 
@@ -419,6 +448,7 @@ main( int argc, char** argv) {
             DEBUG("Change in likelihood: %f\n",change);
 
             iters++;
+            CUT_SAFE_CALL(cutStopTimer(cpu_timer));
             
 
             /*
@@ -443,6 +473,7 @@ main( int argc, char** argv) {
         }
         
         // copy clusters from the device
+        CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
         CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters, d_clusters, sizeof(clusters_t),cudaMemcpyDeviceToHost));
         // copy all of the arrays from the structs
         CUDA_SAFE_CALL(cudaMemcpy(clusters.N, temp_clusters.N, sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
@@ -453,8 +484,10 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaMemcpy(clusters.R, temp_clusters.R, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters.Rinv, temp_clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(clusters.memberships, temp_clusters.memberships, sizeof(float)*num_events*num_clusters,cudaMemcpyDeviceToHost));
+        CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
         
         // Calculate Rissanen Score
+        CUT_SAFE_CALL(cutStartTimer(cpu_timer));
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
         PRINT("\nRissanen Score: %e\n",rissanen);
         
@@ -475,6 +508,7 @@ main( int argc, char** argv) {
             memcpy(saved_clusters.Rinv,clusters.Rinv,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
             memcpy(saved_clusters.memberships,clusters.memberships,sizeof(float)*num_events*num_clusters);
         }
+        CUT_SAFE_CALL(cutStopTimer(cpu_timer));
 
         
         /**************** Reduce GMM Order ********************/
@@ -526,6 +560,7 @@ main( int argc, char** argv) {
             }
 
             // Copy the clusters back to the device
+            CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N, clusters.N, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.pi, clusters.pi, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.constant, clusters.constant, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
@@ -535,6 +570,7 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.Rinv, clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.memberships, clusters.memberships, sizeof(float)*num_events*num_clusters,cudaMemcpyHostToDevice));
             CUDA_SAFE_CALL(cudaMemcpy(d_clusters,&temp_clusters,sizeof(clusters_t),cudaMemcpyHostToDevice));
+            CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
         } // GMM reduction block 
         reduce_end = clock();
         reduce_total += reduce_end - reduce_start;
@@ -544,7 +580,9 @@ main( int argc, char** argv) {
  
     
     // copy clusters from the device
+    CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
     CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters, d_clusters, sizeof(clusters_t),cudaMemcpyDeviceToHost));
+    CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
     
     /*
     // copy all of the arrays from the structs
@@ -559,11 +597,9 @@ main( int argc, char** argv) {
     }
     */
     
-    CUT_SAFE_CALL(cutStopTimer(timer));
-    PRINT( "Processing time: %f (ms)\n", cutGetTimerValue( timer));
-    CUT_SAFE_CALL(cutDeleteTimer(timer));
     
     
+    CUT_SAFE_CALL(cutStartTimer(cpu_timer));
     char* result_suffix = ".results";
     char* summary_suffix = ".summary";
     int filenamesize1 = strlen(argv[3]) + strlen(result_suffix) + 1;
@@ -577,7 +613,9 @@ main( int argc, char** argv) {
     
     PRINT("Summary filename: %s\n",summary_filename);
     PRINT("Results filename: %s\n",result_filename);
+    CUT_SAFE_CALL(cutStopTimer(cpu_timer));
     
+    CUT_SAFE_CALL(cutStartTimer(io_timer));
     // Open up the output file for cluster summary
     FILE* outf = fopen(summary_filename,"w");
     if(!outf) {
@@ -586,9 +624,9 @@ main( int argc, char** argv) {
 
     // Print the clusters with the lowest rissanen score to the console and output file
     for(int c=0; c<ideal_num_clusters; c++) {
-        if(saved_clusters.N[c] == 0.0) {
-            continue;
-        }
+        //if(saved_clusters.N[c] == 0.0) {
+        //    continue;
+        //}
         if(ENABLE_PRINT) {
             // Output the final cluster stats to the console
             PRINT("Cluster #%d\n",c);
@@ -596,25 +634,27 @@ main( int argc, char** argv) {
             PRINT("\n\n");
         }
 
-        // Output the final cluster stats to the output file        
-        fprintf(outf,"Cluster #%d\n",c);
-        writeCluster(outf,saved_clusters,c,num_dimensions);
-        fprintf(outf,"\n\n");
+        if(ENABLE_OUTPUT) {
+            // Output the final cluster stats to the output file        
+            fprintf(outf,"Cluster #%d\n",c);
+            writeCluster(outf,saved_clusters,c,num_dimensions);
+            fprintf(outf,"\n\n");
+        }
     }
     
     // Print profiling information
     printf("Program Component\tTotal\tIters\tTime Per Iteration\n");
-    printf("      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    printf("     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    printf(" Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    printf("        Seed Kernel:\t%7.4f\t%d\t%7.4f\n",seed_total/(double)CLOCKS_PER_SEC,1, (double) seed_total / (double) CLOCKS_PER_SEC);
+    printf("      E-step Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    printf("      M-step Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
     printf("   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
     printf("GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
    
     // Write profiling info to summary file
     fprintf(outf,"Program Component\tTotal\tIters\tTime Per Iteration\n");
-    fprintf(outf,"      Input Parsing:\t%7.4f\t%d\t%7.4f\n",(input_end - input_start)/(double)CLOCKS_PER_SEC,1, (double) (input_end - input_start) / (double) CLOCKS_PER_SEC);
-    fprintf(outf,"     Regroup Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
-    fprintf(outf," Re-estimate Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
+    fprintf(outf,"        Seed Kernel:\t%7.4f\t%d\t%7.4f\n",seed_total/(double)CLOCKS_PER_SEC,1, (double) seed_total / (double) CLOCKS_PER_SEC);
+    fprintf(outf,"      E-step Kernel:\t%7.4f\t%d\t%7.4f\n",regroup_total/(double)CLOCKS_PER_SEC,regroup_iterations, (double) regroup_total / (double) CLOCKS_PER_SEC / (double) regroup_iterations);
+    fprintf(outf,"      M-step Kernel:\t%7.4f\t%d\t%7.4f\n",params_total/(double)CLOCKS_PER_SEC,params_iterations, (double) params_total / (double) CLOCKS_PER_SEC / (double) params_iterations);
     fprintf(outf,"   Constants Kernel:\t%7.4f\t%d\t%7.4f\n",constants_total/(double)CLOCKS_PER_SEC,constants_iterations, (double) constants_total / (double) CLOCKS_PER_SEC / (double) constants_iterations);    
     fprintf(outf,"GMM Order Reduction:\t%7.4f\t%d\t%7.4f\n",reduce_total/(double)CLOCKS_PER_SEC,reduce_iterations, (double) reduce_total / (double) CLOCKS_PER_SEC / (double) reduce_iterations);
     fclose(outf);
@@ -622,21 +662,37 @@ main( int argc, char** argv) {
     
     // Open another output file for the event level clustering results
     FILE* fresults = fopen(result_filename,"w");
-    
-    for(int i=0; i<num_events; i++) {
-        for(int d=0; d<num_dimensions-1; d++) {
-            fprintf(fresults,"%f,",fcs_data_by_event[i*num_dimensions+d]);
+   
+    if(ENABLE_OUTPUT) { 
+        for(int i=0; i<num_events; i++) {
+            for(int d=0; d<num_dimensions-1; d++) {
+                fprintf(fresults,"%f,",fcs_data_by_event[i*num_dimensions+d]);
+            }
+            fprintf(fresults,"%f",fcs_data_by_event[i*num_dimensions+num_dimensions-1]);
+            fprintf(fresults,"\t");
+            for(int c=0; c<ideal_num_clusters-1; c++) {
+                fprintf(fresults,"%f,",saved_clusters.memberships[c*num_events+i]);
+            }
+            fprintf(fresults,"%f",saved_clusters.memberships[(ideal_num_clusters-1)*num_events+i]);
+            fprintf(fresults,"\n");
         }
-        fprintf(fresults,"%f",fcs_data_by_event[i*num_dimensions+num_dimensions-1]);
-        fprintf(fresults,"\t");
-        for(int c=0; c<ideal_num_clusters-1; c++) {
-            fprintf(fresults,"%f,",saved_clusters.memberships[c*num_events+i]);
-        }
-        fprintf(fresults,"%f",saved_clusters.memberships[(ideal_num_clusters-1)*num_events+i]);
-        fprintf(fresults,"\n");
     }
+    fclose(fresults); 
+    CUT_SAFE_CALL(cutStopTimer(io_timer));
+    printf("\n");
+    printf( "I/O time: %f (ms)\n", cutGetTimerValue(io_timer));
+    CUT_SAFE_CALL(cutDeleteTimer(io_timer));
     
+    printf( "Memcpy time: %f (ms)\n", cutGetTimerValue(memcpy_timer));
+    CUT_SAFE_CALL(cutDeleteTimer(memcpy_timer));
     
+    printf( "CPU processing time: %f (ms)\n", cutGetTimerValue(cpu_timer));
+    CUT_SAFE_CALL(cutDeleteTimer(cpu_timer));
+
+    /// Print out the total program time
+    CUT_SAFE_CALL(cutStopTimer(total_timer));
+    printf( "Total time: %f (ms)\n", cutGetTimerValue(total_timer));
+    CUT_SAFE_CALL(cutDeleteTimer(total_timer));
  
     // cleanup host memory
     free(fcs_data_by_event);
