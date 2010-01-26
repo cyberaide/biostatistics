@@ -177,7 +177,7 @@ main( int argc, char** argv) {
         }
     }    
 
-    cutStopTimer( timer_io);
+    //cutStopTimer( timer_io);
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
@@ -237,10 +237,13 @@ main( int argc, char** argv) {
     float* shared_likelihoods = (float*) malloc(sizeof(float)*NUM_BLOCKS*num_gpus);
     float likelihood, old_likelihood;
     float min_rissanen;
+    
+    cutStopTimer( timer_io);
 
     omp_set_num_threads(num_gpus);
     #pragma omp parallel shared(clusters,fcs_data_by_event,fcs_data_by_dimension,shared_likelihoods,likelihood,old_likelihood,ideal_num_clusters,min_rissanen,regroup_iterations) 
     {
+        
         // Set the device for this thread
         unsigned int tid  = omp_get_thread_num();
         unsigned int num_cpu_threads = omp_get_num_threads();
@@ -253,6 +256,12 @@ main( int argc, char** argv) {
         cudaGetDeviceProperties(&prop, tid);
         PRINT("CPU thread %d (of %d) using device %d: %s\n", tid, num_gpus, tid, prop.name);
         
+        // Timers for profiling
+        //  timers use cuda events (which require a cuda context),
+        //  cannot initialize them until after cudaSetDevice(...)
+        profile_t timers;
+        init_profile_t(&timers);
+        
         // Initialize this device for CUBLAS
         /*cublasStatus status;
         status = cublasInit();
@@ -260,11 +269,8 @@ main( int argc, char** argv) {
             printf("!!! CUBLAS initialization error\n");
         }*/
 
-        // Timers for profiling
-        profile_t timers;
-        init_profile_t(&timers);
-
         // Used as a temporary cluster for combining clusters in "distance" computations
+        startTimer(timers.cpu);
         clusters_t scratch_cluster;
         scratch_cluster.N = (float*) malloc(sizeof(float));
         scratch_cluster.pi = (float*) malloc(sizeof(float));
@@ -275,12 +281,13 @@ main( int argc, char** argv) {
         scratch_cluster.Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions);
         scratch_cluster.memberships = (float*) malloc(sizeof(float)*num_events);
 
-
         DEBUG("Finished allocating memory on host for clusters.\n");
+        stopTimer(timers.cpu);
         
         // Setup the cluster data structures on device
         // First allocate structures on the host, CUDA malloc the arrays
         // Then CUDA malloc structures on the device and copy them over
+        startTimer(timers.memcpy);
         clusters_t temp_clusters;
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.N),sizeof(float)*original_num_clusters));
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.pi),sizeof(float)*original_num_clusters));
@@ -342,9 +349,10 @@ main( int argc, char** argv) {
         free(temp_fcs_data);
  
         DEBUG("GPU %d: Finished copying FCS data to device.\n",tid);
+        stopTimer(timers.memcpy);
+        
         //////////////// Initialization done, starting kernels //////////////// 
         DEBUG("Invoking seed_clusters kernel...");
-        fflush(stdout);
 
         // seed_clusters sets initial pi values, 
         // finds the means / covariances and copies it to all the clusters
@@ -354,6 +362,7 @@ main( int argc, char** argv) {
             //  Just have host pick random events for the means and use identity matrix for covariance
             //  Only tricky part is how to do average variance? 
             //   Make a kernel for that and reduce on host like the means/covariance?
+            startTimer(timers.constants);
             seed_clusters<<< 1, NUM_THREADS >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, my_num_events);
             cudaThreadSynchronize();
             DEBUG("done.\n"); 
@@ -361,14 +370,14 @@ main( int argc, char** argv) {
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Computes the R matrix inverses, and the gaussian constant
-            startTimer(timers.constants);
             constants_kernel<<<original_num_clusters, NUM_THREADS>>>(d_clusters,original_num_clusters,num_dimensions);
             constants_iterations++;
             cudaThreadSynchronize();
-            stopTimer(timers.constants);
             CUT_CHECK_ERROR("Constants Kernel execution failed: ");
             DEBUG("done.\n");
+            stopTimer(timers.constants);
         
+            startTimer(timers.memcpy);
             // copy clusters from the device
             CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters, d_clusters, sizeof(clusters_t),cudaMemcpyDeviceToHost));
             // copy all of the arrays from the structs
@@ -380,7 +389,9 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(clusters[0].R, temp_clusters.R, sizeof(float)*num_dimensions*num_dimensions*original_num_clusters,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters[0].Rinv, temp_clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*original_num_clusters,cudaMemcpyDeviceToHost));
             //CUDA_SAFE_CALL(cudaMemcpy(clusters[0].p, temp_clusters[i].p, sizeof(float)*num_events,cudaMemcpyDeviceToHost));
+            stopTimer(timers.memcpy);
 
+            startTimer(timers.cpu);
             seed_clusters(&clusters[0],fcs_data_by_event,original_num_clusters,num_dimensions,num_events);
             DEBUG("Starting Clusters\n");
             for(int c=0; c < original_num_clusters; c++) {
@@ -395,10 +406,12 @@ main( int argc, char** argv) {
                 }
                 DEBUG("\n");
             }
+            stopTimer(timers.cpu);
         }
 
         // synchronize after first gpu does the seeding, copy result to all gpus
         #pragma omp barrier
+        startTimer(timers.memcpy);
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N, clusters[0].N, sizeof(float)*original_num_clusters,cudaMemcpyHostToDevice));
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.pi, clusters[0].pi, sizeof(float)*original_num_clusters,cudaMemcpyHostToDevice));
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.constant, clusters[0].constant, sizeof(float)*original_num_clusters,cudaMemcpyHostToDevice));
@@ -406,7 +419,9 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means, clusters[0].means, sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R, clusters[0].R, sizeof(float)*num_dimensions*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
         CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.Rinv, clusters[0].Rinv, sizeof(float)*num_dimensions*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
-        
+        stopTimer(timers.memcpy);
+       
+        startTimer(timers.cpu); 
         // Calculate an epsilon value
         //int ndata_points = num_events*num_dimensions;
         float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
@@ -423,7 +438,10 @@ main( int argc, char** argv) {
         float rissanen;
         int min_c1, min_c2;
         float* d_c;
+        stopTimer(timers.cpu); 
+        startTimer(timers.memcpy);
         CUDA_SAFE_CALL(cudaMalloc((void**) &d_c, sizeof(float)));
+        stopTimer(timers.memcpy);
          
         for(int num_clusters=original_num_clusters; num_clusters >= stop_number; num_clusters--) {
             /*************** EM ALGORITHM *****************************/
@@ -437,18 +455,22 @@ main( int argc, char** argv) {
             //regroup1<<<dim3((int)ceilf((float)my_num_events/(float)NUM_THREADS),num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
             regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
-            stopTimer(timers.e_step);
             if(tid == 0) {
                 regroup_iterations++;
             }
             DEBUG("done.\n");
             // check if kernel execution generated an error
             CUT_CHECK_ERROR("Kernel execution failed");
+            stopTimer(timers.e_step);
 
-
-            // Copy the likelihood totals from each block, sum them up to get a total
-            CUDA_SAFE_CALL(cudaMemcpy(&shared_likelihoods[tid*NUM_BLOCKS],d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
             #pragma omp barrier
+            
+            // Copy the likelihood totals from each block, sum them up to get a total
+            startTimer(timers.memcpy);
+            CUDA_SAFE_CALL(cudaMemcpy(&shared_likelihoods[tid*NUM_BLOCKS],d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+            stopTimer(timers.memcpy);
+            #pragma omp barrier
+            startTimer(timers.cpu); 
             if(tid == 0) {
                 likelihood = 0.0;
                 for(int i=0;i<NUM_BLOCKS*num_gpus;i++) {
@@ -456,6 +478,7 @@ main( int argc, char** argv) {
                 }
                 DEBUG("Likelihood: %e\n",likelihood);
             }
+            stopTimer(timers.cpu); 
             #pragma omp barrier
 
             float change = epsilon*2;
@@ -474,12 +497,16 @@ main( int argc, char** argv) {
                 startTimer(timers.m_step);
                 // This kernel computes a new N, pi isn't updated until compute_constants though
                 mstep_N<<<num_clusters, NUM_THREADS>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
-                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
+                cudaThreadSynchronize();
                 stopTimer(timers.m_step);
+                startTimer(timers.memcpy);
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
+                stopTimer(timers.memcpy);
                 
                 // TODO: figure out the omp reduction pragma...
                 // Reduce N for all clusters, copy back to device
                 #pragma omp barrier
+                startTimer(timers.cpu);
                 if(tid == 0) {
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -489,15 +516,22 @@ main( int argc, char** argv) {
                     }
                 }
                 #pragma omp barrier
+                stopTimer(timers.cpu);
+                startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N,clusters[0].N,sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
+                stopTimer(timers.memcpy);
 
                 startTimer(timers.m_step);
                 dim3 gridDim1(num_clusters,num_dimensions);
                 mstep_means<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
-                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
+                cudaThreadSynchronize();
                 stopTimer(timers.m_step);
+                startTimer(timers.memcpy);
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
+                stopTimer(timers.memcpy);
                 // Reduce means for all clusters, copy back to device
                 #pragma omp barrier
+                startTimer(timers.cpu);
                 if(tid == 0) {
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -519,17 +553,24 @@ main( int argc, char** argv) {
                         DEBUG("\n");
                     }
                 }
+                stopTimer(timers.cpu);
                 #pragma omp barrier
+                startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters[0].means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyHostToDevice));
+                stopTimer(timers.memcpy);
 
                 startTimer(timers.m_step);
                 // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
                 dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
                 mstep_covariance1<<<gridDim2, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
-                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].R,temp_clusters.R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+                cudaThreadSynchronize();
                 stopTimer(timers.m_step);
+                startTimer(timers.memcpy);
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].R,temp_clusters.R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyDeviceToHost));
+                stopTimer(timers.memcpy);
                 // Reduce R for all clusters, copy back to device
                 #pragma omp barrier
+                startTimer(timers.cpu);
                 if(tid == 0) {
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -556,8 +597,11 @@ main( int argc, char** argv) {
                         }
                     }
                 }
+                stopTimer(timers.cpu);
                 #pragma omp barrier
+                startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R,clusters[0].R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
+                stopTimer(timers.memcpy);
                 
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("M-step Kernel execution failed: ");
@@ -597,8 +641,11 @@ main( int argc, char** argv) {
                 CUT_CHECK_ERROR("Kernel execution failed");
             
                 // Copy the likelihood totals from each block, sum them up to get a total
+                startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(&shared_likelihoods[tid*NUM_BLOCKS],d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
+                stopTimer(timers.memcpy);
                 #pragma omp barrier
+                startTimer(timers.cpu);
                 if(tid == 0) {
                     likelihood = 0.0;
                     for(int i=0;i<NUM_BLOCKS*num_gpus;i++) {
@@ -606,6 +653,7 @@ main( int argc, char** argv) {
                     }
                     DEBUG("Likelihood: %e\n",likelihood);
                 }
+                stopTimer(timers.cpu);
                 #pragma omp barrier // synchronize for likelihood
                 
                 change = likelihood - old_likelihood;
@@ -616,7 +664,8 @@ main( int argc, char** argv) {
             }
 
             DEBUG("GPU %d done with EM loop\n",tid);
-            fflush(stdout);
+            
+            startTimer(timers.memcpy);
             // copy all of the arrays from the device
             CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].N, temp_clusters.N, sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].pi, temp_clusters.pi, sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
@@ -626,12 +675,13 @@ main( int argc, char** argv) {
             CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].R, temp_clusters.R, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].Rinv, temp_clusters.Rinv, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(temp_memberships, temp_clusters.memberships, sizeof(float)*my_num_events*num_clusters,cudaMemcpyDeviceToHost));
+            stopTimer(timers.memcpy);
+            startTimer(timers.cpu);
             for(int c=0; c < num_clusters; c++) {
                 memcpy(&(clusters[0].memberships[c*num_events+tid*events_per_gpu]),&(temp_memberships[c*my_num_events]),sizeof(float)*my_num_events);
             }
             #pragma omp barrier
             DEBUG("GPU %d done with copying cluster data from device\n",tid); 
-            fflush(stdout); 
             
             // Calculate Rissanen Score
             rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
@@ -657,11 +707,12 @@ main( int argc, char** argv) {
                 }
             }
             #pragma omp barrier
-           
+            stopTimer(timers.cpu);
             /**************** Reduce GMM Order ********************/
             startTimer(timers.reduce);
             // Don't want to reduce order on the last iteration
             if(num_clusters > stop_number) {
+                startTimer(timers.cpu);
                 if(tid == 0) {
                     // First eliminate any "empty" clusters 
                     for(int i=num_clusters-1; i >= 0; i--) {
@@ -707,8 +758,10 @@ main( int argc, char** argv) {
                         copy_cluster(clusters[0],i,clusters[0],i+1,num_dimensions);
                     }
                 }
+                stopTimer(timers.cpu);
                 #pragma omp barrier
 
+                startTimer(timers.memcpy);
                 // Copy the clusters back to the device
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N, clusters[0].N, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.pi, clusters[0].pi, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
@@ -717,12 +770,16 @@ main( int argc, char** argv) {
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means, clusters[0].means, sizeof(float)*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R, clusters[0].R, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.Rinv, clusters[0].Rinv, sizeof(float)*num_dimensions*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
+                stopTimer(timers.memcpy);
 
+                startTimer(timers.cpu);
                 for(int c=0; c < num_clusters; c++) {
                     memcpy(&temp_memberships[c*my_num_events],&(clusters[0].memberships[c*num_events+tid*(num_events/num_gpus)]),sizeof(float)*my_num_events);
                 }
+                stopTimer(timers.cpu);
+                startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.memberships,temp_memberships, sizeof(float)*my_num_events*num_clusters,cudaMemcpyHostToDevice));
-
+                stopTimer(timers.memcpy);
             } // GMM reduction block 
             stopTimer(timers.reduce);
             if(tid==0) {
@@ -736,7 +793,7 @@ main( int argc, char** argv) {
         #pragma omp barrier 
     
         // Print some profiling information
-        printf("GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n",tid,getTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) getTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,getTimerValue(timers.m_step) / 1000.0,params_iterations, (double) getTimerValue(timers.m_step) / (double) params_iterations / 1000.0,getTimerValue(timers.constants) / 1000.0,constants_iterations, (double) getTimerValue(timers.constants) / (double) constants_iterations / 1000.0);
+        printf("GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n\tOrder Reduce:\t%7.4f\t%d\t%7.4f\n\tGPU Memcpy:\t%7.4f\n\tCPU:\t\t%7.4f\n",tid,getTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) getTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,getTimerValue(timers.m_step) / 1000.0,params_iterations, (double) getTimerValue(timers.m_step) / (double) params_iterations / 1000.0,getTimerValue(timers.constants) / 1000.0,constants_iterations, (double) getTimerValue(timers.constants) / (double) constants_iterations / 1000.0, getTimerValue(timers.reduce) / 1000.0,reduce_iterations, (double) getTimerValue(timers.reduce) / (double) reduce_iterations / 1000.0, getTimerValue(timers.memcpy) / 1000.0, getTimerValue(timers.cpu) / 1000.0);
 
         cleanup_profile_t(&timers);
 
@@ -859,11 +916,11 @@ main( int argc, char** argv) {
     
     free(shared_likelihoods);
     
-    PRINT( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
+    printf( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
     cutDeleteTimer(timer_io);
 
     cutStopTimer(timer_total);
-    PRINT( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
+    printf( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
     cutDeleteTimer(timer_total);
 
     return 0;
