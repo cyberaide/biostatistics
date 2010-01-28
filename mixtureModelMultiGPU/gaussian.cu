@@ -136,6 +136,11 @@ main( int argc, char** argv) {
     cutCreateTimer( &timer_io);
     cutStartTimer( timer_io);
     
+    // Keep track of Master thread CPU Time (outside #omp parallel)
+    unsigned int timer_cpu;
+    cutCreateTimer( &timer_cpu);
+    cutStartTimer( timer_cpu);
+    
     // Validate the command-line arguments, parse # of clusters, etc 
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
     
@@ -177,7 +182,8 @@ main( int argc, char** argv) {
         }
     }    
 
-    //cutStopTimer( timer_io);
+    cutStopTimer(timer_io);
+    cutStartTimer(timer_cpu);
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
@@ -238,7 +244,7 @@ main( int argc, char** argv) {
     float likelihood, old_likelihood;
     float min_rissanen;
     
-    cutStopTimer( timer_io);
+    cutStopTimer( timer_cpu);
 
     omp_set_num_threads(num_gpus);
     #pragma omp parallel shared(clusters,fcs_data_by_event,fcs_data_by_dimension,shared_likelihoods,likelihood,old_likelihood,ideal_num_clusters,min_rissanen,regroup_iterations) 
@@ -889,6 +895,7 @@ main( int argc, char** argv) {
     }
     
     cutStopTimer(timer_io);
+    cutStartTimer(timer_cpu);
     
     // cleanup host memory
     free(fcs_data_by_event);
@@ -916,8 +923,13 @@ main( int argc, char** argv) {
     
     free(shared_likelihoods);
     
+    cutStopTimer(timer_cpu);
+    
     printf( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
     cutDeleteTimer(timer_io);
+    
+    printf( "Main Thread CPU time: %f (ms)\n", cutGetTimerValue(timer_cpu));
+    cutDeleteTimer(timer_cpu);
 
     cutStopTimer(timer_total);
     printf( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
