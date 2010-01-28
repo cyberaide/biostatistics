@@ -345,6 +345,7 @@ main( int argc, char** argv) {
             params_start = clock();
             // This kernel computes a new N, pi isn't updated until compute_constants though
             mstep_N<<<num_clusters, 256>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
+            cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters,d_clusters,sizeof(clusters_t),cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
@@ -354,6 +355,7 @@ main( int argc, char** argv) {
 
             dim3 gridDim1(num_clusters,num_dimensions);
             mstep_means2<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
             CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
