@@ -298,7 +298,7 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     // Compute the initial covariance matrix of the data
     for(int i=tid; i < num_elements; i+= num_threads) {
             // zero the value, find what row and col this thread is computing
-            sum = 0.0;
+            sum = 0.0f;
             row = (i) / num_dimensions;
             col = (i) % num_dimensions;
 
@@ -316,19 +316,19 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     if(num_clusters > 1) {
         seed = (num_events-1.0f)/(num_clusters-1.0f);
     } else {
-        seed = 0.0;
+        seed = 0.0f;
     }
      
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
         if(tid < num_dimensions) {
             //clusters->means[c*num_dimensions+tid] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+tid];
-            clusters->means[c*num_dimensions+tid] = fcs_data[(int)(c*seed)*num_dimensions+tid];
+            clusters->means[c*num_dimensions+tid] = fcs_data[(int)(((float)c)*seed)*num_dimensions+tid];
         }
           
         for(int i=tid; i < num_elements; i+= num_threads) {
             // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
-            clusters->R[c*num_dimensions*num_dimensions+i] = covs[i] + avgvar/COVARIANCE_DYNAMIC_RANGE;
+            clusters->R[c*num_dimensions*num_dimensions+i] = covs[i] + avgvar/(float)COVARIANCE_DYNAMIC_RANGE;
         }
         if(tid == 0) {
             clusters->pi[c] = 1.0/((float)num_clusters);
@@ -482,7 +482,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
         end_index = (blockIdx.x+1) * num_pixels_per_block;
     }
     
-    total_likelihoods[tid] = 0.0;
+    total_likelihoods[tid] = 0.0f;
 
     // P(x_n) = sum of likelihoods weighted by P(k) (their probability, cluster[c].pi)
     // However we use logs to prevent under/overflow
@@ -496,7 +496,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
         }
 
         // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
-        denominator_sum = 0.0;
+        denominator_sum = 0.0f;
         for(int c=0; c<num_clusters; c++) {
             temp = expf(clusters->memberships[c*num_events+pixel]-max_likelihood);
             denominator_sum += temp;
@@ -565,7 +565,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     
     //printf("Block Index: %d, Thread Index: %d, start_index: %d, end_index: %d\n",blockIdx.x,tid,start_index,end_index);
 
-    total_likelihoods[tid] = 0.0;
+    total_likelihoods[tid] = 0.0f;
 
     // This loop computes the expectation of every event into every cluster
     //
@@ -593,7 +593,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
         constant = clusters->constant[c];
         
         for(int event=start_index; event<end_index; event += num_threads) {
-            like = 0.0;
+            like = 0.0f;
             // this does the loglikelihood calculation
             #if DIAG_ONLY
                 for(int j=0; j<num_dimensions; j++) {
@@ -632,7 +632,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
         }
 
         // Compute P(x_n), the denominator of the probability (sum of weighted likelihoods)
-        denominator_sum = 0.0;
+        denominator_sum = 0.0f;
         for(int c=0; c<num_clusters; c++) {
             temp = expf(clusters->memberships[c*num_events+pixel]-max_likelihood);
             denominator_sum += temp;
@@ -650,7 +650,7 @@ regroup(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     total_likelihoods[tid] = thread_likelihood;
 
     
-    float retval = 0.0;
+    float retval = 0.0f;
     
     __syncthreads();
     
@@ -700,7 +700,7 @@ mstep_means1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_
     
     // Let the first thread add up all the intermediate sums
     if(tid == 0) {
-        clusters->N[c] = 0.0;
+        clusters->N[c] = 0.0f;
         for(int j=0; j<num_threads; j++) {
             clusters->N[c] += temp_sums[j];
         }
@@ -720,7 +720,7 @@ mstep_means1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_
     // All threads participate only if num_dimensions is an even multiple of num_threads
     // num_threads should be a multiple of 16 for the sake of performance
     if(tid < active_threads) {
-        sum = 0.0;
+        sum = 0.0f;
         for(int i=tid; i < num_dimensions*num_events; i+= active_threads) {     
             sum += fcs_data[i]*clusters->memberships[c*num_events+event];
             event += events_per_iteration;
@@ -791,7 +791,7 @@ mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     // Let the first thread add up all the intermediate sums
     // Could do a parallel reduction...doubt it's really worth it for so few elements though
     if(tid == 0) {
-        clusters->N[c] = 0.0;
+        clusters->N[c] = 0.0f;
         for(int j=0; j<num_threads; j++) {
             clusters->N[c] += temp_sums[j];
         }
@@ -846,9 +846,9 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
 
     #if DIAG_ONLY
     if(row != col) {
-        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0;
+        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f;
         matrix_index = col*num_dimensions+row;
-        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0;
+        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f;
         return;
     }
     #endif 
@@ -865,7 +865,7 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
 
     __shared__ float temp_sums[NUM_THREADS];
     
-    float cov_sum = 0.0;
+    float cov_sum = 0.0f;
 
     for(int event=tid; event < num_events; event+=NUM_THREADS) {
         cov_sum += (fcs_data[row*num_events+event]-means[row])*(fcs_data[col*num_events+event]-means[col])*clusters->memberships[c*num_events+event]; 
@@ -879,17 +879,17 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
         for(int i=0; i < NUM_THREADS; i++) {
             cov_sum += temp_sums[i];
         }
-        if(clusters->N[c] >= 1.0) { // Does it need to be >=1, or just something non-zero?
+        if(clusters->N[c] >= 1.0f) { // Does it need to be >=1, or just something non-zero?
             cov_sum /= clusters->N[c];
             clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
             // Set the symmetric value
             matrix_index = col*num_dimensions+row;
             clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
         } else {
-            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0; // what should the variance be for an empty cluster...?
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f; // what should the variance be for an empty cluster...?
             // Set the symmetric value
             matrix_index = col*num_dimensions+row;
-            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0; // what should the variance be for an empty cluster...?
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f; // what should the variance be for an empty cluster...?
         }
 
         // Regularize matrix - adds some variance to the diagonal elements
@@ -901,61 +901,6 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     }
 }
 
-/*
- * Computes the covariance matrices of the data (R matrix)
- * Must be launched with as many blocks as there are clusters
- * Each block handles one matrix
- */
-__global__ void
-mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events) {
-    
-    int tid = threadIdx.x; // easier variable name for our thread ID
-    int num_threads = blockDim.x; // number of threads in the block
-    int c = blockIdx.x; // what cluster is this block handling
- 
-    // Number of elements in the covariance matrix
-    int num_elements = num_dimensions*num_dimensions;
-
-    // Store the means in shared memory to speed up the covariance computations
-    __shared__ float means[NUM_DIMENSIONS];
-    // copy the means for this cluster into shared memory
-    if(tid < num_dimensions) {
-        means[tid] = clusters->means[c*num_dimensions+tid];
-    }
-    // Sync to wait for all params to be loaded to shared memory
-    __syncthreads();
-
-    float cov_sum = 0.0;
-    int row,col;
-
-    // Compute the covariance matrix of the data
-    for(int i=tid; i < num_elements; i+= num_threads) {
-        // zero the value, find what row and col this thread is computing
-        cov_sum = 0.0;
-        row = (i) / num_dimensions;
-        col = (i) % num_dimensions;
-
-        for(int j=0; j < num_events; j++) {
-            cov_sum += (fcs_data[j*num_dimensions+row]-means[row])*(fcs_data[j*num_dimensions+col]-means[col])*clusters->memberships[c*num_events+j]; 
-            //cov_sum += (event[row]-means[row])*(event[col]-means[col])*memberships[c*num_events+j]; 
-            //cov_sum += (event[row]-means[row])*(event[col]-means[col])*membership; 
-        }
-        if(clusters->N[c] >= 1.0) { // Does it need to be >=1, or just something non-zero?
-            clusters->R[c*num_dimensions*num_dimensions+i] = cov_sum / clusters->N[c];
-        } else {
-            clusters->R[c*num_dimensions*num_dimensions+i] = 0.0; // what should the variance be for an empty cluster...?
-        }
-    }
-    
-    __syncthreads();
-
-    // Regularize matrix - adds some variance to the diagonals
-    // Helps keep covariance matrix non-singular (so it can be inverted)
-    // The amount added is scaled down based on COVARIANCE_DYNAMIC_RANGE constant defined at top of this file
-    if(tid < num_dimensions) {
-        clusters->R[c*num_dimensions*num_dimensions+tid*num_dimensions+tid] += clusters->avgvar[c];
-    }
-}
 
 /*
  * Computes the constant for each cluster and normalizes pi for every cluster

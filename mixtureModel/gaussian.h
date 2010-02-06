@@ -11,7 +11,7 @@
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 16
 #define NUM_THREADS 512 // Must be power of 2 due to butterfly sum reductions
-#define NUM_DIMENSIONS 32
+#define NUM_DIMENSIONS 56
 
 // Which GPU to use, if more than 1
 #define DEVICE 0
@@ -20,7 +20,9 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 100
+#define MAX_ITERS 20
+// Minimum number of iterations for the EM convergence loop (normally 0 unless doing performance testing)
+#define MIN_ITERS MAX_ITERS
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro

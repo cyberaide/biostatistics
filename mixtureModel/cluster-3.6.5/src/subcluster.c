@@ -399,18 +399,20 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
        if(VERBOSE) {
            printf("clusters[%d].means: ",i);
        }
-       for(b1=0; b1<nbands; b1++) 
-       {
+           
+       for(b1=0; b1<nbands; b1++) {
          Sig->SubSig[i].means[b1] = 0;
-         for(s=0; s<Data->npixels; s++) {
+       }
+       for(s=0; s<Data->npixels; s++) {
+           for(b1=0; b1<nbands; b1++) {
              Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1];
              //Sig->SubSig[i].means[b1] += Data->p[s][i]*Data->x[s][b1]*Data->w[s];
              //printf("clusters[%d].p[%d]: %.2f\n",i,s,Data->p[s][i]);
          }
+       }
+       for(b1=0; b1<nbands; b1++) {
          Sig->SubSig[i].means[b1] /= Sig->SubSig[i].N;
-         if(VERBOSE) {
-             printf("%.2f ",Sig->SubSig[i].means[b1]);
-         }
+         printf("%.2f ",Sig->SubSig[i].means[b1]);
        }
        if(VERBOSE) {
            printf("\n");
@@ -425,7 +427,7 @@ static void reestimate(struct ClassSig *Sig, int nbands, double Rmin, int option
          {
            diff1 = Data->x[s][b1] - Sig->SubSig[i].means[b1];
            diff2 = Data->x[s][b2] - Sig->SubSig[i].means[b2];
-           Sig->SubSig[i].R[b1][b2] += Data->p[s][i]*diff1*diff2*Data->w[s];
+           Sig->SubSig[i].R[b1][b2] += Data->p[s][i]*diff1*diff2;
          }
          Sig->SubSig[i].R[b1][b2] /= Sig->SubSig[i].N;
          Sig->SubSig[i].R[b2][b1] = Sig->SubSig[i].R[b1][b2];

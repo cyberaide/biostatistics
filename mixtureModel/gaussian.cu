@@ -27,7 +27,7 @@
 
 // Function prototypes
 extern "C" float* readData(char* f, int* ndims, int*nevents);
-int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_clusters);
+int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_clusters, int* device);
 void writeCluster(FILE* f, clusters_t clusters, int c,  int num_dimensions);
 void printCluster(clusters_t clusters, int c, int num_dimensions);
 float cluster_distance(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, int num_dimensions);
@@ -40,6 +40,7 @@ void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, 
 int
 main( int argc, char** argv) {
     int original_num_clusters, desired_num_clusters, stop_number;
+    int device = -1;
     
     // For profiling the seed kernel
     clock_t seed_start, seed_end, seed_total;
@@ -84,7 +85,7 @@ main( int argc, char** argv) {
    
     CUT_SAFE_CALL(cutStartTimer(io_timer));
     // Validate the command-line arguments, parse # of clusters, etc 
-    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
+    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters,&device);
     
     // Don't continue if we had a problem with the program arguments
     if(error) {
@@ -134,19 +135,20 @@ main( int argc, char** argv) {
     CUT_SAFE_CALL(cutStartTimer(cpu_timer));
     // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
     int GPUCount;
-    int device;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
     if(GPUCount == 0) {
         PRINT("Only 1 CUDA device found, defaulting to it.\n");
         device = 0;
-    } else if (GPUCount > 1 && DEVICE <= GPUCount) {
-        PRINT("Multiple CUDA devices found, selecting device %d\n",DEVICE);
+    } else if (GPUCount > 1 && device >= 0) {
+        PRINT("Multiple CUDA devices found, selecting device based on user input: %d\n",device);
+    } else if(GPUCount > 1 && DEVICE < GPUCount) {
+        PRINT("Multiple CUDA devices found, selecting based on compiled default: %d\n",DEVICE);
         device = DEVICE;
     } else {
         printf("Fatal Error: Unable to set device to %d, not enough GPUs.\n",DEVICE);
         exit(2);
     }
-    CUDA_SAFE_CALL(cudaSetDevice(DEVICE));
+    CUDA_SAFE_CALL(cudaSetDevice(device));
     
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device);
@@ -277,7 +279,7 @@ main( int argc, char** argv) {
     
     // Calculate an epsilon value
     //int ndata_points = num_events*num_dimensions;
-    float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
+    float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.0001;
     float likelihood, old_likelihood;
     int iters;
     
@@ -338,7 +340,7 @@ main( int argc, char** argv) {
         // This is the iterative loop for the EM algorithm.
         // It re-estimates parameters, re-computes constants, and then regroups the events
         // These steps keep repeating until the change in likelihood is less than some epsilon        
-        while(fabs(change) > epsilon && iters < MAX_ITERS) {
+        while(iters < MIN_ITERS || (iters < MAX_ITERS && fabs(change) > epsilon)) {
             old_likelihood = likelihood;
             
             DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
@@ -750,8 +752,8 @@ main( int argc, char** argv) {
 ///////////////////////////////////////////////////////////////////////////////
 // Validate command line arguments
 ///////////////////////////////////////////////////////////////////////////////
-int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_clusters) {
-    if(argc <= 5 && argc >= 4) {
+int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_clusters, int* device) {
+    if(argc <= 6 && argc >= 4) {
         // parse num_clusters
         if(!sscanf(argv[1],"%d",num_clusters)) {
             printf("Invalid number of starting clusters\n\n");
@@ -774,15 +776,8 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
             return 2;
         } 
         
-        // parse outfile
-        //FILE* outfile = fopen(argv[3],"w");
-        //if(!outfile) {
-        //    printf("Unable to create output file.\n\n");
-        //    printUsage(argv);
-        //    return 3;
-        //}        
         // parse target_num_clusters
-        if(argc == 5) {
+        if(argc >= 5) {
             if(!sscanf(argv[4],"%d",target_num_clusters)) {
                 printf("Invalid number of desired clusters.\n\n");
                 printUsage(argv);
@@ -799,7 +794,14 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
         
         // Clean up so the EPA is happy
         fclose(infile);
-        //fclose(outfile);
+
+        if(argc == 6) {
+            if(!sscanf(argv[5],"%d",device)) {
+                printf("Invalid device number. Not a number\n\n");
+                printUsage(argv);
+                return 1;
+            } 
+        }
         return 0;
     } else {
         printUsage(argv);
@@ -812,11 +814,12 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
 ///////////////////////////////////////////////////////////////////////////////
 void printUsage(char** argv)
 {
-   printf("Usage: %s num_clusters infile outfile [target_num_clusters]\n",argv[0]);
+   printf("Usage: %s num_clusters infile outfile [target_num_clusters] [device]\n",argv[0]);
    printf("\t num_clusters: The number of starting clusters\n");
    printf("\t infile: ASCII space-delimited FCS data file\n");
    printf("\t outfile: Clustering results output file\n");
    printf("\t target_num_clusters: A desired number of clusters. Must be less than or equal to num_clusters\n");
+   printf("\t device: CUDA device to use, default is the first device, 0.\n");
 }
 
 void writeCluster(FILE* f, clusters_t clusters, int c, int num_dimensions) {
