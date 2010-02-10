@@ -21,7 +21,8 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 20
+#define MAX_ITERS 50
+#define MIN_ITERS 50
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
@@ -32,7 +33,7 @@
 #define ENABLE_PRINT 1
 
 // Used to enable output of cluster results to .results and .summary files
-#define ENABLE_OUTPUT 1
+#define ENABLE_OUTPUT 0
 
 // Used to enable EMUPRINT macro, this can only be used when compiled for
 // in emulation mode. It is used to print out during cuda kernels

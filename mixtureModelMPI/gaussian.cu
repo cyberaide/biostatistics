@@ -515,7 +515,7 @@ main( int argc, char** argv) {
             // This is the iterative loop for the EM algorithm.
             // It re-estimates parameters, re-computes constants, and then regroups the events
             // These steps keep repeating until the change in likelihood is less than some epsilon        
-            while(fabs(change) > epsilon && iters < MAX_ITERS) {
+            while(iters < MIN_ITERS || (fabs(change) > epsilon && iters < MAX_ITERS)) {
                 #pragma omp master 
                 {
                     old_likelihood = likelihood;
@@ -747,8 +747,9 @@ main( int argc, char** argv) {
             DEBUG("GPU %d done with copying cluster data from device\n",tid); 
             
             // Gather membership values from each node
-            MPI_Gather((rank == 0) ? MPI_IN_PLACE: clusters[0].memberships,my_num_events*num_gpus,MPI_FLOAT,clusters[0].memberships,my_num_events*num_gpus,MPI_FLOAT,0,MPI_COMM_WORLD);
-            //MPI_Gather((rank == 0) ? MPI_IN_PLACE: clusters[0].memberships,my_num_events*num_gpus,MPI_FLOAT,clusters[0].memberships,num_events,MPI_FLOAT,0,MPI_COMM_WORLD);
+            // This isn't strictly neccesary unless we're saving the result to saved_clusters
+            int memberships_per_node = my_num_events*num_gpus*num_clusters;
+            MPI_Gather((rank == 0) ? MPI_IN_PLACE: clusters[0].memberships,memberships_per_node,MPI_FLOAT,clusters[0].memberships,memberships_per_node,MPI_FLOAT,0,MPI_COMM_WORLD);
     
             // Calculate Rissanen Score
             rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
@@ -839,6 +840,7 @@ main( int argc, char** argv) {
                 startTimer(timers.cpu);
                 // Broadcast all the clusters params to the other nodes
                 MPI_Barrier(MPI_COMM_WORLD);
+                DEBUG("Broadcasting combined clusters\n");
                 MPI_Bcast(clusters[0].N,num_clusters,MPI_FLOAT,0,MPI_COMM_WORLD);
                 MPI_Bcast(clusters[0].pi,num_clusters,MPI_FLOAT,0,MPI_COMM_WORLD);
                 MPI_Bcast(clusters[0].constant,num_clusters,MPI_FLOAT,0,MPI_COMM_WORLD);
@@ -846,7 +848,8 @@ main( int argc, char** argv) {
                 MPI_Bcast(clusters[0].means,num_clusters*num_dimensions,MPI_FLOAT,0,MPI_COMM_WORLD);
                 MPI_Bcast(clusters[0].R,num_clusters*num_dimensions*num_dimensions,MPI_FLOAT,0,MPI_COMM_WORLD);
                 MPI_Bcast(clusters[0].Rinv,num_clusters*num_dimensions*num_dimensions,MPI_FLOAT,0,MPI_COMM_WORLD);
-                MPI_Bcast(clusters[0].memberships,num_events,MPI_FLOAT,0,MPI_COMM_WORLD);
+                //MPI_Scatter(clusters[0].memberships,memberships_per_node,MPI_FLOAT,(rank == 0) ? MPI_IN_PLACE: clusters[0].memberships,memberships_per_node,MPI_FLOAT,0,MPI_COMM_WORLD);
+                DEBUG("Done\n");
                 MPI_Barrier(MPI_COMM_WORLD);
                 stopTimer(timers.cpu);
                 
@@ -854,6 +857,7 @@ main( int argc, char** argv) {
 
                 startTimer(timers.memcpy);
                 // Copy the clusters back to the device
+                DEBUG("Copying clusters to device\n");
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.N, clusters[0].N, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.pi, clusters[0].pi, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.constant, clusters[0].constant, sizeof(float)*num_clusters,cudaMemcpyHostToDevice));
