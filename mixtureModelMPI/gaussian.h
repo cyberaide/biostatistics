@@ -11,7 +11,7 @@
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 16
 #define NUM_THREADS 512 // should be a power of 2 for parallel reductions to work
-#define NUM_DIMENSIONS 58
+#define NUM_DIMENSIONS 32
 
 // Which GPU to use, if more than 1
 #define DEVICE 0
@@ -25,11 +25,11 @@
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only
-#define ENABLE_PRINT 0
+#define ENABLE_PRINT 1
 
 // Used to enable output of cluster results to .results and .summary files
 #define ENABLE_OUTPUT 1
