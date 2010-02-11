@@ -150,6 +150,13 @@ __global__ void ComputeMembershipMatrix(float* distances, float* memberships) {
 
 }
 
+__global__ void ComputeNormalizedMembershipMatrix(float* distances, float* memberships) {
+    // For each event
+    for(int i=threadIdx.x; i < NUM_EVENTS; i+= NUM_THREADS_MEMBERSHIP) {
+        memberships[blockIdx.x*NUM_EVENTS+i] = MembershipValueGPU(blockIdx.x, i, distances);
+    }
+}
+
 __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0;
     // Compute the distance from this event to the given cluster

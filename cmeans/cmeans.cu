@@ -251,7 +251,10 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStopTimer(timer_cpu));
 
     } while((iterations < MIN_ITERS) || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
-   
+  
+    CUT_SAFE_CALL(cutStartTimer(timer_gpu));
+    ComputeNormalizedMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships); 
+    CUT_SAFE_CALL(cutStartTimer(timer_gpu));
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Copying memberships from GPU\n");
     CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
