@@ -210,8 +210,8 @@ int main(int argc, char* argv[])
         
         // Compute starting/finishing indexes for the events for each gpu
         int events_per_gpu = NUM_EVENTS / num_gpus;
-        int start = cpu_thread_id*NUM_EVENTS/num_gpus;
-        int finish = (cpu_thread_id+1)*NUM_EVENTS/num_gpus;
+        int start = cpu_thread_id*events_per_gpu;
+        int finish = (cpu_thread_id+1)*events_per_gpu;
         if(cpu_thread_id == (num_gpus-1)) {
             finish = NUM_EVENTS;
         }
@@ -309,11 +309,12 @@ int main(int argc, char* argv[])
             DEBUG("\n");
         } while(iterations < MIN_ITERS || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
 
+        ComputeNormalizedMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
         // Copy memberships from the GPU
-        float* temp_memberships = (float*) malloc(sizeof(float)*my_num_events*NUM_CLUSTERS);
-        cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*my_num_events*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
+        float* temp_memberships = (float*) malloc(sizeof(float)*NUM_EVENTS*NUM_CLUSTERS);
+        cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*NUM_EVENTS*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
         for(int c=0; c < NUM_CLUSTERS; c++) {
-            memcpy(&(memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),&(temp_memberships[c*my_num_events]),sizeof(float)*my_num_events);
+            memcpy(&(memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),&(temp_memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),sizeof(float)*my_num_events);
         }
         free(temp_memberships);
 

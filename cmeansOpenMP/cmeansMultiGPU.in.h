@@ -45,7 +45,7 @@
 #define ENABLE_PRINT 1
 
 // Used to enable output of cluster results to .results and .summary files
-#define ENABLE_OUTPUT 0
+#define ENABLE_OUTPUT 1
 
 #if ENABLE_DEBUG
 #define DEBUG(fmt,args...) printf(fmt, ##args)
