@@ -1,9 +1,3 @@
-#ifdef MULTI_GPU
-    #include "cmeansMultiGPU.h"
-#else
-    #include "cmeans.h"
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
@@ -12,10 +6,11 @@
 #include <time.h>
 #include <iostream>
 #include <fstream>
-
-#include "timers.h"
 #include <cuda_runtime.h>
 #include <cutil.h>
+
+#include "timers.h"
+#include "cmeans.h"
 
 #include "MDL.h"
 
@@ -32,9 +27,6 @@ float MembershipValueDist(const float* clusters, const float* events, int eventI
     }
     return 1/sum;
 }
-
-
-
 
 float CalculateQII(float* events, float* clusters, int cluster_index_I){
     float EI = 0;
@@ -248,44 +240,3 @@ int* MDLGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* md
 }
 #endif
 
-/*long TabuSearchGPU(float* d_matrix){
-    //long config = (long)pow((float)2, (float)(NUM_CLUSTERS )) - 1; // initialize at 111...11
-    long config = (((long)1) << NUM_CLUSTERS) - 1;
-    int history[NUM_CLUSTERS] = {0};
-    float minimumScore = FindScoreGPU(d_matrix, config);
-    
-    long minimumConfig = config;
-    int minimumIndex=0;
-
-    for(int i = 0; i < TABU_ITER; i++){
-        if(i%25 == 0) printf("\tOn iteration %d\n", i);
-
-        float currentScore = INT_MIN;//FLT_MAX;
-
-        for(int j = 0; j < NUM_CLUSTERS; j++){
-            if(history[j] == 0){ // can change
-                //float tmpScore = EvaluateSolution(matrix, config ^ (long)pow((float)2, (float)(NUM_CLUSTERS - j - 1)));
-                float tmpScore = FindScoreGPU(d_matrix, config ^ (1 << (NUM_CLUSTERS - j - 1)));
-                if(tmpScore > currentScore && tmpScore != 0){
-                    currentScore = tmpScore;
-                    minimumIndex = j;
-                }
-            }
-            else{
-                history[j]--;
-            }
-        }
-        
-        //config = config ^ (long)pow((float)2, (float)(NUM_CLUSTERS - minimumIndex - 1));
-        config = config ^ (1 << (NUM_CLUSTERS - minimumIndex - 1));
-        history[minimumIndex] = TABU_TENURE;
-        
-        if(currentScore > minimumScore){
-            minimumScore = currentScore;
-            minimumConfig = config;
-        }
-
-    }
-    return minimumConfig;
-
-}*/

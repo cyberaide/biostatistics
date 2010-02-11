@@ -1,140 +1,21 @@
 #include <stdlib.h>
-
-#ifdef MULTI_GPU
-    #include "cmeansMultiGPU.h"
-#else
-    #include "cmeans.h"
-#endif
-
 #include <float.h>
 #include <iostream>
 #include <fstream>
 #include <math.h>
 #include <time.h>
-
 #include <cuda_runtime.h>
 #include <cutil.h>
-//#include <cmeans_kernel.cu>
+
+#include "cmeans.h"
 
 using namespace std;
-
-void FindCharacteristics(float* events, float* clusters, int finalClusterCount, char* inFileName){
-
-    float* clusterVolumes = (float*)malloc(sizeof(float) * finalClusterCount);
-    float* clusterDensities = (float*)malloc(sizeof(float) * finalClusterCount);
-    float* clusterOccupancies = (float*)malloc(sizeof(float) * finalClusterCount);
-    ofstream charFile;  
-    char charFileName [512];
-    sprintf(charFileName, "%s_volume_log_%d", inFileName, NUM_CLUSTERS);
-    cout << "Characteristics Log file name = " << charFileName << endl;
-    charFile.open(charFileName);
-    fflush(stdout); 
-    
-    for(unsigned i = 0; i < sizeof(VOLUME_INC_PARAMS)/sizeof(float); i++){
-#if !VOLUME_TYPE
-        FindBoxCharacteristics(events, clusters, finalClusterCount, clusterVolumes, clusterDensities, clusterOccupancies, i);
-#else
-        FindSphereCharacteristics(events, clusters, finalClusterCount, clusterVolumes, clusterDensities, clusterOccupancies, i);
-#endif
-        
-        for( int j = 0; j < finalClusterCount; j++){
-            charFile << j << ", " << VOLUME_INC_PARAMS[i] << ", " 
-                 << clusterVolumes[j] << ", " << clusterDensities[j] 
-                 << ", " << clusterOccupancies[j]/NUM_EVENTS << endl;
-        }
-    }
-    charFile.close();
-
-    ReportSummary(clusters, finalClusterCount, inFileName);
-
-    ReportResults(events, clusters, finalClusterCount, inFileName);
-
-    free(clusterVolumes);
-    free(clusterDensities);
-    free(clusterOccupancies);
-}
-
-void FindBoxCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){
-    
-    float* minArray = (float*)malloc(sizeof(float)*finalClusterCount*NUM_DIMENSIONS);
-    float* maxArray = (float*)malloc(sizeof(float)*finalClusterCount*NUM_DIMENSIONS);
-    for(int k = 0; k < finalClusterCount*NUM_DIMENSIONS; k++){
-        minArray[k] = FLT_MAX;
-        maxArray[k] = FLT_MIN;
-    }
-
-    for(int k = 0; k < finalClusterCount; k++){
-        volume[k] = 0;
-        occupancy[k] = 0;
-        density[k] = 0; 
-        
-        for(int i = 0; i < NUM_EVENTS; i++){
-            if(MembershipValueReduced(clusters, events, k, i, finalClusterCount) >  VOLUME_INC_PARAMS[includeIndex]){
-                // include in volume calculation
-                occupancy[k]++;
-                for(int j = 0; j < NUM_DIMENSIONS; j++){
-                    if(maxArray[k*NUM_DIMENSIONS + j] < events[i*NUM_DIMENSIONS + j]){
-                        maxArray[k*NUM_DIMENSIONS + j] = events[i*NUM_DIMENSIONS + j];  
-                    }
-                    if(minArray[k*NUM_DIMENSIONS + j] > events[i*NUM_DIMENSIONS + j]){
-                        minArray[k*NUM_DIMENSIONS + j] = events[i*NUM_DIMENSIONS + j];  
-                    }
-                }
-            }
-        }
-        volume[k] = maxArray[k*NUM_DIMENSIONS] - minArray[k*NUM_DIMENSIONS];
-        for(int i = 1; i < NUM_DIMENSIONS; i++){
-            volume[k] *=  (maxArray[k*NUM_DIMENSIONS + i] - minArray[k*NUM_DIMENSIONS + i]);
-        }
-        density[k] = occupancy[k] / volume[k];
-    }
-}
-
-void FindSphereCharacteristics(float* events, float* clusters, int finalClusterCount, float* volume, float* density, float* occupancy, int includeIndex){
-
-    float maxDist = 0;
-    
-    for(int k = 0; k < finalClusterCount; k++){
-        volume[k] = 0;
-        occupancy[k] = 0;
-        density[k] = 0; 
-        
-        for(int i = 0; i < NUM_EVENTS; i++){
-            float distance = CalculateDistanceCPU(clusters, events, k, i);
-            if(MembershipValueReduced(clusters, events, k, i, finalClusterCount) > VOLUME_INC_PARAMS[includeIndex]){
-                // include in volume calculation
-                occupancy[k]++;
-                if(distance > maxDist){
-                    maxDist = distance;
-                }
-            }
-            
-        }
-        if(NUM_DIMENSIONS & 1) { // odd d => even sphere
-            
-            volume[k] = pow(2*PI, ((NUM_DIMENSIONS - 1) >> 1))*pow((maxDist/2), (NUM_DIMENSIONS-1)); 
-            int denom = 2;
-            for(int i = 4; i < NUM_DIMENSIONS; i+=2){
-                denom *= i;
-            }
-            volume[k] /= denom;
-        } else{
-            volume[k] = 2*pow(2*PI, ((NUM_DIMENSIONS - 2) >> 1))*pow((maxDist/2), (NUM_DIMENSIONS-1)); 
-            int denom = 1;
-            for(int i = 3; i < NUM_DIMENSIONS; i+=2){
-                denom *= i;
-            }
-            volume[k] /= denom;
-        }
-        density[k] = occupancy[k] / volume[k];
-    }
-}
 
 void ReportSummary(float* clusters, int count, char* inFileName){
     ofstream myfile;
     
     char logFileName [512];
-    sprintf(logFileName, "%s_summary_log_%d_%d_%d", inFileName, NUM_CLUSTERS,  CPU_ONLY, MDL_on_GPU);
+    sprintf(logFileName, "%s.summary", inFileName);
     cout << "Log file name = " << logFileName << endl;
     myfile.open(logFileName);
     for(int i = 0; i < count; i ++){
@@ -148,13 +29,32 @@ void ReportSummary(float* clusters, int count, char* inFileName){
 
 }
 
-void ReportResults(float* events, float* clusters, int count, char* inFileName){
+void ReportBinaryResults(float* events, float* memberships, int count, char* inFileName){
+    FILE* myfile;
+    char logFileName [512];
+    sprintf(logFileName, "%s.results", inFileName);
+    cout << "Results Log file name = " << logFileName << endl;
+    myfile = fopen(logFileName,"wb");
+
+    for(int i = 0; i < NUM_EVENTS; i++){
+        for(int j = 0; j < NUM_DIMENSIONS; j++){
+            fwrite(&events[i*NUM_DIMENSIONS + j],4,1,myfile);
+        }
+        for(int j = 0; j < count; j++){
+            fwrite(&memberships[j*NUM_EVENTS+i],4,1,myfile); 
+        }
+    }
+    //fwrite(events,4,NUM_EVENTS*NUM_DIMENSIONS,myfile);
+    //fwrite(memberships,4,NUM_EVENTS*NUM_CLUSTERS,myfile);
+    fclose(myfile);
+}
+
+void ReportResults(float* events, float* memberships, int count, char* inFileName){
     ofstream myfile;
     char logFileName [512];
-    sprintf(logFileName, "%s_%d_out.txt", inFileName, NUM_CLUSTERS);
+    sprintf(logFileName, "%s.results", inFileName);
     cout << "Results Log file name = " << logFileName << endl;
     myfile.open(logFileName);
-    
 
     for(int i = 0; i < NUM_EVENTS; i++){
         for(int j = 0; j < NUM_DIMENSIONS-1; j++){
@@ -163,36 +63,13 @@ void ReportResults(float* events, float* clusters, int count, char* inFileName){
         myfile << events[i*NUM_DIMENSIONS + NUM_DIMENSIONS - 1];
         myfile << "\t";
         for(int j = 0; j < count-1; j++){
-            myfile << MembershipValueReduced(clusters, events, j, i, count) << ","; 
+            myfile << memberships[j*NUM_EVENTS+i] << ","; 
         }
-        myfile << MembershipValueReduced(clusters, events, count-1, i, count);
-        myfile << endl;
-        
-    }
-    for(int i = 0; i < count; i++){
-        for(int j = 0; j < NUM_DIMENSIONS-1; j++){
-            myfile << clusters[i*NUM_DIMENSIONS + j] << ",";
-        }
-        myfile << clusters[i*NUM_DIMENSIONS+NUM_DIMENSIONS-1];
-        myfile << "\t";
-        for(int j = 0; j < count; j++){
-            if(j == i)
-                myfile << 1; 
-            else
-                myfile << 0;
-
-            if(j < (count-1)) {
-                myfile << ",";
-            }
-        }
+        myfile << memberships[(count-1)*NUM_EVENTS+i] << ","; 
         myfile << endl;
     }
     myfile.close();
-
 }
-
-
-
 
 float MembershipValueReduced(const float* clusters, const float* events, int clusterIndex, int eventIndex, int validClusters){
     float myClustDist = CalculateDistanceCPU(clusters, events, clusterIndex, eventIndex);

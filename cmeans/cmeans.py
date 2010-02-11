@@ -10,9 +10,8 @@ import os
 # Delimiter used in the input files
 DELIMITER = ","
 
-
 def usage():
-    print "Usage: ./cmeans INPUT_FILE NUM_CLUSTERS [FUZZINESS=2] [THRESHOLD=0.0001] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [VOLUME_TYPE=0] [CPU_ONLY=0] [MDL_ON_GPU=1]"
+    print "Usage: ./cmeans.py INPUT_FILE NUM_CLUSTERS [THRESHOLD=0.0001] [MIN_ITERS=0] [MAX_ITERS=100] [DEVICE=0] [FUZZINESS=2] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [MDL=0] [CPU_ONLY=0]"
     print
     print " INPUT_FILE and NUM_CLUSTERS are required."
     print " The rest of the parameters can be specified in NAME=VALUE form"
@@ -25,8 +24,11 @@ def parseInputArgs():
     params = {
         'INPUT_FILE' : '',
         'NUM_CLUSTERS' : 0,
-        'FUZZINESS' : 2,
         'THRESHOLD' : 0.0001,
+        'MIN_ITERS' : 0,
+        'MAX_ITERS' : 100,
+        'DEVICE' : 0,
+        'FUZZINESS' : 2,
         'DISTANCE_MEASURE': 0,
         'K1': 1.0,
         'K2': 0.01,
@@ -34,24 +36,27 @@ def parseInputArgs():
         'MEMBER_THRESHOLD': 0.05,
         'TABU_ITER': 100,
         'TABU_TENURE': 5,
-        'VOLUME_TYPE': 0,
+        'MDL': 0,
         'CPU_ONLY': 0,
-        'MDL_ON_GPU': 1,
     }
     num_params = len(params.keys())
     if num_args == num_params:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
-        params['FUZZINESS'] = args[3]
-        params['THRESHOLD'] = args[4]
-        params['DISTANCE_MEASURE'] = args[5]
-        params['K1'] = args[6]
-        params['K2'] = args[7]
-        params['K3'] = args[8]
-        params['MEMBER_THRESHOLD'] = args[9]
-        params['TABU_ITER'] = args[10]
-        params['TABU_TENURE'] = args[11]
-        params['VOLUME_TYPE'] = args[12]
+        params['THRESHOLD'] = args[3]
+        params['MIN_ITERS'] = args[4]
+        params['MAX_ITERS'] = args[5]
+        params['DEVICE'] = args[6]
+        params['FUZZINESS'] = args[7]
+        params['DISTANCE_MEASURE'] = args[8]
+        params['K1'] = args[9]
+        params['K2'] = args[10]
+        params['K3'] = args[11]
+        params['MEMBER_THRESHOLD'] = args[12]
+        params['TABU_ITER'] = args[13]
+        params['TABU_TENURE'] = args[14]
+        params['MDL'] = args[15]
+        params['CPU_ONLY'] = args[16]
     elif num_args == 3:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
@@ -105,7 +110,6 @@ def parseInputArgs():
     elif num_dimensions > 24:
         num_threads = 64
     params['NUM_THREADS'] = num_threads
-    #params['NUM_THREADS'] = 256
 
     return params    
 
@@ -131,6 +135,6 @@ if __name__ == '__main__':
 
     # Run the cmeans program
     if not error:
-        cmd = '../../bin/linux/release/cmeans "%s"' % params['INPUT_FILE']
+        cmd = '../../bin/linux/release/cmeansSingleGPU "%s"' % params['INPUT_FILE']
         print cmd
         os.system(cmd)

@@ -27,17 +27,14 @@
 
 
 # Add source files here
-EXECUTABLE	:= cmeans
+EXECUTABLE	:= cmeansSingleGPU
 # CUDA source files (compiled with cudacc)
-CUFILES		:= cmeans.cu cmeans_kernel.cu
+CUFILES		:= cmeans.cu
 # CUDA dependency files
 CU_DEPS		:= \
 	cmeans_kernel.cu \
 	cmeans.h 	 \
 	cmeanscu.h 	 \
-	kmeans_kernel.cu \
-	kmeans.cu \
-	kmeans.h
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= \

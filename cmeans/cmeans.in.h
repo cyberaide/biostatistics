@@ -4,11 +4,11 @@
 #include <time.h>
 
 // CPU vs GPU
+#define ENABLE_MDL $MDL$
 #define CPU_ONLY $CPU_ONLY$
-#define MDL_on_GPU $MDL_ON_GPU$
 
 // Which GPU device to use
-#define DEVICE 1
+#define DEVICE $DEVICE$
 
 // number of clusters
 #define NUM_CLUSTERS $NUM_CLUSTERS$
@@ -21,6 +21,7 @@
 
 // input file delimiter (normally " " or "," or "\t")
 #define DELIMITER ","
+#define LINE_LABELS 1
 
 // Parameters
 #define FUZZINESS $FUZZINESS$
@@ -33,24 +34,43 @@
 #define TABU_TENURE $TABU_TENURE$
 #define VOLUME_TYPE $VOLUME_TYPE$
 #define DISTANCE_MEASURE $DISTANCE_MEASURE$
+#define MIN_ITERS $MIN_ITERS$
+#define MAX_ITERS $MAX_ITERS$
 
-const float VOLUME_INC_PARAMS[] = {0.05,0.1,0.15};
+// Prints verbose output during the algorithm, enables DEBUG macro
+#define ENABLE_DEBUG 0
+
+// Used to enable regular print outs (such as the Rissanen scores, clustering results)
+// This should be enabled for general use and disabled for performance evaluations
+#define ENABLE_PRINT 1
+
+// Used to enable output of cluster results to .results and .summary files
+#define ENABLE_OUTPUT 0
+
+#if ENABLE_DEBUG
+#define DEBUG(fmt,args...) printf(fmt, ##args)
+#else
+#define DEBUG(fmt,args...)
+#endif
+
+#if ENABLE_PRINT
+#define PRINT(fmt,args...) printf(fmt, ##args)
+#else
+#define PRINT(fmt,args...)
+#endif
 
 // number of Threads and blocks
 #define Q_THREADS 192 // number of threads per block building Q
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
-#define NUM_THREADS_MATRIX 320
+#define NUM_THREADS_DISTANCE 256
+#define NUM_THREADS_MEMBERSHIP 256
+#define NUM_THREADS_UPDATE 256
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
 
 // Amount of loop unrolling for the distance and membership calculations accross dimensions
 #define UNROLL_FACTOR 1
-
-// use file or not - just for testing
-#define FAKE 0
-// never not 1, should be removed
-#define THREADS_PER_EVENT 1
 
 // function definitions
 
