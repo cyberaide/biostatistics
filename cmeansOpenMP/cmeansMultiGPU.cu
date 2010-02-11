@@ -64,14 +64,14 @@ float getTimerValue(cudaTimer_t timer) {
 /************************************************************************/
 int main(int argc, char* argv[])
 {
-    cudaTimer_t timer_io; // Timer for I/O, such as reading FCS file and outputting result files
-    cudaTimer_t timer_total; // Total time
+    unsigned int timer_io; // Timer for I/O, such as reading FCS file and outputting result files
+    unsigned int timer_total; // Total time
    
-    createTimer(&timer_io);
-    createTimer(&timer_total);
+    cutCreateTimer(&timer_io);
+    cutCreateTimer(&timer_total);
     
-    startTimer(timer_total);
-    startTimer(timer_io);
+    cutStartTimer(timer_total);
+    cutStartTimer(timer_io);
     
     // [program name]  [data file]
     if(argc != 2){
@@ -114,7 +114,7 @@ int main(int argc, char* argv[])
     //srand((unsigned)(time(0)));
     srand(42);
     
-    stopTimer(timer_io);
+    cutStopTimer(timer_io);
     
     // Allocate arrays for the cluster centers
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
@@ -145,6 +145,9 @@ int main(int argc, char* argv[])
             transposedEvents[j*NUM_EVENTS+i] = myEvents[i*NUM_DIMENSIONS+j];
         }
     }
+
+    float* memberships = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_EVENTS);
+    int* finalClusterConfig;
    
     ////////////////////////////////////////////////////////////////
     // run as many CPU threads as there are CUDA devices
@@ -159,7 +162,7 @@ int main(int argc, char* argv[])
     //num_gpus = 1;
     omp_set_num_threads(num_gpus);  // create as many CPU threads as there are CUDA devices
     //omp_set_num_threads(2*num_gpus);// create twice as many CPU threads as there are CUDA devices
-    #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators)
+    #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators,memberships,finalClusterConfig)
     {
         cudaTimer_t timer_memcpy; // Timer for GPU <---> CPU memory copying
         cudaTimer_t timer_cpu; // Timer for processing on CPU
@@ -185,6 +188,8 @@ int main(int argc, char* argv[])
         startTimer(timer_memcpy);
         float* d_distanceMatrix;
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+        float* d_memberships;
+        CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
         float* d_E;// = AllocateEvents(myEvents);
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS));
         float* d_C;// = AllocateClusters(myClusters);
@@ -204,11 +209,13 @@ int main(int argc, char* argv[])
         int iterations = 0;
         
         // Compute starting/finishing indexes for the events for each gpu
+        int events_per_gpu = NUM_EVENTS / num_gpus;
         int start = cpu_thread_id*NUM_EVENTS/num_gpus;
         int finish = (cpu_thread_id+1)*NUM_EVENTS/num_gpus;
         if(cpu_thread_id == (num_gpus-1)) {
             finish = NUM_EVENTS;
         }
+        int my_num_events = finish-start+1;
         printf("GPU %d, Starting Event: %d, Ending Event: %d\n",cpu_thread_id,start,finish);
 
         do{
@@ -227,11 +234,18 @@ int main(int argc, char* argv[])
 
             startTimer(timer_gpu);
             DEBUG("Launching ComputeDistanceMatrix kernel\n");
-            ComputeDistanceMatrix<<< NUM_CLUSTERS, 320  >>>(d_C, d_E, d_distanceMatrix, start, finish);
+            ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
             cudaThreadSynchronize();
             printCudaError();
+            
+            DEBUG("Launching ComputeMembershipMatrix kernel\n");
+            ComputeMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+            cudaThreadSynchronize();
+            printCudaError();
+
             DEBUG("Launching UpdateClusterCentersGPU kernel\n");
-            UpdateClusterCentersGPU<<< NUM_BLOCKS, NUM_THREADS >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, start, finish);
+            //UpdateClusterCentersGPU<<< NUM_BLOCKS, NUM_THREADS >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, start, finish);
+            UpdateClusterCentersGPU2<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, d_denoms, start, finish);
             cudaThreadSynchronize();
             printCudaError();
             
@@ -295,34 +309,29 @@ int main(int argc, char* argv[])
             DEBUG("\n");
         } while(iterations < MIN_ITERS || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
 
+        // Copy memberships from the GPU
+        float* temp_memberships = (float*) malloc(sizeof(float)*my_num_events*NUM_CLUSTERS);
+        cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*my_num_events*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
+        for(int c=0; c < NUM_CLUSTERS; c++) {
+            memcpy(&(memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),&(temp_memberships[c*my_num_events]),sizeof(float)*my_num_events);
+        }
+        free(temp_memberships);
+
         if(cpu_thread_id == 0) {        
             if(abs(diff) > THRESHOLD){
                 PRINT("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
             }
-            startTimer(timer_io);
-            
             PRINT("C-means complete\n");
-            PRINT("\n");
-
-            for(int i=0; i < NUM_CLUSTERS; i++){
-                PRINT("GPU %d, Center %d: ",cpu_thread_id,i);
-                for(int k = 0; k < NUM_DIMENSIONS; k++)
-                    PRINT("%.2f\t", myClusters[i*NUM_DIMENSIONS + k]);
-                PRINT("\n");
-            }
-            
-            stopTimer(timer_io);
         }
         
         #pragma omp barrier // sync threads 
-            
-        int* finalClusterConfig;
-        float mdlTime = 0;
        
         #if !ENABLE_MDL
-            // Don't attempt MDL, save all clusters 
-            finalClusterConfig = (int*) malloc(sizeof(int)*NUM_CLUSTERS);
-            memset(finalClusterConfig,1,sizeof(int)*NUM_CLUSTERS);
+            if(cpu_thread_id == 0) {
+                // Don't attempt MDL, save all clusters 
+                finalClusterConfig = (int*) malloc(sizeof(int)*NUM_CLUSTERS);
+                memset(finalClusterConfig,1,sizeof(int)*NUM_CLUSTERS);
+            }
         #else
             PRINT("Calculating Q Matrix Section %d\n",cpu_thread_id);
            
@@ -367,28 +376,6 @@ int main(int argc, char* argv[])
         fflush(stdout);
         #pragma omp barrier
  
-        if(cpu_thread_id == 0) {        
-            startTimer(timer_io);
-
-            PRINT("Final Clusters are:\n");
-            int newCount = 0;
-            for(int i = 0; i < NUM_CLUSTERS; i++){
-                if(finalClusterConfig[i]){
-                    for(int j = 0; j < NUM_DIMENSIONS; j++){
-                        newClusters[newCount * NUM_DIMENSIONS + j] = myClusters[i*NUM_DIMENSIONS + j];
-                        PRINT("%.2f\t", myClusters[i*NUM_DIMENSIONS + j]);
-                    }
-                    newCount++;
-                    PRINT("\n");
-                }
-            }
-            
-            #if ENABLE_OUTPUT 
-                ReportSummary(newClusters, newCount, argv[1]);
-                ReportResults(myEvents, newClusters, newCount, argv[1]);
-            #endif
-            stopTimer(timer_io);
-        }
         printf("\n\n"); 
         printf("Thread %d: GPU memcpy Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_memcpy));
         printf("Thread %d: CPU processing Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_cpu));
@@ -403,10 +390,31 @@ int main(int argc, char* argv[])
         #pragma omp barrier
         DEBUG("Thread %d done.\n",cpu_thread_id);
     } // end of omp_parallel block
-    stopTimer(timer_total);
     
-    printf("Total Time (ms): %f\n",getTimerValue(timer_total));
-    printf("I/O Time (ms): %f\n",getTimerValue(timer_io));
+    cutStartTimer(timer_io);
+
+    PRINT("Final Clusters are:\n");
+    int newCount = 0;
+    for(int i = 0; i < NUM_CLUSTERS; i++){
+        if(finalClusterConfig[i]){
+            for(int j = 0; j < NUM_DIMENSIONS; j++){
+                newClusters[newCount * NUM_DIMENSIONS + j] = myClusters[i*NUM_DIMENSIONS + j];
+                PRINT("%.2f\t", myClusters[i*NUM_DIMENSIONS + j]);
+            }
+            newCount++;
+            PRINT("\n");
+        }
+    }
+    
+    #if ENABLE_OUTPUT 
+        ReportSummary(newClusters, newCount, argv[1]);
+        ReportResults(myEvents, memberships, newCount, argv[1]);
+    #endif
+    cutStopTimer(timer_io);
+    cutStopTimer(timer_total);
+    
+    printf("Total Time (ms): %f\n",cutGetTimerValue(timer_total));
+    printf("I/O Time (ms): %f\n",cutGetTimerValue(timer_io));
     printf("\n\n"); 
     
     free(newClusters);
