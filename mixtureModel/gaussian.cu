@@ -1,5 +1,5 @@
 /*
- * Gaussian Mixture Model Clustering wtih CUDA
+ * Gaussian Mixture Model Clustering with CUDA
  *
  * Author: Andrew Pangborn
  *
@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <time.h> // for clock(), clock_t, CLOCKS_PER_SEC
+#include <time.h> 
 
 // includes, project
 #include <cutil.h>
@@ -22,8 +22,6 @@
 
 // includes, kernels
 #include <theta_kernel.cu>
-
-#include <cublas.h>
 
 // Function prototypes
 extern "C" float* readData(char* f, int* ndims, int*nevents);
@@ -155,14 +153,6 @@ main( int argc, char** argv) {
     //PRINT("\nUsing device - %s\n\n", prop.name);
     printf("\nUsing device - %s\n\n", prop.name);
     
-    cublasStatus status;
-    status = cublasInit();
-    if(status != CUBLAS_STATUS_SUCCESS) {
-        printf("!!! CUBLAS initialization error\n");
-    }
-    
-    int num_threads = NUM_THREADS;
-
     // Setup the cluster data structures on host
     clusters_t clusters;
     clusters.N = (float*) malloc(sizeof(float)*original_num_clusters);
@@ -231,12 +221,6 @@ main( int argc, char** argv) {
     CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
     DEBUG("Finished copying cluster data to device.\n");
 
-    // for cublas result for means: M x D
-    //float* h_C = (float*) calloc(num_dimensions*original_num_clusters,sizeof(float));
-    //float* d_C;
-    //CUDA_SAFE_CALL(cudaMalloc((void**) &(d_C), sizeof(float)*original_num_clusters*num_dimensions)); 
-    //CUDA_SAFE_CALL(cudaMemcpy(d_C,h_C,sizeof(float)*num_dimensions*original_num_clusters,cudaMemcpyHostToDevice));
-    
     int mem_size = num_dimensions*num_events*sizeof(float);
     
     float min_rissanen, rissanen;
@@ -261,16 +245,15 @@ main( int argc, char** argv) {
 
     // seed_clusters sets initial pi values, 
     // finds the means / covariances and copies it to all the clusters
-    // TODO: Does it make any sense to use multiple blocks for this?
     seed_start = clock();
-    seed_clusters<<< 1, 256 >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
+    seed_clusters<<< 1, NUM_THREADS_MSTEP >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, num_events);
     cudaThreadSynchronize();
     DEBUG("done.\n"); 
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
    
     DEBUG("Invoking constants kernel...",num_threads);
     // Computes the R matrix inverses, and the gaussian constant
-    constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
+    constants_kernel<<<original_num_clusters, 32>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
     CUT_CHECK_ERROR("Constants Kernel execution failed: ");
     DEBUG("done.\n");
@@ -309,8 +292,8 @@ main( int argc, char** argv) {
         DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
         regroup_start = clock();
         //regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
-        regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
-        regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
+        estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
+        estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
         regroup_end = clock();
         regroup_total += regroup_end - regroup_start;
@@ -346,60 +329,23 @@ main( int argc, char** argv) {
             DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
             params_start = clock();
             // This kernel computes a new N, pi isn't updated until compute_constants though
-            mstep_N<<<num_clusters, 256>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
+            mstep_N<<<num_clusters, NUM_THREADS_MSTEP>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(&temp_clusters,d_clusters,sizeof(clusters_t),cudaMemcpyDeviceToHost));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.N,temp_clusters.N,sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
             CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
             // This kernel computes new means
-            //mstep_means1<<<num_clusters, NUM_THREADS>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
-
             dim3 gridDim1(num_clusters,num_dimensions);
-            mstep_means2<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
             CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
             
-            /*
-            // Alternative way to calculate the means via matrix multiplication
-            // Means = Data * P + 0
-            //  Data is fcs events, a [N x D] (fcs_data_by_event) matrix, but [D x N] in column major
-            //  P is the memberships, a [M x N], but [N x M] in column-major
-            //  Thus we get an [D x M] result for the means in column-major format, so it's actually [M x D] in row-major
-            /// This is slower than my mstep_means kernel when either D or M is relatively small (like 16 and 32).
-            //cublasSgemm('t','t',num_clusters,num_dimensions,num_events,1.0,temp_clusters.memberships,num_events,d_fcs_data_by_event,num_dimensions,0.0,d_C,num_clusters);
-            cublasSgemm('n','n',num_dimensions,num_clusters,num_events,1.0,d_fcs_data_by_event,num_dimensions,temp_clusters.memberships,num_events,0.0,d_C,num_dimensions);
-            cudaThreadSynchronize();
-            status = cublasGetError();
-            if(status != CUBLAS_STATUS_SUCCESS) {  
-                printf("Cublas kernel error!\n");
-                return 1;
-            }
-            CUDA_SAFE_CALL(cudaMemcpy(h_C,d_C,sizeof(float)*num_dimensions*num_clusters,cudaMemcpyDeviceToHost));
-            //printf("\n");
-            for(int i=0; i < num_clusters; i++) {
-                for(int j=0; j < num_dimensions; j++) {
-                    //clusters.means[i*num_dimensions+j] = h_C[j*num_clusters+i] / clusters.N[i];
-                    clusters.means[i*num_dimensions+j] = h_C[i*num_dimensions+j] / clusters.N[i];
-                    //printf("%.2f ",clusters.means[i*num_dimensions+j]);
-                }
-                //printf("\n");
-            }
-            //CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters.means,sizeof(float)*num_dimensions*num_clusters,cudaMemcpyHostToDevice));
-            */
-
             // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
             dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
-            //dim3 gridDim2(num_clusters,num_dimensions*num_dimensions);
-            mstep_covariance1<<<gridDim2, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
-            //return 1;
-            
-            // This method is fast on a 1.3 device with higher dimensionality (where num_dimensions^2 >= NUM_THREADS)
-            //  since each thread handles one spot in the matrix, low d data means low threads and wasted resources
-            //mstep_covariance2<<<num_clusters, NUM_THREADS>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
-            
+            mstep_covariance<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
             CUT_CHECK_ERROR("M-step Kernel execution failed: ");
@@ -407,12 +353,11 @@ main( int argc, char** argv) {
             params_iterations++;
             DEBUG("done.\n");
             DEBUG("Model Parameters Kernel Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
-            //return 0; // RETURN FOR FASTER PROFILING
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_start = clock();
-            constants_kernel<<<num_clusters, NUM_THREADS>>>(d_clusters,num_clusters,num_dimensions);
+            constants_kernel<<<num_clusters, 32>>>(d_clusters,num_clusters,num_dimensions);
             cudaThreadSynchronize();
             constants_end = clock();
             CUT_CHECK_ERROR("Constants Kernel execution failed: ");
@@ -424,9 +369,8 @@ main( int argc, char** argv) {
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
-            //regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
-            regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
-            regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
+            estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
+            estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
             CUT_CHECK_ERROR("E-step Kernel execution failed: ");
             regroup_end = clock();
@@ -762,7 +706,7 @@ int validateArguments(int argc, char** argv, int* num_clusters, int* target_num_
         } 
         
         // Check bounds for num_clusters
-        if(*num_clusters < 1 || *num_clusters > MAX_CLUSTERS) {
+        if(*num_clusters < 1) {
             printf("Invalid number of starting clusters\n\n");
             printUsage(argv);
             return 1;

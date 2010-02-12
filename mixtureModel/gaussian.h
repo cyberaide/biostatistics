@@ -1,17 +1,25 @@
 /*
  * Parameters file for gaussian mixture model based clustering application
+ *
+ * Written By: Andrew Pangborn
+ * 01/2009
+ *
+ * Department of Computer Engineering
+ * Rochester Institute of Technology
+ *
  */
 
 #ifndef GAUSSIAN_H
 #define GAUSSIAN_H
 
-// Maxinum number of threads per block is 512, so that limits us to 512 clusters
-// Probably will run out of memory and make the computation intractable far before 512 clusters though
-#define MAX_CLUSTERS 512
 #define PI  3.1415926535897931
-#define	NUM_BLOCKS 16
-#define NUM_THREADS 512 // Must be power of 2 due to butterfly sum reductions
-#define NUM_DIMENSIONS 56
+#define COVARIANCE_DYNAMIC_RANGE 1E6
+
+// Number of blocks per cluster for the E-step
+#define NUM_BLOCKS 16
+#define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
+#define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
+#define NUM_DIMENSIONS 24
 
 // Which GPU to use, if more than 1
 #define DEVICE 0
@@ -22,7 +30,7 @@
 // Maximum number of iterations for the EM convergence loop
 #define MAX_ITERS 20
 // Minimum number of iterations for the EM convergence loop (normally 0 unless doing performance testing)
-#define MIN_ITERS MAX_ITERS
+#define MIN_ITERS 20
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
