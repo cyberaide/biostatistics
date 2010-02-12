@@ -1,52 +1,17 @@
 /*
- * Copyright 1993-2007 NVIDIA Corporation.  All rights reserved.
+ * CUDA Kernels for Expectation Maximization with Gaussian Mixture Models
  *
- * NOTICE TO USER:
- *
- * This source code is subject to NVIDIA ownership rights under U.S. and
- * international Copyright laws.  Users and possessors of this source code
- * are hereby granted a nonexclusive, royalty-free license to use this code
- * in individual and commercial software.
- *
- * NVIDIA MAKES NO REPRESENTATION ABOUT THE SUITABILITY OF THIS SOURCE
- * CODE FOR ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR
- * IMPLIED WARRANTY OF ANY KIND.  NVIDIA DISCLAIMS ALL WARRANTIES WITH
- * REGARD TO THIS SOURCE CODE, INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.
- * IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL,
- * OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
- * OF USE, DATA OR PROFITS,  WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
- * OR OTHER TORTIOUS ACTION,  ARISING OUT OF OR IN CONNECTION WITH THE USE
- * OR PERFORMANCE OF THIS SOURCE CODE.
- *
- * U.S. Government End Users.   This source code is a "commercial item" as
- * that term is defined at  48 C.F.R. 2.101 (OCT 1995), consisting  of
- * "commercial computer  software"  and "commercial computer software
- * documentation" as such terms are  used in 48 C.F.R. 12.212 (SEPT 1995)
- * and is provided to the U.S. Government only as a commercial end item.
- * Consistent with 48 C.F.R.12.212 and 48 C.F.R. 227.7202-1 through
- * 227.7202-4 (JUNE 1995), all U.S. Government End Users acquire the
- * source code with only those rights set forth herein.
- *
- * Any use of this source code in individual and commercial software must
- * include, in the user documentation and internal comments to the code,
- * the above Disclaimer and U.S. Government End Users Notice.
+ * Author: Andrew Pangborn
+ * 
+ * Department of Computer Engineering
+ * Rochester Institute of Technology
  */
 
-/* Template project which demonstrates the basics on how to setup a project 
- * example application.
- * Device code.
- */
-
-#define COVARIANCE_DYNAMIC_RANGE 1E3
 
 #ifndef _TEMPLATE_KERNEL_H_
 #define _TEMPLATE_KERNEL_H_
 
-#include <stdio.h>
 #include "gaussian.h"
-
-#define sdata(index)      CUT_BANK_CHECKER(sdata, index)
 
 /*
  * Compute the multivariate mean of the FCS data
@@ -111,16 +76,6 @@ __device__ void invert(float* data, int actualsize, float* log_determinant)  {
     if(threadIdx.x == 0) {
         *log_determinant = 0.0;
 
-#if EMU
-            EMUPRINT("\n\nR matrix before inversion:\n");
-            for(int i=0; i<n; i++) {
-                for(int j=0; j<n; j++) {
-                    EMUPRINT("%.2f ",data[i*n+j]);
-                }
-                EMUPRINT("\n");
-            }
-#endif
-
       // sanity check        
       if (actualsize == 1) {
         *log_determinant = logf(data[0]);
@@ -148,9 +103,6 @@ __device__ void invert(float* data, int actualsize, float* log_determinant)  {
             for(int i=0; i<actualsize; i++) {
                 *log_determinant += logf(fabs(data[i*n+i]));
             }
-    #if EMU
-                EMUPRINT("Determinant: %E\n",*log_determinant);
-    #endif
             
           for ( int i = 0; i < actualsize; i++ )  // invert L
             for ( int j = i; j < actualsize; j++ )  {
@@ -177,16 +129,6 @@ __device__ void invert(float* data, int actualsize, float* log_determinant)  {
                   sum += ((j==k)?1.0:data[j*maxsize+k])*data[k*maxsize+i];
               data[j*maxsize+i] = sum;
               }
-          
-    #if EMU
-          EMUPRINT("\n\nR matrix after inversion:\n");
-          for(int i=0; i<n; i++) {
-              for(int j=0; j<n; j++) {
-                  EMUPRINT("%.2f ",data[i*n+j]);
-              }
-              EMUPRINT("\n");
-          }
-    #endif
         }
     }
  }
@@ -308,9 +250,6 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     // Compute the average variance
     averageVariance(fcs_data, means, num_dimensions, num_events, &avgvar);
         
-    // Initialize covariances
-    __shared__ float covs[NUM_DIMENSIONS*NUM_DIMENSIONS]; 
-    
     int num_elements;
     int row, col;
         
@@ -318,25 +257,6 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     num_elements = num_dimensions*num_dimensions; 
 
     __syncthreads();
-
-    float sum;
-
-    // Compute the initial covariance matrix of the data
-    for(int i=tid; i < num_elements; i+= num_threads) {
-            // zero the value, find what row and col this thread is computing
-            sum = 0.0;
-            row = (i) / num_dimensions;
-            col = (i) % num_dimensions;
-
-            for(int j=0; j < num_events; j++) {
-                sum += (fcs_data[j*num_dimensions+row])*(fcs_data[j*num_dimensions+col]); 
-            }
-            sum = sum / (float) num_events;
-            sum = sum - means[row]*means[col];
-
-            covs[i] = sum;
-    } 
-    __syncthreads();    
 
     float seed;
     if(num_clusters > 1) {
@@ -348,16 +268,22 @@ seed_clusters( float* fcs_data, clusters_t* clusters, int num_dimensions, int nu
     // Seed the pi, means, and covariances for every cluster
     for(int c=0; c < num_clusters; c++) {
         if(tid < num_dimensions) {
-            //clusters->means[c*num_dimensions+tid] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+tid];
             clusters->means[c*num_dimensions+tid] = fcs_data[((int)(c*seed))*num_dimensions+tid];
         }
           
         for(int i=tid; i < num_elements; i+= num_threads) {
             // Add the average variance divided by a constant, this keeps the cov matrix from becoming singular
-            clusters->R[c*num_dimensions*num_dimensions+i] = covs[i] + avgvar/COVARIANCE_DYNAMIC_RANGE;
+            row = (i) / num_dimensions;
+            col = (i) % num_dimensions;
+
+            if(row == col) {
+                clusters->R[c*num_dimensions*num_dimensions+i] = 1.0f;
+            } else {
+                clusters->R[c*num_dimensions*num_dimensions+i] = 0.0f;
+            }
         }
         if(tid == 0) {
-            clusters->pi[c] = 1.0/((float)num_clusters);
+            clusters->pi[c] = 1.0f/((float)num_clusters);
             clusters->N[c] = ((float) num_events) / ((float)num_clusters);
             clusters->avgvar[c] = avgvar / COVARIANCE_DYNAMIC_RANGE;
         }
@@ -378,27 +304,6 @@ __device__ float parallelSum(float* data, const unsigned int ndata) {
   return data[tid];
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Parallel reduction, for when all you want is the sum of a certain
-// quantity computed for every 1 to N.  CODE should be something in terms
-// of n.  The resulting sum will be placed in RESULT.
-// tmp_buff, base_off, RESULT, and n must be previously defined, however 
-// they will be overwritten during the execution of the macro.
-#define REDUCE(N, CODE, RESULT)                                \
-base_off = 0;                                                  \
-RESULT = 0.0f;                                                 \
-while (base_off + BLOCK_SIZE < N) {                            \
-  n = base_off + tid;                                          \
-  tmp_buff[tid] = CODE;                                        \
-  RESULT += parallelSum(tmp_buff, BLOCK_SIZE);                 \
-  base_off += BLOCK_SIZE;                                      \
-}                                                              \
-n = base_off + tid;                                            \
-if (n < N) {tmp_buff[tid] = CODE;}                             \
-else {tmp_buff[tid] = 0.0f;}                                   \
-RESULT += parallelSum(tmp_buff, BLOCK_SIZE);
-///////////////////////////////////////////////////////////////////////////
-
 __device__ void compute_indices(int num_events, int* start, int* stop) {
     // Break up the events evenly between the blocks
     int num_pixels_per_block = num_events / gridDim.x;
@@ -410,13 +315,13 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
     // Last block will handle the leftover events
     if(blockIdx.x == gridDim.x-1) {
         *stop = num_events;
-    } else {
+    } else { 
         *stop = (blockIdx.x+1) * num_pixels_per_block;
     }
 }
 
 __global__ void
-regroup1(float* data, clusters_t* clusters, int num_dimensions, int num_events) {
+estep1(float* data, clusters_t* clusters, int num_dimensions, int num_events) {
     
     // Cached cluster parameters
     __shared__ float means[NUM_DIMENSIONS];
@@ -449,7 +354,7 @@ regroup1(float* data, clusters_t* clusters, int num_dimensions, int num_events) 
     }
 
     // copy the covariance inverse into shared memory
-    for(int i=tid; i < num_dimensions*num_dimensions; i+= NUM_THREADS) {
+    for(int i=tid; i < num_dimensions*num_dimensions; i+= NUM_THREADS_ESTEP) {
         Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
     }
     
@@ -459,7 +364,7 @@ regroup1(float* data, clusters_t* clusters, int num_dimensions, int num_events) 
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
     
-    for(int event=start_index; event<end_index; event += NUM_THREADS) {
+    for(int event=start_index; event<end_index; event += NUM_THREADS_ESTEP) {
        like = 0.0f;
         // this does the loglikelihood calculation
         #if DIAG_ONLY
@@ -479,10 +384,10 @@ regroup1(float* data, clusters_t* clusters, int num_dimensions, int num_events) 
 }
 
 __global__ void
-regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
+estep2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
     float temp;
     float thread_likelihood = 0.0f;
-    __shared__ float total_likelihoods[NUM_THREADS];
+    __shared__ float total_likelihoods[NUM_THREADS_ESTEP];
     float max_likelihood;
     float denominator_sum;
     
@@ -513,7 +418,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
 
     //  log-sum-exp formula:
     //  log(sum(exp(x_i)) = max(z) + log(sum(exp(z_i-max(z))))
-    for(int pixel=start_index; pixel<end_index; pixel += NUM_THREADS) {
+    for(int pixel=start_index; pixel<end_index; pixel += NUM_THREADS_ESTEP) {
         // find the maximum likelihood for this event
         max_likelihood = clusters->memberships[pixel];
         for(int c=1; c<num_clusters; c++) {
@@ -540,16 +445,7 @@ regroup2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clus
     total_likelihoods[tid] = thread_likelihood;
     __syncthreads();
 
-    /* 
-    float retval = 0.0;
-    // Reduce all the total_likelihoods to a single total
-    if(tid == 0) {
-        for(int i=0; i<NUM_THREADS; i++) {
-            retval += total_likelihoods[i];
-        }
-        likelihood[blockIdx.x] = retval;
-    }*/
-    temp = parallelSum(total_likelihoods,NUM_THREADS);
+    temp = parallelSum(total_likelihoods,NUM_THREADS_ESTEP);
     if(tid == 0) {
         likelihood[blockIdx.x] = temp;
     }
@@ -571,7 +467,7 @@ mstep_means(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_c
     int c = blockIdx.x; // cluster number
     int d = blockIdx.y; // dimension number
 
-    __shared__ float temp_sum[NUM_THREADS];
+    __shared__ float temp_sum[NUM_THREADS_MSTEP];
     float sum = 0.0f;
     
     for(int event=tid; event < num_events; event+= num_threads) {
@@ -582,7 +478,7 @@ mstep_means(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_c
     __syncthreads();
 
     // Reduce partial sums
-    sum = parallelSum(temp_sum,NUM_THREADS);
+    sum = parallelSum(temp_sum,NUM_THREADS_MSTEP);
     if(tid == 0) {
         clusters->means[c*num_dimensions+d] = sum;
     }
@@ -610,7 +506,7 @@ mstep_N(clusters_t* clusters, int num_dimensions, int num_clusters, int num_even
     
     // Need to store the sum computed by each thread so in the end
     // a single thread can reduce to get the final sum
-    __shared__ float temp_sums[NUM_THREADS];
+    __shared__ float temp_sums[NUM_THREADS_MSTEP];
 
     // Compute new N
     float sum = 0.0f;
@@ -622,7 +518,7 @@ mstep_N(clusters_t* clusters, int num_dimensions, int num_clusters, int num_even
  
     __syncthreads();
 
-    sum = parallelSum(temp_sums,NUM_THREADS);
+    sum = parallelSum(temp_sums,NUM_THREADS_MSTEP);
     if(tid == 0) {
         clusters->N[c] = sum;
         clusters->pi[c] = sum;
@@ -703,11 +599,11 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
 
-    __shared__ float temp_sums[NUM_THREADS];
+    __shared__ float temp_sums[NUM_THREADS_MSTEP];
     
     float cov_sum = 0.0;
 
-    for(int event=tid; event < num_events; event+=NUM_THREADS) {
+    for(int event=tid; event < num_events; event+=NUM_THREADS_MSTEP) {
         cov_sum += (fcs_data[row*num_events+event]-means[row])*(fcs_data[col*num_events+event]-means[col])*clusters->memberships[c*num_events+event]; 
     }
     temp_sums[tid] = cov_sum;
@@ -718,7 +614,7 @@ mstep_covariance1(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     
     if(tid == 0) {
         cov_sum = 0.0;
-        for(int i=0; i < NUM_THREADS; i++) {
+        for(int i=0; i < NUM_THREADS_MSTEP; i++) {
             cov_sum += temp_sums[i];
         }
         if(clusters->N[c] >= 1.0) { // Does it need to be >=1, or just something non-zero?
