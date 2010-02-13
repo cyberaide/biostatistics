@@ -192,33 +192,33 @@ __global__ void ComputeNormalizedMembershipMatrix(float* distances, float* membe
 }
 
 __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const float* distanceMatrix){
-	float myClustDist = 0;
+	float myClustDist = 0.0f;
     // Compute the distance from this event to the given cluster
     myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
 	
-	float sum =0;
+	float sum =0.0f;
 	float otherClustDist;
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
-		if(otherClustDist < 1e-10)
-			return 0.0;
+		//if(otherClustDist < 1e-10)
+		//	return 0.0;
 		sum += pow((myClustDist/otherClustDist),(2/(FUZZINESS-1)));
 		
 	}
-	return 1.0/sum;
+	return 1.0f/sum;
 }
 
 __device__ float MembershipValueDist(int clusterIndex, int eventIndex, float distance, float* distanceMatrix){
-	float sum =0;
+	float sum =0.0f;
 	float otherClustDist;
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
-		if(otherClustDist < 1e-10)
-			return 0.0;
+		//if(otherClustDist < 1e-10)
+		//	return 0.0;
 		sum += pow((float)(distance/otherClustDist),float(2/(FUZZINESS-1)));
 	}
-	return 1/sum;
+	return 1.0f/sum;
 }
 
 __device__ float CalculateDistanceGPU(const float* center, const float* events, int clusterIndex, int eventIndex){
@@ -232,7 +232,8 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
             //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
             sum += tmp*tmp;
         }
-        sum = sqrt(sum);
+        //sum = sqrt(sum);
+        sum = sqrt(sum+1e-20);
     #endif
     #if DISTANCE_MEASURE == 1 // Absolute value
         #pragma unroll 1 // Prevent compiler from unrolling this loop, eats up too many registers
