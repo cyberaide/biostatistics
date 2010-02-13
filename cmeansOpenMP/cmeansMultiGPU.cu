@@ -111,8 +111,8 @@ int main(int argc, char* argv[])
     }
     printf("---------------------------\n");
     
-    //srand((unsigned)(time(0)));
-    srand(42);
+    srand((unsigned)(time(0)));
+    //srand(42);
     
     cutStopTimer(timer_io);
     
@@ -230,16 +230,21 @@ int main(int argc, char* argv[])
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
             stopTimer(timer_memcpy);
             
-            dim3 BLOCK_DIM(1, NUM_THREADS, 1);
+            int num_blocks = my_num_events / NUM_THREADS_MEMBERSHIP;
+            if(my_num_events % NUM_THREADS_MEMBERSHIP) {
+                num_blocks++;
+            }
 
             startTimer(timer_gpu);
             DEBUG("Launching ComputeDistanceMatrix kernel\n");
-            ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
+            //ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
+            ComputeDistanceMatrix2<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
             cudaThreadSynchronize();
             printCudaError();
             
             DEBUG("Launching ComputeMembershipMatrix kernel\n");
-            ComputeMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+            //ComputeMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+            ComputeMembershipMatrix2<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
             cudaThreadSynchronize();
             printCudaError();
 
@@ -309,10 +314,15 @@ int main(int argc, char* argv[])
             DEBUG("\n");
         } while(iterations < MIN_ITERS || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
 
+        // Compute final membership vaues
+        startTimer(timer_gpu);
         ComputeNormalizedMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+        stopTimer(timer_gpu);
         // Copy memberships from the GPU
         float* temp_memberships = (float*) malloc(sizeof(float)*NUM_EVENTS*NUM_CLUSTERS);
+        startTimer(timer_memcpy);
         cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*NUM_EVENTS*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
+        stopTimer(timer_memcpy);
         for(int c=0; c < NUM_CLUSTERS; c++) {
             memcpy(&(memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),&(temp_memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),sizeof(float)*my_num_events);
         }

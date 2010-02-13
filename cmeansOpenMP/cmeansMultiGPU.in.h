@@ -42,10 +42,10 @@
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations
-#define ENABLE_PRINT 1
+#define ENABLE_PRINT 0
 
 // Used to enable output of cluster results to .results and .summary files
-#define ENABLE_OUTPUT 1
+#define ENABLE_OUTPUT 0
 
 #if ENABLE_DEBUG
 #define DEBUG(fmt,args...) printf(fmt, ##args)
