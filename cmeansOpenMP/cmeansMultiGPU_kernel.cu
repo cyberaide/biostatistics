@@ -160,6 +160,22 @@ __global__ void ComputeDistanceMatrix2(const float* clusters, const float* event
     }
 }
 
+__global__ void ComputeDistanceMatrix3(const float* clusters, const float* events, float* matrix, int start, int stop) {
+    
+    // copy the relavant center for this block into shared memory   
+    __shared__ float center[NUM_DIMENSIONS];
+    for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=NUM_THREADS_DISTANCE){
+        center[j] = clusters[blockIdx.y*NUM_DIMENSIONS+j];
+    }
+
+    __syncthreads();
+
+    int i = start + blockIdx.x * blockDim.x + threadIdx.x;
+    if(i < stop) {
+        matrix[blockIdx.y*NUM_EVENTS+i] = CalculateDistanceGPU(center,events,blockIdx.y,i);
+    }
+}
+
 __global__ void ComputeMembershipMatrix(float* distances, float* memberships, int start, int finish) {
     float membershipValue;
 
@@ -191,6 +207,24 @@ __global__ void ComputeMembershipMatrix2(float* distances, float* memberships, i
             membershipValue = pow(membershipValue,FUZZINESS);
         #endif
         memberships[blockIdx.x*NUM_EVENTS+i] = membershipValue;
+    }
+
+}
+
+__global__ void ComputeMembershipMatrix3(float* distances, float* memberships, int start, int stop) {
+    float membershipValue;
+
+    int i = start + blockIdx.x * blockDim.x + threadIdx.x;
+    // For each event
+    if(i < stop) {
+        membershipValue = MembershipValueGPU(blockIdx.y, i, distances);
+        #if FUZZINESS == 2 
+            // This is much faster than the pow function
+            membershipValue = membershipValue*membershipValue;
+        #else
+            membershipValue = pow(membershipValue,FUZZINESS);
+        #endif
+        memberships[blockIdx.y*NUM_EVENTS+i] = membershipValue;
     }
 
 }
