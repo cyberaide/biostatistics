@@ -196,21 +196,28 @@ int main(int argc, char* argv[])
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
         
-        int num_blocks = NUM_EVENTS / NUM_THREADS_MEMBERSHIP;
-        if(NUM_EVENTS % NUM_THREADS_MEMBERSHIP) {
-            num_blocks++;
+        int num_blocks_distance = NUM_EVENTS / NUM_THREADS_DISTANCE;
+        if(NUM_EVENTS % NUM_THREADS_DISTANCE) {
+            num_blocks_distance++;
+        }
+        int num_blocks_membership = NUM_EVENTS / NUM_THREADS_MEMBERSHIP;
+        if(NUM_EVENTS % NUM_THREADS_DISTANCE) {
+            num_blocks_membership++;
         }
 
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         DEBUG("Launching ComputeDistanceMatrix kernel\n");
         //ComputeDistanceMatrix<<< NUM_CLUSTERS, NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
-        ComputeDistanceMatrix2<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
+        //ComputeDistanceMatrix2<<< dim3(NUM_CLUSTERS,num_blocks_distance), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
+        ComputeDistanceMatrix3<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
         cudaThreadSynchronize();
         printCudaError();
         
         DEBUG("Launching ComputeMembershipMatrix kernel\n");
         //ComputeMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
-        ComputeMembershipMatrix2<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        //ComputeMembershipMatrix2<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        ComputeMembershipMatrix3<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        //ComputeMembershipMatrix4<<< dim3(NUM_CLUSTERS,num_blocks), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
         cudaThreadSynchronize();
         printCudaError();
         DEBUG("Launching UpdateClusterCentersGPU kernel\n");
@@ -255,9 +262,9 @@ int main(int argc, char* argv[])
 
     } while((iterations < MIN_ITERS) || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
   
-    CUT_SAFE_CALL(cutStartTimer(timer_gpu));
+    //CUT_SAFE_CALL(cutStartTimer(timer_gpu));
     ComputeNormalizedMembershipMatrix<<< NUM_CLUSTERS, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships); 
-    CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+    //CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Copying memberships from GPU\n");
     CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
