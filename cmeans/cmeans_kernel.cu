@@ -5,74 +5,19 @@
 #include <cmeanscu.h>
 #include <float.h>
 
-__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* distanceMatrix){
-
-	float membershipValue;//, denominator;
-	
-	__shared__ float numerators[NUM_DIMENSIONS*NUM_THREADS];
-
-    // Sum of the memberships computed by each thread
-    // The sum of all of these denominators together is effectively the size of the cluster
-	__shared__ float denominators[NUM_THREADS];
-		
-    int tid = threadIdx.x;
-
-    // initialize numerators and denominators to 0
-    denominators[tid] = 0;
-    for(int j = tid; j < NUM_DIMENSIONS*NUM_THREADS; j+=NUM_THREADS){
-        numerators[j] = 0;
+/* 
+ * Raises a float to a integer power using a loop and multiplication
+ * Much faster than the generic pow(float,float) from math.h
+ */
+__device__ float ipow(float val, int power) {
+    float tmp = val;
+    for(int i=0; i < power-1; i++) {
+        tmp *= val;
     }
-
-    __syncthreads();
-     
-    // Compute new membership value for each event
-    // Add its contribution to the numerator and denominator for that thread
-    for(int j = tid; j < NUM_EVENTS; j+=NUM_THREADS){
-          
-        membershipValue = MembershipValueGPU(blockIdx.x, j, distanceMatrix);
-        #if FUZZINESS == 2 
-            // This is much faster than the pow function
-            membershipValue = membershipValue*membershipValue;
-        #else
-            membershipValue = pow(membershipValue,FUZZINESS);
-        #endif
-
-        #pragma unroll 1  // Prevent compiler from unrolling this loop too much, eats up too many registers
-        for(int k = 0; k < NUM_DIMENSIONS; k++){
-            numerators[tid*NUM_DIMENSIONS + k] += events[k*NUM_EVENTS + j]*membershipValue;
-            //numerators[tid*NUM_DIMENSIONS + k] += events[j*NUM_DIMENSIONS + k]*membershipValue;
-        }
-        denominators[tid] += membershipValue;
-    } 
-
-    __syncthreads();
-	  
-    // Sum up the numerators, one for each dimension	
-    // (reducing all rows of numerators into the first row)
-    // One thread per dimension
-	if(tid < NUM_DIMENSIONS){
-        for(int j = 1; j < NUM_THREADS; j++){
-            numerators[tid] += numerators[j*NUM_DIMENSIONS+tid];
-        }  
-        //numerators[tid] = numerators[tid] / (float)NUM_THREADS;
-	}
-
-    // Sum up the denominator, one for this block
-    if(tid == 0){
-      for(int j = 1; j < NUM_THREADS; j++){
-        denominators[0] += denominators[j];
-      }
-      //denominators[0] = denominators[0]/NUM_THREADS;
-    }
-    __syncthreads();
-
-	// Set the new center for this block	
-    if(tid < NUM_DIMENSIONS) {
-        newClusters[blockIdx.x*NUM_DIMENSIONS + tid] = numerators[tid]/denominators[0];
-    }  
+    return tmp;
 }
 
-__global__ void UpdateClusterCentersGPU2(const float* oldClusters, const float* events, float* newClusters, float* memberships) {
+__global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* memberships) {
 
 	float membershipValue;//, denominator;
 
@@ -122,38 +67,6 @@ __global__ void ComputeDistanceMatrix(const float* clusters, const float* events
     // copy the relavant center for this block into shared memory	
     __shared__ float center[NUM_DIMENSIONS];
     for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=NUM_THREADS_DISTANCE){
-        center[j] = clusters[blockIdx.x*NUM_DIMENSIONS+j];
-    }
-
-    __syncthreads();
-
-    // For each event
-    for(int i=threadIdx.x; i < NUM_EVENTS; i+= NUM_THREADS_DISTANCE) {
-        matrix[blockIdx.x*NUM_EVENTS+i] = CalculateDistanceGPU(center,events,blockIdx.x,i);
-    }
-}
-
-__global__ void ComputeDistanceMatrix2(const float* clusters, const float* events, float* matrix) {
-    
-    // copy the relavant center for this block into shared memory	
-    __shared__ float center[NUM_DIMENSIONS];
-    for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=NUM_THREADS_DISTANCE){
-        center[j] = clusters[blockIdx.x*NUM_DIMENSIONS+j];
-    }
-
-    __syncthreads();
-
-    int i = blockIdx.y * blockDim.x + threadIdx.x;
-    if(i < NUM_EVENTS) {
-        matrix[blockIdx.x*NUM_EVENTS+i] = CalculateDistanceGPU(center,events,blockIdx.x,i);
-    }
-}
-
-__global__ void ComputeDistanceMatrix3(const float* clusters, const float* events, float* matrix) {
-    
-    // copy the relavant center for this block into shared memory	
-    __shared__ float center[NUM_DIMENSIONS];
-    for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=NUM_THREADS_DISTANCE){
         center[j] = clusters[blockIdx.y*NUM_DIMENSIONS+j];
     }
 
@@ -168,97 +81,44 @@ __global__ void ComputeDistanceMatrix3(const float* clusters, const float* event
 __global__ void ComputeMembershipMatrix(float* distances, float* memberships) {
     float membershipValue;
 
-    // For each event
-    for(int i=threadIdx.x; i < NUM_EVENTS; i+= NUM_THREADS_MEMBERSHIP) {
-        membershipValue = MembershipValueGPU(blockIdx.x, i, distances);
-        #if FUZZINESS == 2 
-            // This is much faster than the pow function
-            membershipValue = membershipValue*membershipValue;
-        #else
-            membershipValue = pow(membershipValue,FUZZINESS);
-        #endif
-        memberships[blockIdx.x*NUM_EVENTS+i] = membershipValue;
-    }
-
-}
-
-__global__ void ComputeMembershipMatrix2(float* distances, float* memberships) {
-    float membershipValue;
-
-    int i = blockIdx.y * blockDim.x + threadIdx.x;
-    // For each event
-    if(i < NUM_EVENTS) {
-        membershipValue = MembershipValueGPU(blockIdx.x, i, distances);
-        #if FUZZINESS == 2 
-            // This is much faster than the pow function
-            membershipValue = membershipValue*membershipValue;
-        #else
-            membershipValue = pow(membershipValue,FUZZINESS);
-        #endif
-        memberships[blockIdx.x*NUM_EVENTS+i] = membershipValue;
-    }
-
-}
-__global__ void ComputeMembershipMatrix3(float* distances, float* memberships) {
-    float membershipValue;
-
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     // For each event
     if(i < NUM_EVENTS) {
         membershipValue = MembershipValueGPU(blockIdx.y, i, distances);
-        #if FUZZINESS == 2
+        #if FUZZINESS == 2 
             // This is much faster than the pow function
             membershipValue = membershipValue*membershipValue;
         #else
-            membershipValue = pow(membershipValue,FUZZINESS);
+            membershipValue = __powf(membershipValue,FUZZINESS);
         #endif
         memberships[blockIdx.y*NUM_EVENTS+i] = membershipValue;
     }
-
-}
-__global__ void ComputeMembershipMatrix4(float* distances, float* memberships) {
-    float membershipValue;
-
-    int bid = blockIdx.x + gridDim.x*blockIdx.y;
-    int blockIdx_y = bid % gridDim.y;
-    int blockIdx_x = ((bid/gridDim.y)+blockIdx_y)%gridDim.x;
-
-    int i = blockIdx_y * blockDim.x + threadIdx.x;
-    // For each event
-    if(i < NUM_EVENTS) {
-        membershipValue = MembershipValueGPU(blockIdx_x, i, distances);
-        #if FUZZINESS == 2
-            // This is much faster than the pow function
-            membershipValue = membershipValue*membershipValue;
-        #else
-            membershipValue = pow(membershipValue,FUZZINESS);
-        #endif
-        memberships[blockIdx_x*NUM_EVENTS+i] = membershipValue;
-    }
-
 }
 
 __global__ void ComputeNormalizedMembershipMatrix(float* distances, float* memberships) {
-    // For each event
-    for(int i=threadIdx.x; i < NUM_EVENTS; i+= NUM_THREADS_MEMBERSHIP) {
-        memberships[blockIdx.x*NUM_EVENTS+i] = MembershipValueGPU(blockIdx.x, i, distances);
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if(i < NUM_EVENTS) {
+        memberships[blockIdx.y*NUM_EVENTS+i] = MembershipValueGPU(blockIdx.y, i, distances);
     }
 }
+
 
 __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0.0f;
     // Compute the distance from this event to the given cluster
     myClustDist = distanceMatrix[clusterIndex*NUM_EVENTS+eventIndex];
 	
-	float sum =0.0f;
+	float sum = 0.0f;
 	float otherClustDist;
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
-		//if(otherClustDist < 1e-10)
-		//	return 0.0;
-		sum += pow((myClustDist/otherClustDist),(2/(FUZZINESS-1)));
-		
+        #if FUZZINESS == 2
+            sum += (myClustDist/otherClustDist)*(myClustDist/otherClustDist);
+        #else
+    		sum += __powf((myClustDist/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
+        #endif
+        //sum += ipow(myClustDist/otherClustDist,2/(FUZZINESS-1));
 	}
 	return 1.0f/sum;
 }
@@ -268,9 +128,12 @@ __device__ float MembershipValueDist(int clusterIndex, int eventIndex, float dis
 	float otherClustDist;
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
-		//if(otherClustDist < 1e-10)
-		//	return 0.0;
-		sum += pow((float)(distance/otherClustDist),float(2/(FUZZINESS-1)));
+        #if FUZZINESS == 2
+            sum += (distance/otherClustDist)*(distance/otherClustDist);
+        #else
+            sum += __powf((distance/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
+        #endif
+		//sum += ipow((distance/otherClustDist),2/(FUZZINESS-1));
 	}
 	return 1.0f/sum;
 }
@@ -294,7 +157,7 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
         for(int i = 0; i < NUM_DIMENSIONS; i++){
             tmp = events[i*NUM_EVENTS+eventIndex] - center[i];
             //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
-            sum += abs(tmp);
+            sum += abs(tmp)+1e-20;
         }
     #endif
     #if DISTANCE_MEASURE == 2 // Maximum distance 
@@ -303,7 +166,7 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
             tmp = abs(events[i*NUM_EVENTS + eventIndex] - center[i]);
             //tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
             if(tmp > sum)
-                sum = tmp;
+                sum = tmp+1e-20;
         }
     #endif
 	return sum;
