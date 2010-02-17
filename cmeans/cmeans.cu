@@ -12,6 +12,8 @@
 #include "MDL.h"
 #include "timers.h"
 
+#include <cublas.h>
+
 /************************************************************************/
 /* Init CUDA                                                            */
 /************************************************************************/
@@ -111,6 +113,12 @@ int main(int argc, char* argv[])
         return 0;
     }
    
+    //cublasStatus status;
+    //status = cublasInit();
+    //if(status != CUBLAS_STATUS_SUCCESS) {
+    //    printf("!!! CUBLAS initialization error\n");
+    //}
+
     // Seed random generator, used for choosing initial cluster centers 
     srand((unsigned)(time(0)));
     //srand(42);
@@ -142,21 +150,23 @@ int main(int argc, char* argv[])
     float* memberships = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_EVENTS); 
     CUT_SAFE_CALL(cutStopTimer(timer_cpu));
     
+    int size;
+    #if !CPU_ONLY
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Allocating memory on GPU.\n");
     float* d_distanceMatrix;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
-    float* d_memberships;
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+    //float* d_memberships;
+    //CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
     float* d_E;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS));
     float* d_C;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_C, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
     float* d_nC;
-    CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
-    
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));    
+
     DEBUG("Copying input data to GPU.\n");
-    int size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
+    size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
     //CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
     CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
     
@@ -164,6 +174,7 @@ int main(int argc, char* argv[])
     size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
     CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+    #endif
     
     clock_t cpu_start, cpu_stop;
     float diff;
@@ -191,7 +202,21 @@ int main(int argc, char* argv[])
         start = clock();
 
         DEBUG("Starting UpdateCenters kernel.\n");
-        UpdateClusterCentersCPU(myClusters, myEvents, newClusters);
+       
+        //start = clock();
+        //UpdateClusterCentersCPU_Naive(myClusters, myEvents, newClusters);
+        //stop = clock();
+        //printf("Processing time for Method 1: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+        
+        start = clock();
+        UpdateClusterCentersCPU_Optimized(myClusters, myEvents, newClusters);
+        stop = clock();
+        printf("Processing time for Method 2: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+        
+        start = clock();
+        UpdateClusterCentersCPU_Linear(myClusters, myEvents, newClusters);
+        stop = clock();
+        printf("Processing time for Method 3: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
 
         stop = clock();
         DEBUG("Processing time for CPU: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
@@ -209,10 +234,28 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         DEBUG("Launching ComputeDistanceMatrix kernel\n");
         ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
+        //ComputeDistanceMatrixNoShared<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
+
+        // Using unoptimized, O(M^2)
+        //ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships);
+        
+        // Optimized, O(M)
         DEBUG("Launching ComputeMembershipMatrix kernel\n");
-        ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
         DEBUG("Launching UpdateClusterCentersGPU kernel\n");
-        UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships);
+        UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix);
+        cudaThreadSynchronize();
+       
+        // CUBLAS
+        //cublasSgemm('t','n',NUM_DIMENSIONS,NUM_CLUSTERS,NUM_EVENTS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,NUM_EVENTS,0.0,d_nC,NUM_DIMENSIONS);
+        //status = cublasGetError();
+        //if(status != CUBLAS_STATUS_SUCCESS) {  
+        //    printf("Cublas kernel error!\n");
+        //    return 1;
+        //}
+        // TODO: Still need to calculate denominators and divide to get actual centers from the CUBLAS result
+
         cudaThreadSynchronize();
         DEBUG(cudaGetErrorString(cudaGetLastError()));
         DEBUG("\n");
@@ -250,16 +293,21 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStopTimer(timer_cpu));
 
     } while((iterations < MIN_ITERS) || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
- 
+
+    #if !CPU_ONLY 
     DEBUG("Computing final memberships\n");
     //CUT_SAFE_CALL(cutStartTimer(timer_gpu));
-    ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+    ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
+    //ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+    ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
     //CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
     DEBUG("Copying memberships from GPU\n");
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-    CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
+    //CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
+    CUDA_SAFE_CALL(cudaMemcpy(memberships,d_distanceMatrix,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+    #endif
 
     if(iterations == MAX_ITERS){
         PRINT("Warning: Did not converge to the %f threshold provided\n", THRESHOLD);
@@ -317,11 +365,11 @@ int main(int argc, char* argv[])
     free(newClusters);
     free(myClusters);
     free(myEvents);
-#if !CPU_ONLY
+    #if !CPU_ONLY
     CUDA_SAFE_CALL(cudaFree(d_E));
     CUDA_SAFE_CALL(cudaFree(d_C));
     CUDA_SAFE_CALL(cudaFree(d_nC));
-#endif
+    #endif
 
     CUT_SAFE_CALL(cutStopTimer(timer_total));
     printf("\n\n"); 
@@ -353,24 +401,23 @@ __host__ float CalculateDistanceCPU(const float* clusters, const float* events, 
         float tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
         sum += tmp*tmp;
     }
-    sum = sqrt(sum);
+    sum = sqrt(sum+1e-30);
 #endif
 #if DISTANCE_MEASURE == 1
     for(int i = 0; i < NUM_DIMENSIONS; i++){
         float tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
-        sum += abs(tmp);
+        sum += abs(tmp)+1e-30;
     }
 #endif
 #if DISTANCE_MEASURE == 2
     for(int i = 0; i < NUM_DIMENSIONS; i++){
         float tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
         if(tmp > sum)
-            sum = tmp;
+            sum = tmp+1e-30;
     }
 #endif
     return sum;
 }
-
 
 __host__ float MembershipValue(const float* clusters, const float* events, int clusterIndex, int eventIndex){
     float myClustDist = CalculateDistanceCPU(clusters, events, clusterIndex, eventIndex);
@@ -378,18 +425,111 @@ __host__ float MembershipValue(const float* clusters, const float* events, int c
     float otherClustDist;
     for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = CalculateDistanceCPU(clusters, events, j, eventIndex); 
-        if(otherClustDist < .000001)
-            return 0.0;
-        sum += pow((float)(myClustDist/otherClustDist),float(2/(FUZZINESS-1)));
+        sum += pow((float)(myClustDist/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
     }
-    return 1/sum;
+    return 1.0f/sum;
+}
+
+void UpdateClusterCentersCPU_Linear(const float* oldClusters, const float* events, float* newClusters){
+    //float membershipValue, sum, denominator;
+    float membershipValue, denominator;
+    float* numerator = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* denominators = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* distances = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* memberships = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+
+    for(int i = 0; i < NUM_DIMENSIONS*NUM_CLUSTERS; i++) {
+        newClusters[i] = 0;
+    }
+    for(int i = 0; i < NUM_CLUSTERS; i++) {
+        numerator[i] = 0;
+        denominators[i] = 0;
+    }
+   
+    for(int n = 0; n < NUM_EVENTS; n++){
+        denominator = 0.0f;
+        for(int c = 0; c < NUM_CLUSTERS; c++){
+            distances[c] = CalculateDistanceCPU(oldClusters, events, c, n);
+            numerator[c] = powf(distances[c],2.0f/(FUZZINESS-1.0f));
+            denominator = denominator + 1.0f/numerator[c];
+        }
+        
+        // Add contribution to numerator and denominator
+        for(int c = 0; c < NUM_CLUSTERS; c++){
+            membershipValue = powf(numerator[c]*denominator,(float)-FUZZINESS);
+            for(int d = 0; d < NUM_DIMENSIONS; d++){
+                newClusters[c*NUM_DIMENSIONS+d] += events[n*NUM_DIMENSIONS+d]*membershipValue;
+            }
+            denominators[c] += membershipValue;
+        }  
+    }
+
+    // Final cluster centers
+    for(int c = 0; c < NUM_CLUSTERS; c++){
+        for(int d = 0; d < NUM_DIMENSIONS; d++){
+            newClusters[c*NUM_DIMENSIONS + d] = newClusters[c*NUM_DIMENSIONS+d]/denominators[c];
+        } 
+    } 
+    
+    free(numerator);
+    free(denominators);
+    free(distances);
+    free(memberships);
+}
+void UpdateClusterCentersCPU_Optimized(const float* oldClusters, const float* events, float* newClusters){
+    //float membershipValue, sum, denominator;
+    float membershipValue, denominator;
+    float* numerator = (float*)malloc(sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
+    float* denominators = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* distances = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+    float* memberships = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+
+    for(int i = 0; i < NUM_DIMENSIONS*NUM_CLUSTERS; i++)
+        numerator[i] = 0;
+    for(int i = 0; i < NUM_CLUSTERS; i++)
+        denominators[i] = 0;
+   
+    float sum;
+    for(int n = 0; n < NUM_EVENTS; n++){
+        // Calculate distance to each cluster center
+        for(int c = 0; c < NUM_CLUSTERS; c++){
+            distances[c] = CalculateDistanceCPU(oldClusters, events, c, n);
+        }
+
+        // Convert distances into memberships
+        for(int c = 0; c < NUM_CLUSTERS; c++){
+            sum = 0;
+            for(int i = 0; i < NUM_CLUSTERS; i++){
+                sum += pow((float)(distances[c]/distances[i]),(2.0f/(FUZZINESS-1.0f)));
+            }
+            memberships[c] = 1.0f/sum;
+        }
+        
+        // Add contribution to numerator and denominator
+        for(int c = 0; c < NUM_CLUSTERS; c++){
+            membershipValue = memberships[c]*memberships[c];
+            for(int d = 0; d < NUM_DIMENSIONS; d++){
+                numerator[c*NUM_DIMENSIONS+d] += events[n*NUM_DIMENSIONS+d]*membershipValue;
+            }
+            denominators[c] += membershipValue;
+        }  
+    }
+
+    // Final cluster centers
+    for(int c = 0; c < NUM_CLUSTERS; c++){
+        for(int d = 0; d < NUM_DIMENSIONS; d++){
+            newClusters[c*NUM_DIMENSIONS + d] = numerator[c*NUM_DIMENSIONS+d]/denominators[c];
+        } 
+    } 
+    
+    free(numerator);
+    free(denominators);
+    free(distances);
+    free(memberships);
 }
 
 
-
-void UpdateClusterCentersCPU(const float* oldClusters, const float* events, float* newClusters){
-    
-    
+void UpdateClusterCentersCPU_Naive(const float* oldClusters, const float* events, float* newClusters){
     //float membershipValue, sum, denominator;
     float membershipValue, denominator;
     float* numerator = (float*)malloc(sizeof(float)*NUM_DIMENSIONS);
@@ -404,7 +544,7 @@ void UpdateClusterCentersCPU(const float* oldClusters, const float* events, floa
       for(int j = 0; j < NUM_EVENTS; j++){
         membershipValue = MembershipValue(oldClusters, events, i, j);
         for(int k = 0; k < NUM_DIMENSIONS; k++){
-          numerator[k] += events[j*NUM_DIMENSIONS + k]*membershipValue;
+          numerator[k] += events[j*NUM_DIMENSIONS + k]*membershipValue*membershipValue;
         }
         
         denominator += membershipValue;

@@ -41,6 +41,7 @@ CCFILES		:= \
 	MDL.cpp    \
 	Volume.cpp \
 
+USECUBLAS := 1
 
 ################################################################################
 # Rules and targets

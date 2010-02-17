@@ -62,9 +62,9 @@
 // number of Threads and blocks
 #define Q_THREADS 192 // number of threads per block building Q
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
-#define NUM_THREADS_DISTANCE 256
-#define NUM_THREADS_MEMBERSHIP 256
-#define NUM_THREADS_UPDATE 256
+#define NUM_THREADS_DISTANCE 512
+#define NUM_THREADS_MEMBERSHIP 512
+#define NUM_THREADS_UPDATE 512
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
@@ -87,7 +87,9 @@ float CalculateDistanceCPU(const float* clusters, const float* events, int clust
 float MembershipValue(const float* clusters, const float* events, int clusterIndex, int eventIndex);
 float MembershipValueDist(const float* clusters, const float* events, int eventIndex, float distance);
 float MembershipValueReduced(const float* clusters, const float* events, int clusterIndex, int eventIndex, int);
-void UpdateClusterCentersCPU(const float* oldClusters, const float* events, float* newClusters);
+void UpdateClusterCentersCPU_Naive(const float* oldClusters, const float* events, float* newClusters);
+void UpdateClusterCentersCPU_Optimized(const float* oldClusters, const float* events, float* newClusters);
+void UpdateClusterCentersCPU_Linear(const float* oldClusters, const float* events, float* newClusters);
 
 float* ParseSampleInput(const char* filename);
 

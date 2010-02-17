@@ -38,11 +38,12 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
     numerators[tid] = 0;
 
     __syncthreads();
-     
+
+
     // Compute new membership value for each event
     // Add its contribution to the numerator and denominator for that thread
     for(int j = tid; j < NUM_EVENTS; j+=NUM_THREADS_UPDATE){
-        membershipValue = memberships[blockIdx.x*NUM_EVENTS + j];
+        membershipValue = memberships[membership_matrix_offset + j];
         numerators[tid] += events[event_matrix_offset + j]*membershipValue;
         denominators[tid] += membershipValue;
     } 
@@ -78,6 +79,16 @@ __global__ void ComputeDistanceMatrix(const float* clusters, const float* events
     }
 }
 
+__global__ void ComputeDistanceMatrixNoShared(float* clusters, const float* events, float* matrix) {
+    
+    float* center = &clusters[blockIdx.y*NUM_DIMENSIONS];
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if(i < NUM_EVENTS) {
+        matrix[blockIdx.y*NUM_EVENTS+i] = CalculateDistanceGPU(center,events,blockIdx.y,i);
+    }
+}
+
 __global__ void ComputeMembershipMatrix(float* distances, float* memberships) {
     float membershipValue;
 
@@ -95,6 +106,41 @@ __global__ void ComputeMembershipMatrix(float* distances, float* memberships) {
     }
 }
 
+__global__ void ComputeMembershipMatrixLinear(float* distances) {
+    float membershipValue;
+    float denom = 0.0f;
+    float dist;
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    // For each event
+    if(i < NUM_EVENTS) {
+        for(int c=0; c < NUM_CLUSTERS; c++) {
+            dist = distances[c*NUM_EVENTS+i];
+            #if FUZZINESS == 2
+                dist = dist*dist;
+            #else
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f));
+            #endif
+            denom += 1.0f / dist;
+        }
+        
+        for(int c=0; c < NUM_CLUSTERS; c++) {
+            // not enough shared memory to store an array of distances
+            // for each thread, so just recompute them like above
+            dist = distances[c*NUM_EVENTS+i];
+            #if FUZZINESS == 2
+                dist = dist*dist;
+                membershipValue = 1.0f/(dist*denom); // u
+                membershipValue *= membershipValue; // u^p, p=2
+            #else
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f)); // u
+                membershipValue = __powf(dist*denom,-FUZZINESS); // u^p
+            #endif
+            distances[c*NUM_EVENTS+i] = membershipValue;
+        } 
+    }
+}
+
 __global__ void ComputeNormalizedMembershipMatrix(float* distances, float* memberships) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if(i < NUM_EVENTS) {
@@ -102,6 +148,38 @@ __global__ void ComputeNormalizedMembershipMatrix(float* distances, float* membe
     }
 }
 
+__global__ void ComputeNormalizedMembershipMatrixLinear(float* distances) {
+    float membershipValue;
+    float denom = 0.0f;
+    float dist;
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    // For each event
+    if(i < NUM_EVENTS) {
+        for(int c=0; c < NUM_CLUSTERS; c++) {
+            dist = distances[c*NUM_EVENTS+i];
+            #if FUZZINESS == 2
+                dist = dist*dist;
+            #else
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f));
+            #endif
+            denom += 1.0f / dist;
+        }
+        
+        for(int c=0; c < NUM_CLUSTERS; c++) {
+            // not enough shared memory to store an array of distances
+            // for each thread, so just recompute them like above
+            dist = distances[c*NUM_EVENTS+i];
+            #if FUZZINESS == 2
+                dist = dist*dist;
+                membershipValue = 1.0f/(dist*denom); // u
+            #else
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f)); // u
+            #endif
+            distances[c*NUM_EVENTS+i] = membershipValue;
+        } 
+    }
+}
 
 __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const float* distanceMatrix){
 	float myClustDist = 0.0f;
