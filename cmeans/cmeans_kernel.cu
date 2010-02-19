@@ -17,6 +17,23 @@ __device__ float ipow(float val, int power) {
     return tmp;
 }
 
+__device__ float parallelSum(float* data, const unsigned int ndata) {
+  const unsigned int tid = threadIdx.x;
+  float t;
+
+  __syncthreads();
+
+  // Butterfly sum.  ndata MUST be a power of 2.
+  for(unsigned int bit = ndata >> 1; bit > 0; bit >>= 1) {
+    t = data[tid] + data[tid^bit];  __syncthreads();
+    data[tid] = t;                  __syncthreads();
+  }
+  return data[tid];
+}
+
+/*
+ * Computes centers with a MxD grid
+ */
 __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* events, float* newClusters, float* memberships) {
 
 	float membershipValue;//, denominator;
@@ -61,6 +78,71 @@ __global__ void UpdateClusterCentersGPU(const float* oldClusters, const float* e
         // Set the new center for this block	
         newClusters[blockIdx.x*NUM_DIMENSIONS + d] = numerators[0]/denominators[0];
     }
+}
+
+/* 
+ * Computes numerators of the centers with a M/B x D grid, where B is the number of clusters per block
+ * 
+ * This should be more efficient because it only acceses event data M/B times, rather than M times
+ * Shared memory limits B to 15, but 4 seems to be ideal for performance (still has good 50+% occupacy)
+ */
+__global__ void UpdateClusterCentersGPU2(const float* oldClusters, const float* events, float* newClusters, float* memberships) {
+	float membershipValue;
+    float eventValue;
+
+    int d = blockIdx.y;
+    int event_matrix_offset = NUM_EVENTS*d;
+
+	__shared__ float numerators[NUM_THREADS_UPDATE*NUM_CLUSTERS_PER_BLOCK];
+	//__shared__ float denominators[NUM_THREADS_UPDATE*NUM_CLUSTERS_PER_BLOCK];
+		
+    int tid = threadIdx.x;
+
+    int num = NUM_CLUSTERS_PER_BLOCK;
+    if(NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
+        num -= NUM_CLUSTERS_PER_BLOCK % num;
+    }
+    
+    // initialize numerators and denominators to 0
+    for(int c = 0; c < num; c++) {    
+        //denominators[tid*c] = 0;
+        numerators[c*NUM_THREADS_UPDATE+tid] = 0;
+    }
+
+        
+    // Compute new membership value for each event
+    // Add its contribution to the numerator and denominator for that thread
+    for(int j = tid; j < NUM_EVENTS; j+=NUM_THREADS_UPDATE){
+        eventValue = events[event_matrix_offset + j];
+        for(int c = 0; c < num; c++) {    
+            membershipValue = memberships[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_EVENTS + j];
+            numerators[c*NUM_THREADS_UPDATE+tid] += eventValue*membershipValue;
+            //denominators[c*NUM_THREADS_UPDATE+tid] += membershipValue;
+        }
+    } 
+
+    __syncthreads();
+
+    for(int c = 0; c < num; c++) {   
+        if(tid == 0) {
+            for(int i=1; i < NUM_THREADS_UPDATE; i++) {
+                numerators[c*NUM_THREADS_UPDATE] += numerators[c*NUM_THREADS_UPDATE+i];
+            }
+        }
+        //numerators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&numerators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
+        //denominators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&denominators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
+    }
+ 
+    __syncthreads();
+
+    if(tid == 0){
+        for(int c = 0; c < num; c++) {   
+            // Set the new center for this block	
+            //newClusters[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE]/denominators[c*NUM_THREADS_UPDATE];
+            newClusters[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE];
+        }
+    }
+
 }
 
 __global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix) {
@@ -201,6 +283,26 @@ __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const floa
 	return 1.0f/sum;
 }
 
+
+__global__ void ComputeClusterSizes(float* memberships, float* sizes) {
+    __shared__ float partial_sums[512];
+
+    partial_sums[threadIdx.x] = 0.0f;
+    for(int i=threadIdx.x; i < NUM_EVENTS; i += 512) {
+        partial_sums[threadIdx.x] += memberships[blockIdx.x*NUM_EVENTS+i];
+    }
+
+    __syncthreads();
+
+    float sum = parallelSum(partial_sums,512);
+
+    __syncthreads();
+
+    if(threadIdx.x) {
+        sizes[blockIdx.x] = sum;
+    }
+    
+}
 __device__ float MembershipValueDist(int clusterIndex, int eventIndex, float distance, float* distanceMatrix){
 	float sum =0.0f;
 	float otherClustDist;

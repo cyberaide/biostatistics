@@ -113,11 +113,11 @@ int main(int argc, char* argv[])
         return 0;
     }
    
-    //cublasStatus status;
-    //status = cublasInit();
-    //if(status != CUBLAS_STATUS_SUCCESS) {
-    //    printf("!!! CUBLAS initialization error\n");
-    //}
+    cublasStatus status;
+    status = cublasInit();
+    if(status != CUBLAS_STATUS_SUCCESS) {
+        printf("!!! CUBLAS initialization error\n");
+    }
 
     // Seed random generator, used for choosing initial cluster centers 
     srand((unsigned)(time(0)));
@@ -150,20 +150,27 @@ int main(int argc, char* argv[])
     float* memberships = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_EVENTS); 
     CUT_SAFE_CALL(cutStopTimer(timer_cpu));
     
+
     int size;
     #if !CPU_ONLY
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Allocating memory on GPU.\n");
     float* d_distanceMatrix;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
-    //float* d_memberships;
-    //CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+    #if !LINEAR
+        float* d_memberships;
+        CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+    #endif
     float* d_E;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS));
     float* d_C;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_C, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
     float* d_nC;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));    
+    float* d_sizes;
+
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_sizes, sizeof(float)*NUM_CLUSTERS));    
+    float* sizes = (float*) malloc(sizeof(float)*NUM_CLUSTERS);
 
     DEBUG("Copying input data to GPU.\n");
     size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
@@ -194,12 +201,15 @@ int main(int argc, char* argv[])
     if(NUM_EVENTS % NUM_THREADS_DISTANCE) {
         num_blocks_membership++;
     }
+    int num_blocks_update = NUM_CLUSTERS / NUM_CLUSTERS_PER_BLOCK;
+    if(NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
+        num_blocks_update++;
+    }
 
     do{
 #if CPU_ONLY
         clock_t start,stop;
         CUT_SAFE_CALL(cutStartTimer(timer_cpu));
-        start = clock();
 
         DEBUG("Starting UpdateCenters kernel.\n");
        
@@ -207,18 +217,19 @@ int main(int argc, char* argv[])
         //UpdateClusterCentersCPU_Naive(myClusters, myEvents, newClusters);
         //stop = clock();
         //printf("Processing time for Method 1: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
-        
-        start = clock();
-        UpdateClusterCentersCPU_Optimized(myClusters, myEvents, newClusters);
-        stop = clock();
-        printf("Processing time for Method 2: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
-        
-        start = clock();
-        UpdateClusterCentersCPU_Linear(myClusters, myEvents, newClusters);
-        stop = clock();
-        printf("Processing time for Method 3: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+       
+        #if !LINEAR 
+            start = clock();
+            UpdateClusterCentersCPU_Optimized(myClusters, myEvents, newClusters);
+            stop = clock();
+            printf("Processing time for Linear Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+        #else 
+            start = clock();
+            UpdateClusterCentersCPU_Linear(myClusters, myEvents, newClusters);
+            stop = clock();
+            printf("Processing time for Quadratic Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+        #endif
 
-        stop = clock();
         DEBUG("Processing time for CPU: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
         averageTime += (float)(cpu_stop - cpu_start)/(float)(CLOCKS_PER_SEC)*(float)1e3;
         CUT_SAFE_CALL(cutStopTimer(timer_cpu));
@@ -226,7 +237,7 @@ int main(int argc, char* argv[])
         unsigned int timer = 0;
         CUT_SAFE_CALL(cutCreateTimer(&timer));
         CUT_SAFE_CALL(cutStartTimer(timer));
-
+        
         CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
@@ -236,25 +247,31 @@ int main(int argc, char* argv[])
         ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
         //ComputeDistanceMatrixNoShared<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
 
-        // Using unoptimized, O(M^2)
-        //ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
-        //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships);
-        
-        // Optimized, O(M)
-        DEBUG("Launching ComputeMembershipMatrix kernel\n");
-        ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
-        DEBUG("Launching UpdateClusterCentersGPU kernel\n");
-        UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix);
+        #if LINEAR 
+            // Optimized, O(M)
+            DEBUG("Launching ComputeMembershipLinearMatrix kernel\n");
+            ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
+            DEBUG("Launching UpdateClusterCentersGPU kernel\n");
+            //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix);
+            UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix);
+        #else
+            // Using unoptimized, O(M^2)
+            DEBUG("Launching ComputeMembershipMatrix kernel\n");
+            ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+            DEBUG("Launching UpdateClusterCentersGPU kernel\n");
+            //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships);
+            UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships);
+        #endif
         cudaThreadSynchronize();
        
+        /*
         // CUBLAS
-        //cublasSgemm('t','n',NUM_DIMENSIONS,NUM_CLUSTERS,NUM_EVENTS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,NUM_EVENTS,0.0,d_nC,NUM_DIMENSIONS);
-        //status = cublasGetError();
-        //if(status != CUBLAS_STATUS_SUCCESS) {  
-        //    printf("Cublas kernel error!\n");
-        //    return 1;
-        //}
-        // TODO: Still need to calculate denominators and divide to get actual centers from the CUBLAS result
+        cublasSgemm('t','n',NUM_DIMENSIONS,NUM_CLUSTERS,NUM_EVENTS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,NUM_EVENTS,0.0,d_nC,NUM_DIMENSIONS);
+        status = cublasGetError();
+        if(status != CUBLAS_STATUS_SUCCESS) {  
+            printf("Cublas kernel error!\n");
+            return 1;
+        }*/
 
         cudaThreadSynchronize();
         DEBUG(cudaGetErrorString(cudaGetLastError()));
@@ -265,6 +282,27 @@ int main(int argc, char* argv[])
         DEBUG("Copying centers from GPU\n");
         CUDA_SAFE_CALL(cudaMemcpy(newClusters, d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+
+
+        // Still need to calculate denominators and divide to get actual centers
+        CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+        #if LINEAR
+            ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_distanceMatrix, d_sizes );
+        #else
+            ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_memberships, d_sizes );
+        #endif
+        cudaThreadSynchronize();
+        CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+        CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+        cudaMemcpy(sizes,d_sizes,sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
+        CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
+        CUT_SAFE_CALL(cutStartTimer(timer_cpu));
+        for(int i=0; i < NUM_CLUSTERS; i++) {
+            for(int j=0; j < NUM_DIMENSIONS; j++) {
+                newClusters[i*NUM_DIMENSIONS+j] /= sizes[i];        
+            }
+        }
+        CUT_SAFE_CALL(cutStopTimer(timer_cpu));
         
         CUT_SAFE_CALL(cutStopTimer(timer));
         float thisTime = cutGetTimerValue(timer);
@@ -298,14 +336,20 @@ int main(int argc, char* argv[])
     DEBUG("Computing final memberships\n");
     //CUT_SAFE_CALL(cutStartTimer(timer_gpu));
     ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
-    //ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
-    ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
+    #if LINEAR
+        ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
+    #else
+        ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+    #endif
     //CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
     DEBUG("Copying memberships from GPU\n");
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
-    //CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
-    CUDA_SAFE_CALL(cudaMemcpy(memberships,d_distanceMatrix,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
+    #if LINEAR
+        CUDA_SAFE_CALL(cudaMemcpy(memberships,d_distanceMatrix,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
+    #else
+        CUDA_SAFE_CALL(cudaMemcpy(memberships,d_memberships,sizeof(float)*NUM_CLUSTERS*NUM_EVENTS,cudaMemcpyDeviceToHost)); 
+    #endif
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
     #endif
 
