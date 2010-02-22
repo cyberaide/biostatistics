@@ -273,11 +273,10 @@ int main(int argc, char* argv[])
             printf("Cublas kernel error!\n");
             return 1;
         }
+        cudaThreadSynchronize();
         */
         //cublasSgemv('t',NUM_EVENTS,NUM_DIMENSIONS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,1,0,d_nC,1);
  
-
-        cudaThreadSynchronize();
         DEBUG(cudaGetErrorString(cudaGetLastError()));
         DEBUG("\n");
         CUT_SAFE_CALL(cutStopTimer(timer_gpu));
@@ -288,7 +287,7 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
 
         // Still need to calculate denominators and divide to get actual centers
-        CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+        CUT_SAFE_CALL(cutStartTimer(timer_gpu));
         #if LINEAR
             ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_distanceMatrix, d_sizes );
         #else
@@ -346,10 +345,9 @@ int main(int argc, char* argv[])
         ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
         ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_memberships, d_sizes );
     #endif
+    cudaThreadSynchronize();
     //CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     
-    cudaThreadSynchronize();
-    CUT_SAFE_CALL(cutStopTimer(timer_gpu));
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     cudaMemcpy(sizes,d_sizes,sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
     CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
