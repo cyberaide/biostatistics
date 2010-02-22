@@ -90,56 +90,50 @@ __global__ void UpdateClusterCentersGPU2(const float* oldClusters, const float* 
 	float membershipValue;
     float eventValue;
 
+    // Compute cluster range for this block
+    int c_start = blockIdx.x*NUM_CLUSTERS_PER_BLOCK;
+    int num_c = NUM_CLUSTERS_PER_BLOCK;
+    
+    // Handle boundary condition
+    if(blockIdx.x == gridDim.x-1 && NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
+        num_c = NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK;
+    }
+    
+    // Dimension index
     int d = blockIdx.y;
     int event_matrix_offset = NUM_EVENTS*d;
 
 	__shared__ float numerators[NUM_THREADS_UPDATE*NUM_CLUSTERS_PER_BLOCK];
-	//__shared__ float denominators[NUM_THREADS_UPDATE*NUM_CLUSTERS_PER_BLOCK];
 		
     int tid = threadIdx.x;
-
-    int num = NUM_CLUSTERS_PER_BLOCK;
-    if(NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
-        num -= NUM_CLUSTERS_PER_BLOCK % num;
-    }
     
     // initialize numerators and denominators to 0
-    for(int c = 0; c < num; c++) {    
-        //denominators[tid*c] = 0;
+    for(int c = 0; c < num_c; c++) {    
         numerators[c*NUM_THREADS_UPDATE+tid] = 0;
     }
-
-        
+       
     // Compute new membership value for each event
     // Add its contribution to the numerator and denominator for that thread
     for(int j = tid; j < NUM_EVENTS; j+=NUM_THREADS_UPDATE){
         eventValue = events[event_matrix_offset + j];
-        for(int c = 0; c < num; c++) {    
-            membershipValue = memberships[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_EVENTS + j];
+        for(int c = 0; c < num_c; c++) {    
+            membershipValue = memberships[(c+c_start)*NUM_EVENTS + j];
             numerators[c*NUM_THREADS_UPDATE+tid] += eventValue*membershipValue;
-            //denominators[c*NUM_THREADS_UPDATE+tid] += membershipValue;
         }
     } 
 
     __syncthreads();
 
-    for(int c = 0; c < num; c++) {   
-        if(tid == 0) {
-            for(int i=1; i < NUM_THREADS_UPDATE; i++) {
-                numerators[c*NUM_THREADS_UPDATE] += numerators[c*NUM_THREADS_UPDATE+i];
-            }
-        }
-        //numerators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&numerators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
-        //denominators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&denominators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
+    for(int c = 0; c < num_c; c++) {   
+        numerators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&numerators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
     }
  
     __syncthreads();
 
     if(tid == 0){
-        for(int c = 0; c < num; c++) {   
+        for(int c = 0; c < num_c; c++) {   
             // Set the new center for this block	
-            //newClusters[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE]/denominators[c*NUM_THREADS_UPDATE];
-            newClusters[(NUM_CLUSTERS_PER_BLOCK*blockIdx.x+c)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE];
+            newClusters[(c+c_start)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE];
         }
     }
 

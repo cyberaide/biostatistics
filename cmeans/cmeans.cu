@@ -264,14 +264,18 @@ int main(int argc, char* argv[])
         #endif
         cudaThreadSynchronize();
        
-        /*
-        // CUBLAS
+        // CUBLAS SGEMM: data*transpose(memberships)
+        // Transposes are flipped in SGEMM call b/c routine expects column-major (fortran style) data
+        /* 
         cublasSgemm('t','n',NUM_DIMENSIONS,NUM_CLUSTERS,NUM_EVENTS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,NUM_EVENTS,0.0,d_nC,NUM_DIMENSIONS);
         status = cublasGetError();
         if(status != CUBLAS_STATUS_SUCCESS) {  
             printf("Cublas kernel error!\n");
             return 1;
-        }*/
+        }
+        */
+        //cublasSgemv('t',NUM_EVENTS,NUM_DIMENSIONS,1.0,d_E,NUM_EVENTS,d_distanceMatrix,1,0,d_nC,1);
+ 
 
         cudaThreadSynchronize();
         DEBUG(cudaGetErrorString(cudaGetLastError()));
@@ -282,7 +286,6 @@ int main(int argc, char* argv[])
         DEBUG("Copying centers from GPU\n");
         CUDA_SAFE_CALL(cudaMemcpy(newClusters, d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost));
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
-
 
         // Still need to calculate denominators and divide to get actual centers
         CUT_SAFE_CALL(cutStopTimer(timer_gpu));
@@ -338,10 +341,18 @@ int main(int argc, char* argv[])
     ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE >>>(d_C, d_E, d_distanceMatrix);
     #if LINEAR
         ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix);
+        ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_distanceMatrix, d_sizes );
     #else
         ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix, d_memberships);
+        ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_memberships, d_sizes );
     #endif
     //CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+    
+    cudaThreadSynchronize();
+    CUT_SAFE_CALL(cutStopTimer(timer_gpu));
+    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
+    cudaMemcpy(sizes,d_sizes,sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
+    CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
     
     DEBUG("Copying memberships from GPU\n");
     CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
@@ -390,6 +401,7 @@ int main(int argc, char* argv[])
     int newCount = 0;
     for(int i = 0; i < NUM_CLUSTERS; i++){
         if(finalClusterConfig[i]){
+            PRINT("N=%.1f\n",newCount,sizes[i]);
             for(int j = 0; j < NUM_DIMENSIONS; j++){
                 newClusters[newCount * NUM_DIMENSIONS + j] = myClusters[i*NUM_DIMENSIONS + j];
                 PRINT("%.2f\t", myClusters[i*NUM_DIMENSIONS + j]);
