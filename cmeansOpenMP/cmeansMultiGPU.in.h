@@ -67,10 +67,13 @@
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
 #define NUM_THREADS_DISTANCE 512
 #define NUM_THREADS_MEMBERSHIP 512
-#define NUM_THREADS_UPDATE 512
+#define NUM_THREADS_UPDATE 256
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)
+
+// Number of cluster memberships computed by each thread in UpdateCenters
+#define NUM_CLUSTERS_PER_BLOCK 4
 
 // Amount of loop unrolling for the distance and membership calculations accross dimensions
 #define UNROLL_FACTOR 1

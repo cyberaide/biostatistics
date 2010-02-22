@@ -168,13 +168,13 @@ int main(int argc, char* argv[])
         cudaTimer_t timer_cpu; // Timer for processing on CPU
         cudaTimer_t timer_gpu; // Timer for kernels on the GPU
         
-        unsigned int cpu_thread_id = omp_get_thread_num();
+        unsigned int tid = omp_get_thread_num();
         unsigned int num_cpu_threads = omp_get_num_threads();
-        printf("hello from thread %d of %d\n",cpu_thread_id,num_cpu_threads);
+        printf("hello from thread %d of %d\n",tid,num_cpu_threads);
 
         // set and check the CUDA device for this CPU thread
         int gpu_id = -1;
-        cudaSetDevice(cpu_thread_id % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
+        cudaSetDevice(tid % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
         cudaGetDevice(&gpu_id);
        
         #pragma omp barrier
@@ -183,26 +183,45 @@ int main(int argc, char* argv[])
         createTimer(&timer_cpu);
         createTimer(&timer_gpu);
 
-        printf("CPU thread %d (of %d) uses CUDA device %d\n", cpu_thread_id, num_cpu_threads, gpu_id);
+        printf("CPU thread %d (of %d) uses CUDA device %d\n", tid, num_cpu_threads, gpu_id);
         
+        // Compute starting/finishing indexes for the events for each gpu
+        int events_per_gpu = NUM_EVENTS / num_gpus;
+        int start = tid*events_per_gpu;
+        int finish = (tid+1)*events_per_gpu;
+        if(tid == (num_gpus-1)) {
+            finish = NUM_EVENTS;
+        }
+        int my_num_events = finish-start;
+        printf("GPU %d, Starting Event: %d, Ending Event: %d, My Num Events: %d\n",tid,start,finish,my_num_events);
+
         startTimer(timer_memcpy);
         float* d_distanceMatrix;
-        CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+        CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*my_num_events*NUM_CLUSTERS));
         #if !LINEAR
             float* d_memberships;
-            CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
+            CUDA_SAFE_CALL(cudaMalloc((void**)&d_memberships, sizeof(float)*my_num_events*NUM_CLUSTERS));
         #endif
-        float* d_E;// = AllocateEvents(myEvents);
-        CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS));
-        float* d_C;// = AllocateClusters(myClusters);
+        float* d_E;
+        CUDA_SAFE_CALL(cudaMalloc((void**)&d_E, sizeof(float)*my_num_events*NUM_DIMENSIONS));
+        float* d_C;
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_C, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
-        float* d_nC;// = AllocateCM(cM);
+        float* d_nC;
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS));
-        float* d_denoms;// = AllocateCM(cM);
+        float* d_denoms;
         CUDA_SAFE_CALL(cudaMalloc((void**)&d_denoms, sizeof(float)*NUM_CLUSTERS));
-        int size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
-        //CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
-        CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice));
+
+        int size = sizeof(float)*NUM_DIMENSIONS*my_num_events;
+
+        // Copying the transposed data is trickier since it's not all contigious for the relavant events
+        float* temp_fcs_data = (float*) malloc(size);
+        for(int d=0; d < NUM_DIMENSIONS; d++) {
+            memcpy(&temp_fcs_data[d*my_num_events],&transposedEvents[d*NUM_EVENTS + tid*events_per_gpu],sizeof(float)*my_num_events);
+        }
+        CUDA_SAFE_CALL(cudaMemcpy( d_E, temp_fcs_data, size,cudaMemcpyHostToDevice) );
+        cudaThreadSynchronize();
+        free(temp_fcs_data);
+
         size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
         CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
         stopTimer(timer_memcpy);
@@ -210,15 +229,6 @@ int main(int argc, char* argv[])
         printf("Starting C-means\n");
         int iterations = 0;
         
-        // Compute starting/finishing indexes for the events for each gpu
-        int events_per_gpu = NUM_EVENTS / num_gpus;
-        int start = cpu_thread_id*events_per_gpu;
-        int finish = (cpu_thread_id+1)*events_per_gpu;
-        if(cpu_thread_id == (num_gpus-1)) {
-            finish = NUM_EVENTS;
-        }
-        int my_num_events = finish-start;
-        printf("GPU %d, Starting Event: %d, Ending Event: %d, My Num Events: %d\n",cpu_thread_id,start,finish,my_num_events);
 
         int num_blocks_distance = my_num_events / NUM_THREADS_DISTANCE;
         if(my_num_events % NUM_THREADS_DISTANCE) {
@@ -227,6 +237,10 @@ int main(int argc, char* argv[])
         int num_blocks_membership = my_num_events / NUM_THREADS_MEMBERSHIP;
         if(my_num_events % NUM_THREADS_DISTANCE) {
             num_blocks_membership++;
+        }
+        int num_blocks_update = NUM_CLUSTERS / NUM_CLUSTERS_PER_BLOCK;
+        if(NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
+            num_blocks_update++;
         }
 
         do{
@@ -244,20 +258,25 @@ int main(int argc, char* argv[])
 
             startTimer(timer_gpu);
             DEBUG("Launching ComputeDistanceMatrix kernel\n");
-            ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
+            ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, my_num_events);
             #if LINEAR
                 // O(M) membership kernel
                 DEBUG("Launching ComputeMembershipMatrixLinear kernel\n");
-                ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, start, finish);
+                ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, my_num_events);
                 DEBUG("Launching UpdateClusterCentersGPU kernel\n");
-                UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, start, finish);
+                //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, my_num_events);
+                UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
+                ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_distanceMatrix, d_denoms, my_num_events);
             #else
                 // O(M^2) membership kernel
                 DEBUG("Launching ComputeMembershipMatrix kernel\n");
-                ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+                ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, my_num_events);
                 DEBUG("Launching UpdateClusterCentersGPU kernel\n");
-                UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, d_denoms, start, finish);
+                //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, d_denoms, my_num_events);
+                UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
+                ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_memberships, d_denoms, my_num_events );
             #endif
+
             cudaThreadSynchronize();
             printCudaError();
             
@@ -265,20 +284,21 @@ int main(int argc, char* argv[])
             
             // Copy partial centers and denominators to host
             startTimer(timer_memcpy);
-            cudaMemcpy(tempClusters[cpu_thread_id], d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost);
-            cudaMemcpy(tempDenominators[cpu_thread_id], d_denoms, sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
+            cudaMemcpy(tempClusters[tid], d_nC, sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS, cudaMemcpyDeviceToHost);
+            cudaMemcpy(tempDenominators[tid], d_denoms, sizeof(float)*NUM_CLUSTERS, cudaMemcpyDeviceToHost);
             printCudaError();
             stopTimer(timer_memcpy);
             
             stopTimer(timer);
             float thisTime = getTimerValue(timer);
-            DEBUG("Processing time for GPU %d: %f (ms) \n", cpu_thread_id, thisTime);
+            DEBUG("Processing time for GPU %d: %f (ms) \n", tid, thisTime);
             deleteTimer(timer);
 
         
             #pragma omp barrier
             startTimer(timer_cpu);
-            if(cpu_thread_id == 0) {
+            #pragma omp master
+            {
                 // Sum up the partial cluster centers (numerators)
                 for(int i=1; i < num_gpus; i++) {
                     for(int c=0; c < NUM_CLUSTERS; c++) {
@@ -303,17 +323,16 @@ int main(int argc, char* argv[])
                 }
                 diff = 0.0;
                 for(int i=0; i < NUM_CLUSTERS; i++){
-                    DEBUG("GPU %d, Cluster %d: ",cpu_thread_id,i);
+                    DEBUG("GPU %d, Cluster %d: ",tid,i);
                     for(int k = 0; k < NUM_DIMENSIONS; k++){
-                        DEBUG("%f ",tempClusters[cpu_thread_id][i*NUM_DIMENSIONS + k]);
-                        diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - tempClusters[cpu_thread_id][i*NUM_DIMENSIONS + k]);
+                        DEBUG("%f ",tempClusters[tid][i*NUM_DIMENSIONS + k]);
+                        diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - tempClusters[tid][i*NUM_DIMENSIONS + k]);
                     }
                     DEBUG("\n");
                 }
-                memcpy(myClusters,tempClusters[cpu_thread_id],sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
+                memcpy(myClusters,tempClusters[tid],sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
                 DEBUG("Diff = %f\n", diff);
                 DEBUG("Done with iteration #%d\n", iterations);
-                fflush(stdout);
             }
             stopTimer(timer_cpu);
             #pragma omp barrier
@@ -325,35 +344,36 @@ int main(int argc, char* argv[])
         //startTimer(timer_gpu);
         #if LINEAR
             // O(M)
-            printf("LINEAR!!!!!\n");
-            ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, start, finish);
-            ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix,start,finish);
+            ComputeDistanceMatrix<<< dim3(num_blocks_distance,NUM_CLUSTERS), NUM_THREADS_DISTANCE  >>>(d_C, d_E, d_distanceMatrix, my_num_events);
+            ComputeNormalizedMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP >>>(d_distanceMatrix,my_num_events);
         #else
             // O(M^2)
-            ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, start, finish);
+            ComputeNormalizedMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, my_num_events);
         #endif
         //stopTimer(timer_gpu);
 
         // Copy memberships from the GPU
-        float* temp_memberships = (float*) malloc(sizeof(float)*NUM_EVENTS*NUM_CLUSTERS);
+        float* temp_memberships = (float*) malloc(sizeof(float)*my_num_events*NUM_CLUSTERS);
         startTimer(timer_memcpy);
         #if LINEAR
-            cudaMemcpy(temp_memberships,d_distanceMatrix,sizeof(float)*NUM_EVENTS*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
+            cudaMemcpy(temp_memberships,d_distanceMatrix,sizeof(float)*my_num_events*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
         #else
-            cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*NUM_EVENTS*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
+            cudaMemcpy(temp_memberships,d_memberships,sizeof(float)*my_num_events*NUM_CLUSTERS,cudaMemcpyDeviceToHost);
         #endif
         stopTimer(timer_memcpy);
         
+        startTimer(timer_cpu);
         #pragma omp critical
         {
             for(int c=0; c < NUM_CLUSTERS; c++) {
-                memcpy(&(memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),&(temp_memberships[c*NUM_EVENTS+cpu_thread_id*events_per_gpu]),sizeof(float)*my_num_events);
+                memcpy(&(memberships[c*NUM_EVENTS+tid*events_per_gpu]),&(temp_memberships[c*my_num_events]),sizeof(float)*my_num_events);
             }
         }
-        
         free(temp_memberships);
+        stopTimer(timer_cpu);
+        
 
-        if(cpu_thread_id == 0) {        
+        if(tid == 0) {        
             if(abs(diff) > THRESHOLD){
                 PRINT("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
             }
@@ -363,13 +383,13 @@ int main(int argc, char* argv[])
         #pragma omp barrier // sync threads 
        
         #if !ENABLE_MDL
-            if(cpu_thread_id == 0) {
+            if(tid == 0) {
                 // Don't attempt MDL, save all clusters 
                 finalClusterConfig = (int*) malloc(sizeof(int)*NUM_CLUSTERS);
                 memset(finalClusterConfig,1,sizeof(int)*NUM_CLUSTERS);
             }
         #else
-            PRINT("Calculating Q Matrix Section %d\n",cpu_thread_id);
+            PRINT("Calculating Q Matrix Section %d\n",tid);
            
             // Copy the latest clusters to the device 
             //  (the current ones on the device are 1 iteration old) 
@@ -378,11 +398,11 @@ int main(int argc, char* argv[])
             stopTimer(timer_memcpy);
             
             // Build Q matrix, each gpu handles NUM_DIMENSIONS/num_gpus rows of the matrix
-            q_matrices[cpu_thread_id] = BuildQGPU(d_E, d_C, d_distanceMatrix, &mdlTime, cpu_thread_id, num_gpus);
+            q_matrices[tid] = BuildQGPU(d_E, d_C, d_distanceMatrix, &mdlTime, tid, num_gpus, my_num_events);
             
             #pragma omp barrier // sync threads
             
-            if(cpu_thread_id == 0) {
+            if(tid == 0) {
                 // Combine the partial matrices
                 int num_matrix_elements = NUM_CLUSTERS*(NUM_CLUSTERS/num_gpus);
                 for(int i=0; i < num_gpus; i++) {
@@ -413,9 +433,9 @@ int main(int argc, char* argv[])
         #pragma omp barrier
  
         printf("\n\n"); 
-        printf("Thread %d: GPU memcpy Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_memcpy));
-        printf("Thread %d: CPU processing Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_cpu));
-        printf("Thread %d: GPU processing Time (ms): %f\n",cpu_thread_id,getTimerValue(timer_gpu));
+        printf("Thread %d: GPU memcpy Time (ms): %f\n",tid,getTimerValue(timer_memcpy));
+        printf("Thread %d: CPU processing Time (ms): %f\n",tid,getTimerValue(timer_cpu));
+        printf("Thread %d: GPU processing Time (ms): %f\n",tid,getTimerValue(timer_gpu));
         
         #if !CPU_ONLY
             CUDA_SAFE_CALL(cudaFree(d_E));
@@ -424,7 +444,7 @@ int main(int argc, char* argv[])
         #endif
     
         #pragma omp barrier
-        DEBUG("Thread %d done.\n",cpu_thread_id);
+        DEBUG("Thread %d done.\n",tid);
     } // end of omp_parallel block
     
     cutStartTimer(timer_io);
@@ -511,7 +531,7 @@ void FreeMatrix(float* d_matrix){
     CUDA_SAFE_CALL(cudaFree(d_matrix));
 }
 
-float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime, int gpu_id, int num_gpus){
+float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime, int gpu_id, int num_gpus, int my_num_events){
     float* d_matrix;
     int size = sizeof(float) * NUM_CLUSTERS*NUM_CLUSTERS;
 
@@ -531,7 +551,7 @@ float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, floa
     printf("GPU %d: Starting row for Q Matrix: %d\n",gpu_id,start_row);
 
     printf("Launching Q Matrix Kernel\n");
-    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, distanceMatrix, start_row);
+    CalculateQMatrixGPUUpgrade<<<grid, Q_THREADS>>>(d_events, d_clusters, d_matrix, distanceMatrix, start_row, my_num_events);
     cudaThreadSynchronize();
     printCudaError();
     stopTimer(timer_gpu);
