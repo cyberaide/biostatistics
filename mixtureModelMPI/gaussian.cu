@@ -80,6 +80,7 @@ typedef struct {
     cudaTimer_t reduce;
     cudaTimer_t memcpy;
     cudaTimer_t cpu;
+    cudaTimer_t mpi;
 } profile_t;
 
 // Creates the CUDA timers inside the profile_t struct
@@ -90,6 +91,7 @@ void init_profile_t(profile_t* p) {
     createTimer(&(p->reduce));
     createTimer(&(p->memcpy));
     createTimer(&(p->cpu));
+    createTimer(&(p->mpi));
 }
 
 // Deletes the timers in the profile_t struct
@@ -100,6 +102,7 @@ void cleanup_profile_t(profile_t* p) {
     deleteTimer(p->reduce);
     deleteTimer(p->memcpy);
     deleteTimer(p->cpu);
+    deleteTimer(p->mpi);
 }
 
 void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int num_dimensions, int num_events) {
@@ -114,7 +117,6 @@ void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int 
     for(int c=0; c < num_clusters; c++) {
         clusters->N[c] = num_events / num_clusters;
         for(int d=0; d < num_dimensions; d++) {
-            //clusters->means[c*num_dimensions+d] = fcs_data[c*(num_events/(num_clusters+1))*num_dimensions+d];
             clusters->means[c*num_dimensions+d] = fcs_data[((int)(c*seed))*num_dimensions+d];
         }
     }
@@ -214,7 +216,7 @@ main( int argc, char** argv) {
             fcs_data_by_dimension[d*num_events+e] = fcs_data_by_event[e*num_dimensions+d];
         }
     }    
-
+    MPI_Barrier(MPI_COMM_WORLD);
     cutStopTimer(timer_io);
     cutStartTimer(timer_cpu);
    
@@ -247,13 +249,15 @@ main( int argc, char** argv) {
         clusters[g].means = (float*) malloc(sizeof(float)*num_dimensions*original_num_clusters);
         clusters[g].R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
         clusters[g].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
-        clusters[g].memberships = (float*) malloc(sizeof(float)*num_events*original_num_clusters); // my_num_events instead of num_events?
-        memset(clusters[g].memberships,0,sizeof(float)*num_events*original_num_clusters);
-        if(!clusters[g].means || !clusters[g].R || !clusters[g].Rinv || !clusters[g].memberships) { 
-            printf("ERROR: Could not allocate memory for clusters.\n"); 
-            return 1; 
+        if(!clusters[g].means || !clusters[g].R || !clusters[g].Rinv) { 
         }
     }
+    clusters[0].memberships = (float*) malloc(sizeof(float)*num_events*original_num_clusters);
+    if(!clusters[0].memberships) {
+        printf("ERROR: Could not allocate memory for clusters.\n"); 
+        return 1; 
+    }
+
     
     // Declare another set of clusters for saving the results of the best configuration
     clusters_t saved_clusters;
@@ -278,7 +282,7 @@ main( int argc, char** argv) {
     
     cutStopTimer(timer_cpu);
 
-    omp_set_num_threads(num_gpus);
+    //omp_set_num_threads(num_gpus);
 
     mfinish = MPI_Wtime();
     printf("Time until OMP Parallel: %f\n",mfinish-mstart);
@@ -294,7 +298,7 @@ main( int argc, char** argv) {
         cudaSetDevice(tid);
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, tid);
-        PRINT("Node %d (of %d), CPU thread %d (of %d) on %s using device %d: %s\n", rank, num_nodes, tid, num_gpus, name, tid, prop.name);
+        printf("Node %d (of %d), CPU thread %d (of %d) on %s using device %d: %s\n", rank, num_nodes, tid, num_gpus, name, tid, prop.name);
        
         // Timers for profiling
         //  timers use cuda events (which require a cuda context),
@@ -390,14 +394,14 @@ main( int argc, char** argv) {
             //  Only tricky part is how to do average variance? 
             //   Make a kernel for that and reduce on host like the means/covariance?
             startTimer(timers.constants);
-            seed_clusters<<< 1, NUM_THREADS >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, my_num_events);
+            seed_clusters<<< 1, NUM_THREADS_MSTEP >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, my_num_events);
             cudaThreadSynchronize();
             DEBUG("done.\n"); 
             CUT_CHECK_ERROR("Seed Kernel execution failed: ");
             
             DEBUG("Invoking constants kernel...",NUM_THREADS);
             // Computes the R matrix inverses, and the gaussian constant
-            constants_kernel<<<original_num_clusters, NUM_THREADS>>>(d_clusters,original_num_clusters,num_dimensions);
+            constants_kernel<<<original_num_clusters, NUM_THREADS_MSTEP >>>(d_clusters,original_num_clusters,num_dimensions);
             constants_iterations++;
             cudaThreadSynchronize();
             CUT_CHECK_ERROR("Constants Kernel execution failed: ");
@@ -480,8 +484,8 @@ main( int argc, char** argv) {
             // for each event and each cluster.
             DEBUG("Invoking E-step kernels...");
             startTimer(timers.e_step);
-            regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
-            regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+            estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
+            estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
             cudaThreadSynchronize();
             #pragma omp master 
             {
@@ -492,31 +496,31 @@ main( int argc, char** argv) {
             CUT_CHECK_ERROR("Kernel execution failed");
             stopTimer(timers.e_step);
 
-            #pragma omp barrier
-            
             // Copy the likelihood totals from each block, sum them up to get a total
             startTimer(timers.memcpy);
             CUDA_SAFE_CALL(cudaMemcpy(&shared_likelihoods[tid*NUM_BLOCKS],d_likelihoods,sizeof(float)*NUM_BLOCKS,cudaMemcpyDeviceToHost));
             stopTimer(timers.memcpy);
             #pragma omp barrier
-            startTimer(timers.cpu); 
             #pragma omp master 
             {
+                startTimer(timers.cpu); 
                 // Gather likelihoods from every thread on this node
                 likelihood = 0.0;
                 for(int i=0;i<NUM_BLOCKS*num_gpus;i++) {
                     likelihood += shared_likelihoods[i]; 
                 }
                 DEBUG("Node %d's Likelihood: %e\n",rank,likelihood);
-                //MPI_Barrier(MPI_COMM_WORLD);
+                stopTimer(timers.cpu); 
+                startTimer(timers.mpi); 
                 // Master node gathers likelihoods from every node
-                //MPI_Allreduce(&temp,&likelihood,1,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
-                //MPI_Allreduce(MPI_IN_PLACE,&likelihood,1,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
-                //MPI_Barrier(MPI_COMM_WORLD);
+                MPI_Allreduce(MPI_IN_PLACE,&likelihood,1,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
+                MPI_Barrier(MPI_COMM_WORLD);
                 DEBUG("Node %d Total Likelihood: %e\n",rank,likelihood);
+                stopTimer(timers.mpi); 
             }
-            stopTimer(timers.cpu); 
+            startTimer(timers.cpu); 
             #pragma omp barrier
+            stopTimer(timers.cpu); 
 
             float change = epsilon*2;
             
@@ -526,7 +530,6 @@ main( int argc, char** argv) {
             // It re-estimates parameters, re-computes constants, and then regroups the events
             // These steps keep repeating until the change in likelihood is less than some epsilon        
             while(iters < MIN_ITERS || (fabs(change) > epsilon && iters < MAX_ITERS)) {
-                mstart3 = MPI_Wtime();
                 #pragma omp master 
                 {
                     old_likelihood = likelihood;
@@ -535,7 +538,7 @@ main( int argc, char** argv) {
                 DEBUG("Invoking reestimate_parameters (M-step) kernel...",NUM_THREADS);
                 startTimer(timers.m_step);
                 // This kernel computes a new N, pi isn't updated until compute_constants though
-                mstep_N<<<num_clusters, NUM_THREADS>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
+                mstep_N<<<num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
                 cudaThreadSynchronize();
                 stopTimer(timers.m_step);
                 startTimer(timers.memcpy);
@@ -545,9 +548,9 @@ main( int argc, char** argv) {
                 // TODO: figure out the omp reduction pragma...
                 // Reduce N for all clusters, copy back to device
                 #pragma omp barrier
-                startTimer(timers.cpu);
                 #pragma omp master 
                 {
+                    startTimer(timers.cpu);
                     // Reduce results on this node from each thread;
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -557,17 +560,17 @@ main( int argc, char** argv) {
                     for(int c=0; c < num_clusters; c++) {
                         DEBUG("Node %d's Cluster %d: N = %f\n",rank,c,clusters[0].N[c]);
                     }
-                    //MPI_Barrier(MPI_COMM_WORLD);
+                    stopTimer(timers.cpu);
                     // Reduce results globally from each node and broadcast
-                    mstart2 = MPI_Wtime();
+                    startTimer(timers.mpi);
                     MPI_Allreduce(MPI_IN_PLACE,clusters[0].N,num_clusters,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
                     MPI_Barrier(MPI_COMM_WORLD);
-                    mfinish2 = MPI_Wtime();
-                    //printf("Time for Allreduce(N): %f\n",mfinish2-mstart2);
                     for(int c=0; c < num_clusters; c++) {
                         DEBUG("Node %d's Cluster %d after MPI reduce: N = %f\n",rank,c,clusters[0].N[c]);
                     }
+                    stopTimer(timers.mpi);
                 }
+                startTimer(timers.cpu);
                 #pragma omp barrier
                 stopTimer(timers.cpu);
                 startTimer(timers.memcpy);
@@ -576,7 +579,7 @@ main( int argc, char** argv) {
 
                 startTimer(timers.m_step);
                 dim3 gridDim1(num_clusters,num_dimensions);
-                mstep_means<<<gridDim1, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
+                mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
                 cudaThreadSynchronize();
                 stopTimer(timers.m_step);
                 startTimer(timers.memcpy);
@@ -584,10 +587,9 @@ main( int argc, char** argv) {
                 stopTimer(timers.memcpy);
                 // Reduce means for all clusters, copy back to device
                 #pragma omp barrier
-                startTimer(timers.cpu);
-                mstart2 = MPI_Wtime();
                 #pragma omp master 
                 {
+                    startTimer(timers.cpu);
                     // Reduce from threads within the node
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -596,11 +598,15 @@ main( int argc, char** argv) {
                             }
                         }
                     }
+                    stopTimer(timers.cpu);
                     
-                    //MPI_Barrier(MPI_COMM_WORLD);
                     // Reduce globally from each node and broadcast
+                    startTimer(timers.mpi);
                     MPI_Allreduce(MPI_IN_PLACE,clusters[0].means,num_clusters*num_dimensions,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
                     MPI_Barrier(MPI_COMM_WORLD);
+                    stopTimer(timers.mpi);
+                    
+                    startTimer(timers.cpu);
                     // Compute final mean by dividing by cluster size
                     for(int c=0; c < num_clusters; c++) {
                         DEBUG("Node %d Cluster %d  Means:",rank,c,clusters[0].N[c]);
@@ -614,11 +620,11 @@ main( int argc, char** argv) {
                         }
                         DEBUG("\n");
                     }
+                    stopTimer(timers.cpu);
                 }
+                startTimer(timers.cpu);
                 #pragma omp barrier
                 stopTimer(timers.cpu);
-                mfinish2 = MPI_Wtime();
-                //printf("Means Reduction: %f\n",mfinish2-mstart2);
                 startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters[0].means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyHostToDevice));
                 stopTimer(timers.memcpy);
@@ -626,7 +632,7 @@ main( int argc, char** argv) {
                 startTimer(timers.m_step);
                 // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
                 dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
-                mstep_covariance1<<<gridDim2, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
+                mstep_covariance1<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
                 cudaThreadSynchronize();
                 stopTimer(timers.m_step);
                 startTimer(timers.memcpy);
@@ -634,10 +640,9 @@ main( int argc, char** argv) {
                 stopTimer(timers.memcpy);
                 // Reduce R for all clusters, copy back to device
                 #pragma omp barrier
-                startTimer(timers.cpu);
-                mstart2 = MPI_Wtime();
                 #pragma omp master 
                 {
+                    startTimer(timers.cpu);
                     // Reduce from threads within the node
                     for(int g=1; g < num_gpus; g++) {
                         for(int c=0; c < num_clusters; c++) {
@@ -646,11 +651,15 @@ main( int argc, char** argv) {
                             }
                         }
                     }
+                    stopTimer(timers.cpu);
                     
                     // Reduce globally from each node and broadcast
+                    startTimer(timers.mpi);
                     MPI_Allreduce(MPI_IN_PLACE,clusters[0].R,num_clusters*num_dimensions*num_dimensions,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
                     MPI_Barrier(MPI_COMM_WORLD);
+                    stopTimer(timers.mpi);
                     
+                    startTimer(timers.cpu);
                     for(int c=0; c < num_clusters; c++) {
                         if(clusters[0].N[c] > 0.5f) {
                             for(int d=0; d < num_dimensions*num_dimensions; d++) {
@@ -668,11 +677,11 @@ main( int argc, char** argv) {
                             }
                         }
                     }
+                    stopTimer(timers.cpu);
                 }
+                startTimer(timers.cpu);
                 #pragma omp barrier
                 stopTimer(timers.cpu);
-                mfinish2 = MPI_Wtime();
-                //printf("Covariance Reduction: %f\n",mfinish2-mstart2);
                 startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R,clusters[0].R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
                 stopTimer(timers.memcpy);
@@ -689,7 +698,7 @@ main( int argc, char** argv) {
                 DEBUG("Invoking constants kernel...",NUM_THREADS);
                 // Inverts the R matrices, computes the constant, normalizes cluster probabilities
                 startTimer(timers.constants);
-                constants_kernel<<<num_clusters, NUM_THREADS>>>(d_clusters,num_clusters,num_dimensions);
+                constants_kernel<<<num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,num_clusters,num_dimensions);
                 cudaThreadSynchronize();
                 stopTimer(timers.constants);
                 CUT_CHECK_ERROR("Constants Kernel execution failed: ");
@@ -701,9 +710,8 @@ main( int argc, char** argv) {
                 DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
                 startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
-                regroup1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
-                //regroup1<<<dim3((int)ceilf((float)my_num_events/(float)NUM_THREADS),num_clusters), NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
-                regroup2<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
+                estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
+                estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
                 CUT_CHECK_ERROR("E-step Kernel execution failed: ");
                 stopTimer(timers.e_step);
@@ -770,47 +778,53 @@ main( int argc, char** argv) {
             // Gather membership values from each node
             // This isn't strictly neccesary unless we're saving the result to saved_clusters
             int memberships_per_node = my_num_events*num_gpus*num_clusters;
+            stopTimer(timers.cpu);
  
-            //#if ENABLE_OUTPUT 
-            #pragma omp master
-            {
-                mstart3 = MPI_Wtime();
-                float* temp = (float*) malloc(sizeof(float)*num_events*num_clusters);
-                memset(temp,0,sizeof(float)*num_events*num_clusters);
-                for(int e=0; e <num_events; e++) {
-                    for(int c=0; c<num_clusters; c++) {
-                        temp[e*num_clusters+c] = clusters[0].memberships[c*num_events+e];
-                    }
-                }
-                memcpy(clusters[0].memberships,temp,sizeof(float)*num_events*num_clusters);
-                
-                //MPI_Gather(clusters[0].memberships,memberships_per_node,MPI_FLOAT,temp,memberships_per_node,MPI_FLOAT,0,MPI_COMM_WORLD);
-                if(rank == 0) {
-                    for(int i=1; i < num_nodes; i++) {
-                        MPI_Status s;
-                        MPI_Recv(&(temp[memberships_per_node*i]),memberships_per_node,MPI_FLOAT,i,1,MPI_COMM_WORLD,&s);
-                    }
-                } else {
-                    MPI_Send(&(clusters[0].memberships[memberships_per_node*rank]),memberships_per_node,MPI_FLOAT,0,1,MPI_COMM_WORLD);
-                }
-                MPI_Barrier(MPI_COMM_WORLD);
-                if(rank == 0) {
-                    for(int e=0; e < num_events; e++) {
+            if(num_clusters > stop_number || ENABLE_OUTPUT) {
+                #pragma omp master
+                {
+                    startTimer(timers.cpu);
+                    mstart3 = MPI_Wtime();
+                    float* temp = (float*) malloc(sizeof(float)*num_events*num_clusters);
+                    memset(temp,0,sizeof(float)*num_events*num_clusters);
+                    for(int e=0; e <num_events; e++) {
                         for(int c=0; c<num_clusters; c++) {
-                            clusters[0].memberships[c*num_events+e] = temp[e*num_clusters+c];
+                            temp[e*num_clusters+c] = clusters[0].memberships[c*num_events+e];
                         }
-                    }    
+                    }
+                    memcpy(clusters[0].memberships,temp,sizeof(float)*num_events*num_clusters);
+                    stopTimer(timers.cpu);
+                    
+                    startTimer(timers.mpi);
+                    //MPI_Gather(clusters[0].memberships,memberships_per_node,MPI_FLOAT,temp,memberships_per_node,MPI_FLOAT,0,MPI_COMM_WORLD);
+                    if(rank == 0) {
+                        for(int i=1; i < num_nodes; i++) {
+                            MPI_Status s;
+                            MPI_Recv(&(temp[memberships_per_node*i]),memberships_per_node,MPI_FLOAT,i,1,MPI_COMM_WORLD,&s);
+                        }
+                    } else {
+                        MPI_Send(&(clusters[0].memberships[memberships_per_node*rank]),memberships_per_node,MPI_FLOAT,0,1,MPI_COMM_WORLD);
+                    }
+                    MPI_Barrier(MPI_COMM_WORLD);
+                    stopTimer(timers.mpi);
+                    startTimer(timers.cpu);
+                    if(rank == 0) {
+                        for(int e=0; e < num_events; e++) {
+                            for(int c=0; c<num_clusters; c++) {
+                                clusters[0].memberships[c*num_events+e] = temp[e*num_clusters+c];
+                            }
+                        }    
+                    }
+                    free(temp);
+                    mfinish3 = MPI_Wtime();
+                    printf("Membership gathering time: %f\n",mfinish3-mstart3);
+                    stopTimer(timers.cpu);
                 }
-                free(temp);
-                mfinish3 = MPI_Wtime();
-                printf("Membership gathering time: %f\n",mfinish3-mstart3);
             }
-            //#endif
 
             // Calculate Rissanen Score
             rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
             PRINT("\nRissanen Score: %e\n",rissanen);
-            stopTimer(timers.cpu);
             
             mfinish = MPI_Wtime();
             
@@ -892,9 +906,8 @@ main( int argc, char** argv) {
                             copy_cluster(clusters[0],i,clusters[0],i+1,num_dimensions);
                         }
                         stopTimer(timers.cpu);
-                    }
-                }
-                #pragma omp barrier
+                    } // end master section
+                } // end root section
 
                 #pragma omp master
                 {
@@ -945,12 +958,13 @@ main( int argc, char** argv) {
 
             #pragma omp barrier
         } // outer loop from M to 1 clusters
-        PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
-        fflush(stdout); 
+        if(rank == 0) {
+            PRINT("\nFinal rissanen score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
+        }
         #pragma omp barrier 
     
         // Print some profiling information
-        printf("Node %02d GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n\tOrder Reduce:\t%7.4f\t%d\t%7.4f\n\tGPU Memcpy:\t%7.4f\n\tCPU:\t\t%7.4f\n",rank,tid,getTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) getTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,getTimerValue(timers.m_step) / 1000.0,params_iterations, (double) getTimerValue(timers.m_step) / (double) params_iterations / 1000.0,getTimerValue(timers.constants) / 1000.0,constants_iterations, (double) getTimerValue(timers.constants) / (double) constants_iterations / 1000.0, getTimerValue(timers.reduce) / 1000.0,reduce_iterations, (double) getTimerValue(timers.reduce) / (double) reduce_iterations / 1000.0, getTimerValue(timers.memcpy) / 1000.0, getTimerValue(timers.cpu) / 1000.0);
+        printf("Node %02d GPU %d:\n\tE-step Kernel:\t%7.4f\t%d\t%7.4f\n\tM-step Kernel:\t%7.4f\t%d\t%7.4f\n\tConsts Kernel:\t%7.4f\t%d\t%7.4f\n\tOrder Reduce:\t%7.4f\t%d\t%7.4f\n\tGPU Memcpy:\t%7.4f\n\tCPU:\t\t%7.4f\n\tMPI:\t\t%7.4f\n",rank,tid,getTimerValue(timers.e_step) / 1000.0,regroup_iterations, (double) getTimerValue(timers.e_step) / (double) regroup_iterations / 1000.0,getTimerValue(timers.m_step) / 1000.0,params_iterations, (double) getTimerValue(timers.m_step) / (double) params_iterations / 1000.0,getTimerValue(timers.constants) / 1000.0,constants_iterations, (double) getTimerValue(timers.constants) / (double) constants_iterations / 1000.0, getTimerValue(timers.reduce) / 1000.0,reduce_iterations, (double) getTimerValue(timers.reduce) / (double) reduce_iterations / 1000.0, getTimerValue(timers.memcpy) / 1000.0, getTimerValue(timers.cpu) / 1000.0, getTimerValue(timers.mpi) / 1000.0);
 
         cleanup_profile_t(&timers);
 
@@ -1086,10 +1100,7 @@ main( int argc, char** argv) {
     printf( "Node %02d Total time: %f (ms)\n", rank, cutGetTimerValue(timer_total));
     cutDeleteTimer(timer_total);
 
-    #pragma omp master
-    {
-        MPI_Finalize();
-    }
+    MPI_Finalize();
 
     return 0;
 }
@@ -1183,15 +1194,6 @@ void writeCluster(FILE* f, clusters_t clusters, int c, int num_dimensions) {
         fprintf(f,"\n");
     }
     fflush(f);   
-    /*
-    fprintf(f,"\nR-inverse Matrix:\n");
-    for(int i=0; i<num_dimensions; i++) {
-        for(int j=0; j<num_dimensions; j++) {
-            fprintf(f,"%.3f ", c->Rinv[i*num_dimensions+j]);
-        }
-        fprintf(f,"\n");
-    } 
-    */
 }
 
 void printCluster(clusters_t clusters, int c, int num_dimensions) {
