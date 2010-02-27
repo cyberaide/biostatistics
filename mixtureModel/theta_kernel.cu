@@ -449,6 +449,33 @@ mstep_means(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_c
 }
 
 __global__ void
+mstep_means_transpose(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events) {
+    // One block per cluster, per dimension:  (M x D) grid of blocks
+    int tid = threadIdx.x;
+    int num_threads = blockDim.x;
+    int c = blockIdx.y; // cluster number
+    int d = blockIdx.x; // dimension number
+
+    __shared__ float temp_sum[NUM_THREADS_MSTEP];
+    float sum = 0.0f;
+    
+    for(int event=tid; event < num_events; event+= num_threads) {
+        sum += fcs_data[d*num_events+event]*clusters->memberships[c*num_events+event];
+    }
+    temp_sum[tid] = sum;
+    
+    __syncthreads();
+    
+    if(tid == 0) {
+        for(int i=1; i < num_threads; i++) {
+            temp_sum[0] += temp_sum[i];
+        }
+        clusters->means[c*num_dimensions+d] = temp_sum[0] / clusters->N[c];
+    }
+    
+}
+
+__global__ void
 mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events) {
     
     int tid = threadIdx.x;
@@ -496,6 +523,19 @@ __device__ void compute_row_col(int n, int* row, int* col) {
     for(int r=0; r < n; r++) {
         for(int c=0; c <= r; c++) {
             if(i == blockIdx.y) {  
+                *row = r;
+                *col = c;
+                return;
+            }
+            i++;
+        }
+    }
+}
+__device__ void compute_row_col_transpose(int n, int* row, int* col) {
+    int i = 0;
+    for(int r=0; r < n; r++) {
+        for(int c=0; c <= r; c++) {
+            if(i == blockIdx.x) {  
                 *row = r;
                 *col = c;
                 return;
@@ -581,6 +621,81 @@ mstep_covariance(float* fcs_data, clusters_t* clusters, int num_dimensions, int 
     }
 }
 
+/*
+ * Computes the covariance matrices of the data (R matrix)
+ * Must be launched with a M x D*D grid of blocks: 
+ *  i.e. dim3 gridDim(num_clusters,num_dimensions*num_dimensions)
+ */
+__global__ void
+mstep_covariance_transpose(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events) {
+    int tid = threadIdx.x; // easier variable name for our thread ID
+
+    // Determine what row,col this matrix is handling, also handles the symmetric element
+    int row,col,c;
+    compute_row_col_transpose(num_dimensions, &row, &col);
+
+    __syncthreads();
+    
+    c = blockIdx.y; // Determines what cluster this block is handling    
+
+    int matrix_index = row * num_dimensions + col;
+
+    #if DIAG_ONLY
+    if(row != col) {
+        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f;
+        matrix_index = col*num_dimensions+row;
+        clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f;
+        return;
+    }
+    #endif 
+
+    // Store the means in shared memory to speed up the covariance computations
+    __shared__ float means[NUM_DIMENSIONS];
+    // copy the means for this cluster into shared memory
+    if(tid < num_dimensions) {
+        means[tid] = clusters->means[c*num_dimensions+tid];
+    }
+
+    // Sync to wait for all params to be loaded to shared memory
+    __syncthreads();
+
+    __shared__ float temp_sums[NUM_THREADS_MSTEP];
+    
+    float cov_sum = 0.0f;
+
+    for(int event=tid; event < num_events; event+=NUM_THREADS_MSTEP) {
+        cov_sum += (fcs_data[row*num_events+event]-means[row])*(fcs_data[col*num_events+event]-means[col])*clusters->memberships[c*num_events+event]; 
+    }
+    temp_sums[tid] = cov_sum;
+
+    __syncthreads();
+    
+    if(tid == 0) {
+        cov_sum = 0.0f;
+        for(int i=0; i < NUM_THREADS_MSTEP; i++) {
+            cov_sum += temp_sums[i];
+        }
+        if(clusters->N[c] >= 1.0f) { // Does it need to be >=1, or just something non-zero?
+            cov_sum /= clusters->N[c];
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
+            // Set the symmetric value
+            matrix_index = col*num_dimensions+row;
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = cov_sum;
+        } else {
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f; // what should the variance be for an empty cluster...?
+            // Set the symmetric value
+            matrix_index = col*num_dimensions+row;
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] = 0.0f; // what should the variance be for an empty cluster...?
+        }
+
+        // Regularize matrix - adds some variance to the diagonal elements
+        // Helps keep covariance matrix non-singular (so it can be inverted)
+        // The amount added is scaled down based on COVARIANCE_DYNAMIC_RANGE constant defined at top of this file
+        if(row == col) {
+            clusters->R[c*num_dimensions*num_dimensions+matrix_index] += clusters->avgvar[c];
+        }
+    }
+}
 /*
  * Computes the constant for each cluster and normalizes pi for every cluster
  * In the process it inverts R and finds the determinant

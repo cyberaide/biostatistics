@@ -337,7 +337,9 @@ main( int argc, char** argv) {
             CUT_SAFE_CALL( cutStopTimer(memcpy_timer));
             // This kernel computes new means
             dim3 gridDim1(num_clusters,num_dimensions);
+            //dim3 gridDim1_transpose(num_dimensions,num_clusters);
             mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            //mstep_means_transpose<<<gridDim1_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
             CUDA_SAFE_CALL(cudaMemcpy(clusters.means,temp_clusters.means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyDeviceToHost));
@@ -345,7 +347,9 @@ main( int argc, char** argv) {
             
             // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
             dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
+            //dim3 gridDim2_transpose(num_dimensions*(num_dimensions+1)/2,num_clusters);
             mstep_covariance<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            //mstep_covariance_transpose<<<gridDim2_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
             CUT_CHECK_ERROR("M-step Kernel execution failed: ");
