@@ -19,8 +19,34 @@ using namespace std;
 
 extern "C"
 float* readData(char* f, int* ndims, int* nevents);
+float* readBIN(char* f, int* ndims, int* nevents);
+float* readCSV(char* f, int* ndims, int* nevents);
 
 float* readData(char* f, int* ndims, int* nevents) {
+    int length = strlen(f);
+    printf("File Extension: %s\n",f+length-3);
+    if(strcmp(f+length-3,"bin") == 0) {
+        return readBIN(f,ndims,nevents);
+    } else {
+        return readCSV(f,ndims,nevents);
+    }
+}
+
+float* readBIN(char* f, int* ndims, int* nevents) {
+    FILE* fin = fopen(f,"rb");
+
+    fread(nevents,4,1,fin);
+    fread(ndims,4,1,fin);
+    int num_elements = (*ndims)*(*nevents);
+    printf("Number of rows: %d\n",*nevents);
+    printf("Number of cols: %d\n",*ndims);
+    float* data = (float*) malloc(sizeof(float)*num_elements);
+    fread(data,sizeof(float),num_elements,fin);
+    fclose(fin);
+    return data;
+}
+
+float* readCSV(char* f, int* ndims, int* nevents) {
     string line1;
     ifstream file(f);
     vector<string> lines;
@@ -59,7 +85,7 @@ float* readData(char* f, int* ndims, int* nevents) {
         int num_events = (int)lines.size();
         int pad_size = 64 - (num_events % 64);
         if(pad_size == 64) pad_size = 0;
-        //int pad_size = 0;
+        pad_size = 0;
 
         printf("Number of events in input file: %d\n",num_events);
         printf("Number of padding events added for alignment: %d\n",pad_size);

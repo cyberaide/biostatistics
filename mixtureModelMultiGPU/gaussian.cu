@@ -485,8 +485,8 @@ main( int argc, char** argv) {
                 }
                 DEBUG("Likelihood: %e\n",likelihood);
             }
-            stopTimer(timers.cpu); 
             #pragma omp barrier
+            stopTimer(timers.cpu); 
 
             float change = epsilon*2;
             
@@ -563,8 +563,8 @@ main( int argc, char** argv) {
                         DEBUG("\n");
                     }
                 }
-                stopTimer(timers.cpu);
                 #pragma omp barrier
+                stopTimer(timers.cpu);
                 startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.means,clusters[0].means,sizeof(float)*num_clusters*num_dimensions,cudaMemcpyHostToDevice));
                 stopTimer(timers.memcpy);
@@ -608,8 +608,8 @@ main( int argc, char** argv) {
                         }
                     }
                 }
-                stopTimer(timers.cpu);
                 #pragma omp barrier
+                stopTimer(timers.cpu);
                 startTimer(timers.memcpy);
                 CUDA_SAFE_CALL(cudaMemcpy(temp_clusters.R,clusters[0].R,sizeof(float)*num_clusters*num_dimensions*num_dimensions,cudaMemcpyHostToDevice));
                 stopTimer(timers.memcpy);
