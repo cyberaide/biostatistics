@@ -86,32 +86,24 @@ def parseInputArgs():
         sys.exit(1)
 
     if os.path.exists(params['INPUT_FILE']):
-        input = open(params['INPUT_FILE'])
-        line = input.readline() # Read the header line
-        num_dimensions = len(line.split(DELIMITER)) 
-        num_events = 0
-        for line in input:
-            num_events += 1
-        params['NUM_DIMENSIONS'] = num_dimensions
-        params['NUM_EVENTS'] = num_events - (num_events % 16)
-        print "%d events removed to ensure memory alignment" % (num_events % 16)
+        if params['INPUT_FILE'].lower().endswith(".bin"):
+            input = open(params['INPUT_FILE'],'rb')
+            import struct
+            params['NUM_EVENTS'] = struct.unpack('i',input.read(4))[0]
+            params['NUM_DIMENSIONS'] = struct.unpack('i',input.read(4))[0]
+        else:
+            input = open(params['INPUT_FILE'])
+            line = input.readline() # Read the header line
+            num_dimensions = len(line.split(DELIMITER))
+            num_events = 0
+            for line in input:
+                num_events += 1
+            params['NUM_DIMENSIONS'] = num_dimensions
+            params['NUM_EVENTS'] = num_events
     else:
         print "Invalid input file."
         sys.exit(1)
    
-    num_threads = 256
-    if 8 < num_dimensions <= 10:
-        num_threads = 320;
-    elif 10 < num_dimensions <= 12:
-        num_threads = 256
-    elif 12 < num_dimensions <= 16:
-        num_threads = 192
-    elif 16 < num_dimensions <= 24:
-        num_threads = 128
-    elif num_dimensions > 24:
-        num_threads = 64
-    params['NUM_THREADS'] = num_threads
-
     return params    
 
 if __name__ == '__main__':

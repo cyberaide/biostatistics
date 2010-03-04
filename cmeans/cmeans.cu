@@ -613,15 +613,29 @@ void UpdateClusterCentersCPU_Naive(const float* oldClusters, const float* events
     free(distances);
 }
 
+float* readBIN(char* f) {
+    FILE* fin = fopen(f,"rb");
+    int nevents,ndims;
+    fread(&nevents,4,1,fin);
+    fread(&ndims,4,1,fin);
+    int num_elements = (ndims)*(nevents);
+    printf("Number of rows: %d\n",nevents);
+    printf("Number of cols: %d\n",ndims);
+    float* data = (float*) malloc(sizeof(float)*num_elements);
+    fread(data,sizeof(float),num_elements,fin);
+    fclose(fin);
+    return data;
+}
 
-float* ParseSampleInput(const char* filename){
+
+float* readCSV(char* filename) {
     FILE* myfile = fopen(filename, "r");
     if(myfile == NULL){
         printf("Error: File DNE\n");
         return NULL;
     }
     char myline[1024];
-    
+
     float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     myfile = fopen(filename, "r");
     #if LINE_LABELS
@@ -642,12 +656,21 @@ float* ParseSampleInput(const char* filename){
             }
         }
     #endif
-    
+
     fclose(myfile);
-    
-    
     return retVal;
 }
+
+float* ParseSampleInput(char* f){
+    int length = strlen(f);
+    printf("File Extension: %s\n",f+length-3);
+    if(strcmp(f+length-3,"bin") == 0) {
+        return readBIN(f);
+    } else {
+        return readCSV(f);
+    }
+}
+
 
 void FreeMatrix(float* d_matrix){
     CUDA_SAFE_CALL(cudaFree(d_matrix));

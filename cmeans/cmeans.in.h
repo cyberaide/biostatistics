@@ -96,7 +96,7 @@ void UpdateClusterCentersCPU_Naive(const float* oldClusters, const float* events
 void UpdateClusterCentersCPU_Optimized(const float* oldClusters, const float* events, float* newClusters);
 void UpdateClusterCentersCPU_Linear(const float* oldClusters, const float* events, float* newClusters);
 
-float* ParseSampleInput(const char* filename);
+float* ParseSampleInput(char* filename);
 
 float FindScoreGPU(float* d_matrix, long config);
 float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime);
