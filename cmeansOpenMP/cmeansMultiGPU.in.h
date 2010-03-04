@@ -86,7 +86,7 @@ float MembershipValue(const float* clusters, const float* events, int clusterInd
 float MembershipValueDist(const float* clusters, const float* events, int eventIndex, float distance);
 float MembershipValueReduced(const float* clusters, const float* events, int clusterIndex, int eventIndex, int);
 
-float* ParseSampleInput(const char* filename);
+float* ParseSampleInput(char* filename);
 
 float FindScoreGPU(float* d_matrix, long config);
 float* BuildQGPU(float* d_events, float* d_clusters, float* distanceMatrix, float* mdlTime);
