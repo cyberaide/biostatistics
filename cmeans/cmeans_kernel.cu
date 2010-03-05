@@ -140,7 +140,6 @@ __global__ void UpdateClusterCentersGPU2(const float* oldClusters, const float* 
 }
 
 __global__ void ComputeDistanceMatrix(const float* clusters, const float* events, float* matrix) {
-    
     // copy the relavant center for this block into shared memory	
     __shared__ float center[NUM_DIMENSIONS];
     for(int j = threadIdx.x; j < NUM_DIMENSIONS; j+=NUM_THREADS_DISTANCE){

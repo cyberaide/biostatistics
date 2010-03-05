@@ -100,6 +100,9 @@ def parseInputArgs():
                 num_events += 1
             params['NUM_DIMENSIONS'] = num_dimensions
             params['NUM_EVENTS'] = num_events
+
+        params['NUM_EVENTS'] -= params['NUM_EVENTS'] % 16
+        print "%d events removed to ensure memory alignment" % (params['NUM_EVENTS'] % 16)
     else:
         print "Invalid input file."
         sys.exit(1)
