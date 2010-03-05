@@ -90,6 +90,10 @@ int main(int argc, char* argv[])
     CUT_SAFE_CALL(cutCreateTimer(&timer_gpu));
     CUT_SAFE_CALL(cutCreateTimer(&timer_total));
     
+    if(!InitCUDA()) {
+        return 0;
+    }
+
     CUT_SAFE_CALL(cutStartTimer(timer_total));
     CUT_SAFE_CALL(cutStartTimer(timer_io));
     
@@ -109,15 +113,12 @@ int main(int argc, char* argv[])
      
     DEBUG("Finished parsing input file\n");
     
-    if(!InitCUDA()) {
-        return 0;
-    }
    
-    cublasStatus status;
-    status = cublasInit();
-    if(status != CUBLAS_STATUS_SUCCESS) {
-        printf("!!! CUBLAS initialization error\n");
-    }
+    //cublasStatus status;
+    //status = cublasInit();
+    //if(status != CUBLAS_STATUS_SUCCESS) {
+    //    printf("!!! CUBLAS initialization error\n");
+    //}
 
     // Seed random generator, used for choosing initial cluster centers 
     srand((unsigned)(time(0)));
@@ -399,7 +400,9 @@ int main(int argc, char* argv[])
     int newCount = 0;
     for(int i = 0; i < NUM_CLUSTERS; i++){
         if(finalClusterConfig[i]){
+            #if !CPU_ONLY
             PRINT("N=%.1f\n",newCount,sizes[i]);
+            #endif
             for(int j = 0; j < NUM_DIMENSIONS; j++){
                 newClusters[newCount * NUM_DIMENSIONS + j] = myClusters[i*NUM_DIMENSIONS + j];
                 PRINT("%.2f\t", myClusters[i*NUM_DIMENSIONS + j]);
