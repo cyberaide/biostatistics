@@ -121,6 +121,58 @@ __global__ void UpdateClusterCentersGPU2(const float* oldClusters, const float* 
 
 }
 
+__global__ void UpdateClusterCentersGPU3(const float* oldClusters, const float* events, float* newClusters, float* memberships, int my_num_events) {
+    float membershipValue;
+    float eventValue;
+
+    // Compute cluster range for this block
+    int c_start = blockIdx.y*NUM_CLUSTERS_PER_BLOCK;
+    int num_c = NUM_CLUSTERS_PER_BLOCK;
+
+    // Handle boundary condition
+    if(blockIdx.y == gridDim.y-1 && NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK) {
+        num_c = NUM_CLUSTERS % NUM_CLUSTERS_PER_BLOCK;
+    }
+
+    // Dimension index
+    int d = blockIdx.x;
+    int event_matrix_offset = my_num_events*d;
+
+    __shared__ float numerators[NUM_THREADS_UPDATE*NUM_CLUSTERS_PER_BLOCK];
+
+    int tid = threadIdx.x;
+
+    // initialize numerators and denominators to 0
+    for(int c = 0; c < num_c; c++) {
+        numerators[c*NUM_THREADS_UPDATE+tid] = 0;
+    }
+
+    // Compute new membership value for each event
+    // Add its contribution to the numerator and denominator for that thread
+    for(int j = tid; j < my_num_events; j+=NUM_THREADS_UPDATE){
+        eventValue = events[event_matrix_offset + j];
+        numerators[0*NUM_THREADS_UPDATE+tid] += eventValue*memberships[(0+c_start)*my_num_events + j];
+        numerators[1*NUM_THREADS_UPDATE+tid] += eventValue*memberships[(1+c_start)*my_num_events + j];
+        numerators[2*NUM_THREADS_UPDATE+tid] += eventValue*memberships[(2+c_start)*my_num_events + j];
+        numerators[3*NUM_THREADS_UPDATE+tid] += eventValue*memberships[(3+c_start)*my_num_events + j];
+    }
+
+    __syncthreads();
+
+    for(int c = 0; c < num_c; c++) {
+        numerators[c*NUM_THREADS_UPDATE+tid] = parallelSum(&numerators[NUM_THREADS_UPDATE*c],NUM_THREADS_UPDATE);
+    }
+
+    __syncthreads();
+
+    if(tid == 0){
+        for(int c = 0; c < num_c; c++) {
+            // Set the new center for this block
+            newClusters[(c+c_start)*NUM_DIMENSIONS + d] = numerators[c*NUM_THREADS_UPDATE];
+        }
+    }
+
+}
 
 __global__ void ComputeClusterSizes(float* memberships, float* sizes, int my_num_events) {
     __shared__ float partial_sums[512];

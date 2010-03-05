@@ -66,9 +66,11 @@ int main(int argc, char* argv[])
 {
     unsigned int timer_io; // Timer for I/O, such as reading FCS file and outputting result files
     unsigned int timer_total; // Total time
+    unsigned int timer_main_cpu;
    
     cutCreateTimer(&timer_io);
     cutCreateTimer(&timer_total);
+    cutCreateTimer(&timer_main_cpu);
     
     cutStartTimer(timer_total);
     cutStartTimer(timer_io);
@@ -80,15 +82,14 @@ int main(int argc, char* argv[])
     }
 
     float* myEvents = ParseSampleInput(argv[1]);
-#if FAKE
-    free(myEvents);
-    myEvents = generateEvents();
-#endif
+    
     if(myEvents == NULL){
         return 1;
     }
      
     printf("Parsed file\n");
+    
+    cutStopTimer(timer_io);
     
     int num_gpus = 0;       // number of CUDA GPUs
 
@@ -111,10 +112,9 @@ int main(int argc, char* argv[])
     }
     printf("---------------------------\n");
     
+    cutStartTimer(timer_main_cpu); 
     srand((unsigned)(time(0)));
     //srand(42);
-    
-    cutStopTimer(timer_io);
     
     // Allocate arrays for the cluster centers
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
@@ -148,6 +148,7 @@ int main(int argc, char* argv[])
 
     float* memberships = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_EVENTS);
     int* finalClusterConfig;
+    cutStopTimer(timer_main_cpu); 
    
     ////////////////////////////////////////////////////////////////
     // run as many CPU threads as there are CUDA devices
@@ -265,7 +266,8 @@ int main(int argc, char* argv[])
                 ComputeMembershipMatrixLinear<<< num_blocks_membership, NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, my_num_events);
                 DEBUG("Launching UpdateClusterCentersGPU kernel\n");
                 //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, d_denoms, my_num_events);
-                UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
+                //UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
+                UpdateClusterCentersGPU3<<< dim3(NUM_DIMENSIONS,num_blocks_update), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
                 ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_distanceMatrix, d_denoms, my_num_events);
             #else
                 // O(M^2) membership kernel
@@ -273,7 +275,8 @@ int main(int argc, char* argv[])
                 ComputeMembershipMatrix<<< dim3(num_blocks_membership,NUM_CLUSTERS), NUM_THREADS_MEMBERSHIP  >>>(d_distanceMatrix, d_memberships, my_num_events);
                 DEBUG("Launching UpdateClusterCentersGPU kernel\n");
                 //UpdateClusterCentersGPU<<< dim3(NUM_CLUSTERS,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, d_denoms, my_num_events);
-                UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_distanceMatrix, my_num_events);
+                //UpdateClusterCentersGPU2<<< dim3(num_blocks_update,NUM_DIMENSIONS), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, my_num_events);
+                UpdateClusterCentersGPU3<<< dim3(NUM_DIMENSIONS,num_blocks_update), NUM_THREADS_UPDATE >>>(d_C, d_E, d_nC, d_memberships, my_num_events);
                 ComputeClusterSizes<<< NUM_CLUSTERS, 512 >>>( d_memberships, d_denoms, my_num_events );
             #endif
 
@@ -470,6 +473,7 @@ int main(int argc, char* argv[])
     cutStopTimer(timer_total);
     
     printf("Total Time (ms): %f\n",cutGetTimerValue(timer_total));
+    printf("Main Thread CPU Time (ms): %f\n",cutGetTimerValue(timer_main_cpu));
     printf("I/O Time (ms): %f\n",cutGetTimerValue(timer_io));
     printf("\n\n"); 
     
@@ -498,10 +502,10 @@ float* readBIN(char* f) {
     int nevents,ndims;
     fread(&nevents,4,1,fin);
     fread(&ndims,4,1,fin);
-    int num_elements = (ndims)*(nevents);
+    int num_elements = NUM_EVENTS*NUM_DIMENSIONS;
     printf("Number of rows: %d\n",nevents);
     printf("Number of cols: %d\n",ndims);
-    float* data = (float*) malloc(sizeof(float)*num_elements);
+    float* data = (float*) malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     fread(data,sizeof(float),num_elements,fin);
     fclose(fin);
     return data;
