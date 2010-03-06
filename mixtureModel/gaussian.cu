@@ -64,6 +64,28 @@ main( int argc, char** argv) {
     constants_total = constants_iterations = 0;
     reduce_total = reduce_iterations = 0;
     
+    // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
+    int GPUCount;
+    CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
+    if(GPUCount == 0) {
+        PRINT("Only 1 CUDA device found, defaulting to it.\n");
+        device = 0;
+    } else if (GPUCount > 1 && device >= 0) {
+        PRINT("Multiple CUDA devices found, selecting device based on user input: %d\n",device);
+    } else if(GPUCount > 1 && DEVICE < GPUCount) {
+        PRINT("Multiple CUDA devices found, selecting based on compiled default: %d\n",DEVICE);
+        device = DEVICE;
+    } else {
+        printf("Fatal Error: Unable to set device to %d, not enough GPUs.\n",DEVICE);
+        exit(2);
+    }
+    CUDA_SAFE_CALL(cudaSetDevice(device));
+    
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    //PRINT("\nUsing device - %s\n\n", prop.name);
+    printf("\nUsing device - %s\n\n", prop.name);
+    
     // Keep track of total time
     unsigned int total_timer = 0;
     CUT_SAFE_CALL(cutCreateTimer(&total_timer));
@@ -131,27 +153,6 @@ main( int argc, char** argv) {
     PRINT("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
    
     CUT_SAFE_CALL(cutStartTimer(cpu_timer));
-    // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
-    int GPUCount;
-    CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
-    if(GPUCount == 0) {
-        PRINT("Only 1 CUDA device found, defaulting to it.\n");
-        device = 0;
-    } else if (GPUCount > 1 && device >= 0) {
-        PRINT("Multiple CUDA devices found, selecting device based on user input: %d\n",device);
-    } else if(GPUCount > 1 && DEVICE < GPUCount) {
-        PRINT("Multiple CUDA devices found, selecting based on compiled default: %d\n",DEVICE);
-        device = DEVICE;
-    } else {
-        printf("Fatal Error: Unable to set device to %d, not enough GPUs.\n",DEVICE);
-        exit(2);
-    }
-    CUDA_SAFE_CALL(cudaSetDevice(device));
-    
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, device);
-    //PRINT("\nUsing device - %s\n\n", prop.name);
-    printf("\nUsing device - %s\n\n", prop.name);
     
     // Setup the cluster data structures on host
     clusters_t clusters;
