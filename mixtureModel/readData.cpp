@@ -37,6 +37,8 @@ float* readBIN(char* f, int* ndims, int* nevents) {
 
     fread(nevents,4,1,fin);
     fread(ndims,4,1,fin);
+    printf("Number of elements removed for memory alignment: %d\n",*nevents % 16);
+    *nevents -= *nevents % 16;
     int num_elements = (*ndims)*(*nevents);
     printf("Number of rows: %d\n",*nevents);
     printf("Number of cols: %d\n",*ndims);
@@ -83,15 +85,16 @@ float* readCSV(char* f, int* ndims, int* nevents) {
 
         lines.erase(lines.begin()); // Remove first line, assumed to be header
         int num_events = (int)lines.size();
-        int pad_size = 64 - (num_events % 64);
-        if(pad_size == 64) pad_size = 0;
-        pad_size = 0;
-
-        printf("Number of events in input file: %d\n",num_events);
-        printf("Number of padding events added for alignment: %d\n",pad_size);
+        //int pad_size = 64 - (num_events % 64);
+        //if(pad_size == 64) pad_size = 0;
+        //pad_size = 0;
+        //printf("Number of events in input file: %d\n",num_events);
+        //printf("Number of padding events added for alignment: %d\n",pad_size);
+        printf("Number of events removed to ensure memory alignment %d\n",num_events % 16);
+        num_events -= num_events % 16;
 
         // Allocate space for all the FCS data
-        data = (float*)malloc(sizeof(float) * num_dims * (num_events+pad_size));
+        data = (float*)malloc(sizeof(float) * num_dims * (num_events));
         if(!data){
             printf("Cannot allocate enough memory for FCS data.\n");
             return NULL;
@@ -110,12 +113,12 @@ float* readCSV(char* f, int* ndims, int* nevents) {
             }
         }
 
-        for(int i = num_events; i < num_events+pad_size; i++) {
-            for(int j = 0; j < num_dims; j++) {
-                data[i * num_dims + j] = 0.0f;
-            }
-        }
-        num_events += pad_size;
+        //for(int i = num_events; i < num_events+pad_size; i++) {
+        //    for(int j = 0; j < num_dims; j++) {
+        //        data[i * num_dims + j] = 0.0f;
+        //    }
+        //}
+        //num_events += pad_size;
 
         *ndims = num_dims;
         *nevents = num_events;
