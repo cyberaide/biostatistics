@@ -138,6 +138,17 @@ main( int argc, char** argv) {
     int constants_iterations = 0;
     int reduce_iterations = 0;
     
+    int num_gpus;
+    CUDA_SAFE_CALL(cudaGetDeviceCount(&num_gpus));
+    if (num_gpus < 1) {
+        printf("ERROR: No CUDA capable GPUs detected.\n");
+        return -1;
+    } else if(num_gpus == 1) {
+        printf("Warning: Only 1 CUDA GPU detected. Running single GPU version would be more efficient.\n");
+    } else {
+        PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
+    }
+    
     // Keep track of total time
     unsigned int timer_total;
     cutCreateTimer( &timer_total);
@@ -202,16 +213,6 @@ main( int argc, char** argv) {
     
     PRINT("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
    
-    int num_gpus;
-    CUDA_SAFE_CALL(cudaGetDeviceCount(&num_gpus));
-    if (num_gpus < 1) {
-        printf("ERROR: No CUDA capable GPUs detected.\n");
-        return -1;
-    } else if(num_gpus == 1) {
-        printf("Warning: Only 1 CUDA GPU detected. Running single GPU version would be more efficient.\n");
-    } else {
-        PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
-    }
     
     // Setup the cluster data structures on host
     // This the shared memory space between the GPUs
