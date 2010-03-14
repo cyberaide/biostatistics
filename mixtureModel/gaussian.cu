@@ -64,6 +64,9 @@ main( int argc, char** argv) {
     constants_total = constants_iterations = 0;
     reduce_total = reduce_iterations = 0;
     
+    // Validate the command-line arguments, parse # of clusters, etc 
+    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters,&device);
+    
     // Set the device to run on... 0 for GTX 260, 1 for Tesla C870 on oak
     int GPUCount;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&GPUCount));
@@ -104,8 +107,6 @@ main( int argc, char** argv) {
     CUT_SAFE_CALL(cutCreateTimer(&memcpy_timer));
    
     CUT_SAFE_CALL(cutStartTimer(io_timer));
-    // Validate the command-line arguments, parse # of clusters, etc 
-    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters,&device);
     
     // Don't continue if we had a problem with the program arguments
     if(error) {
