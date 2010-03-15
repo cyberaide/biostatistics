@@ -82,31 +82,8 @@ int main(int argc, char* argv[])
     cutCreateTimer(&timer_total);
     cutCreateTimer(&timer_main_cpu);
     
-    cutStartTimer(timer_total);
-    
-    // [program name]  [data file]
-    if(argc != 2){
-        printf("Usage Error: must supply data file. e.g. programe_name @opt(flags) file.in\n");
-        return 1;
-    }
-
-    cutStartTimer(timer_io);
-    float* myEvents;
-    if(rank == 0) {
-        myEvents = ParseSampleInput(argv[1]);
-        MPI_Bcast(myEvents,NUM_EVENTS*NUM_DIMENSIONS,MPI_FLOAT,0,MPI_COMM_WORLD);
-    } else {
-        myEvents = (float*) malloc(sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS);
-        MPI_Bcast(myEvents,NUM_EVENTS*NUM_DIMENSIONS,MPI_FLOAT,0,MPI_COMM_WORLD);
-    }
-     
-    printf("Parsed file\n");
-    
-    cutStopTimer(timer_io);
-    cutStartTimer(timer_main_cpu);
-    int num_gpus = 0;       // number of CUDA GPUs
-
     // determine the number of CUDA capable GPUs
+    int num_gpus = 0;       // number of CUDA GPUs
     cudaGetDeviceCount(&num_gpus);
     if(num_gpus < 1)
     {
@@ -125,17 +102,65 @@ int main(int argc, char* argv[])
     }
     printf("---------------------------\n");
     
-    srand((unsigned)(time(0)));
-    //srand(42);
+    int total_num_gpus = num_gpus * num_nodes;
+    
+    cutStartTimer(timer_total);
+    
+    // [program name]  [data file]
+    if(argc != 2){
+        printf("Usage Error: must supply data file. e.g. programe_name @opt(flags) file.in\n");
+        return 1;
+    }
+
+    cutStartTimer(timer_io);
+    float* myEvents;
+
+    int elements_per_node, elements_being_sent;
+    elements_per_node = NUM_EVENTS / total_num_gpus * num_gpus * NUM_DIMENSIONS;
+    
+    // Root reads input from file and distributes to each node
+    if(rank == 0) {
+        myEvents = ParseSampleInput(argv[1]);
+        MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request));
+        MPI_Status s;
+        // Send everything asynchronously
+        for(int i=1; i < num_nodes; i++) {
+            elements_being_sent = elements_per_node;
+            if(i == num_nodes-1) { // boundary condition
+                elements_being_sent += (NUM_EVENTS % total_num_gpus)*NUM_DIMENSIONS;
+            }
+            MPI_Isend(&(myEvents[elements_per_node*i]),elements_being_sent,MPI_FLOAT,i,1,MPI_COMM_WORLD,&requests[i]);
+            //MPI_Send(&(myEvents[elements_per_node*i]),elements_being_sent,MPI_FLOAT,i,1,MPI_COMM_WORLD);
+        }
+        // Wait for the Isends to complete
+        for(int i=1; i < num_nodes; i++) {
+            MPI_Wait(&requests[i],&s);
+        }
+        elements_being_sent = elements_per_node; // so that its set properly for the root 
+    } else {
+        myEvents = (float*) malloc(sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS);
+        elements_being_sent = elements_per_node;
+        if(rank == num_nodes-1) { // boundary condition
+            elements_being_sent += (NUM_EVENTS % total_num_gpus)*NUM_DIMENSIONS;
+        }
+        MPI_Status s;
+        MPI_Recv(&(myEvents[elements_per_node*rank]),elements_being_sent,MPI_FLOAT,0,1,MPI_COMM_WORLD,&s);
+    }
+    MPI_Barrier(MPI_COMM_WORLD); 
+    cutStopTimer(timer_io);
+    
+    cutStartTimer(timer_main_cpu);
+    //srand((unsigned)(time(0)));
+    srand(42);
     
     // Allocate arrays for the cluster centers
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
     float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
 
     // Select random cluster centers
+    double t1,t2;
     generateInitialClusters(myClusters, myEvents);
 
-    int total_num_gpus = num_gpus * num_nodes;
 
     // Create an array of arrays for temporary cluster centers from each GPU
     float** tempClusters = (float**) malloc(sizeof(float*)*num_gpus);
@@ -519,13 +544,16 @@ int main(int argc, char* argv[])
 
         fflush(stdout);
         #pragma omp barrier
- 
-        printf("\n\n"); 
-        printf("Node %d: Thread %d: GPU memcpy Time (ms): %f\n",rank,tid,getTimerValue(timer_memcpy));
-        printf("Node %d: Thread %d: CPU processing Time (ms): %f\n",rank,tid,getTimerValue(timer_cpu));
-        printf("Node %d: Thread %d: GPU processing Time (ms): %f\n",rank,tid,getTimerValue(timer_gpu));
-        printf("Node %d: Thread %d: MPI Time (ms): %f\n",rank,tid,getTimerValue(timer_mpi));
-        
+
+        #pragma omp master
+        { 
+            printf("\n\n"); 
+            printf("Node %d: Thread %d: GPU memcpy Time (ms): %f\n",rank,tid,getTimerValue(timer_memcpy));
+            printf("Node %d: Thread %d: CPU processing Time (ms): %f\n",rank,tid,getTimerValue(timer_cpu));
+            printf("Node %d: Thread %d: GPU processing Time (ms): %f\n",rank,tid,getTimerValue(timer_gpu));
+            printf("Node %d: Thread %d: MPI Time (ms): %f\n",rank,tid,getTimerValue(timer_mpi));
+        }        
+
         #if !CPU_ONLY
             CUDA_SAFE_CALL(cudaFree(d_E));
             CUDA_SAFE_CALL(cudaFree(d_C));
@@ -560,11 +588,13 @@ int main(int argc, char* argv[])
 
     cutStopTimer(timer_io);
     cutStopTimer(timer_total);
-    
-    printf("Total Time (ms): %f\n",cutGetTimerValue(timer_total));
-    printf("I/O Time (ms): %f\n",cutGetTimerValue(timer_io));
-    printf("Main Thread CPU Time (ms): %f\n",cutGetTimerValue(timer_main_cpu));
-    printf("\n\n"); 
+   
+    if(rank == 0) { 
+        printf("Total Time (ms): %f\n",cutGetTimerValue(timer_total));
+        printf("I/O Time (ms): %f\n",cutGetTimerValue(timer_io));
+        printf("Main Thread CPU Time (ms): %f\n",cutGetTimerValue(timer_main_cpu));
+        printf("\n\n");
+    } 
     
     free(newClusters);
     free(myClusters);
