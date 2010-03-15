@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
     // Root reads input from file and distributes to each node
     if(rank == 0) {
         myEvents = ParseSampleInput(argv[1]);
-        MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request));
+        MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request)*num_nodes);
         MPI_Status s;
         // Send everything asynchronously
         for(int i=1; i < num_nodes; i++) {
@@ -136,6 +136,7 @@ int main(int argc, char* argv[])
         for(int i=1; i < num_nodes; i++) {
             MPI_Wait(&requests[i],&s);
         }
+        free(requests);
         elements_being_sent = elements_per_node; // so that its set properly for the root 
     } else {
         myEvents = (float*) malloc(sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS);
