@@ -173,7 +173,6 @@ main( int argc, char** argv) {
     scratch_cluster.memberships = (float*) malloc(sizeof(float)*num_events);
 
     DEBUG("Finished allocating memory on host for clusters.\n");
-    CUT_SAFE_CALL(cutStopTimer(cpu_timer));
     
     float min_rissanen, rissanen;
     
@@ -237,7 +236,7 @@ main( int argc, char** argv) {
         // This is the iterative loop for the EM algorithm.
         // It re-estimates parameters, re-computes constants, and then regroups the events
         // These steps keep repeating until the change in likelihood is less than some epsilon        
-        while(fabs(change) > epsilon && iters < MAX_ITERS) {
+        while(iters < MIN_ITERS || (fabs(change) > epsilon && iters < MAX_ITERS)) {
             old_likelihood = likelihood;
             
             DEBUG("Invoking reestimate_parameters (M-step) kernel...");
@@ -279,12 +278,10 @@ main( int argc, char** argv) {
             DEBUG("Change in likelihood: %f\n",change);
 
             iters++;
-            CUT_SAFE_CALL(cutStopTimer(cpu_timer));
 
         }
         
         // Calculate Rissanen Score
-        CUT_SAFE_CALL(cutStartTimer(cpu_timer));
         rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
         PRINT("\nRissanen Score: %e\n",rissanen);
         
@@ -305,7 +302,6 @@ main( int argc, char** argv) {
             memcpy(saved_clusters.Rinv,clusters.Rinv,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
             memcpy(saved_clusters.memberships,clusters.memberships,sizeof(float)*num_events*num_clusters);
         }
-        CUT_SAFE_CALL(cutStopTimer(cpu_timer));
 
         
         /**************** Reduce GMM Order ********************/
@@ -363,7 +359,6 @@ main( int argc, char** argv) {
     } // outer loop from M to 1 clusters
     PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
     
-    CUT_SAFE_CALL(cutStartTimer(cpu_timer));
     char* result_suffix = ".results";
     char* summary_suffix = ".summary";
     int filenamesize1 = strlen(argv[3]) + strlen(result_suffix) + 1;

@@ -20,7 +20,8 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 20
+#define MIN_ITERS 1
+#define MAX_ITERS 1
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro

@@ -42,15 +42,15 @@ void seed_clusters(float *data, clusters_t* clusters, int D, int M, int N) {
         clusters->pi[m] = 1.0f / (float) M;
         clusters->avgvar[m] = avgvar / COVARIANCE_DYNAMIC_RANGE;
 
-        printf("N: %.2f\tPi: %.2f\tAvgvar: %e\n",clusters->N[m],clusters->pi[m],clusters->avgvar[m]);
+        DEBUG("N: %.2f\tPi: %.2f\tAvgvar: %e\n",clusters->N[m],clusters->pi[m],clusters->avgvar[m]);
 
         // Choose cluster centers
-        printf("Means: ");
+        DEBUG("Means: ");
         for(int d=0; d < D; d++) {
             clusters->means[m*D+d] = data[(int)(((float)m)*seed)*D+d];
-            printf("%.2f ",clusters->means[m*D+d]);
+            DEBUG("%.2f ",clusters->means[m*D+d]);
         }
-        printf("\n");
+        DEBUG("\n");
 
         // Set covariances to identity matrices
         for(int i=0; i < D; i++) {
@@ -63,13 +63,13 @@ void seed_clusters(float *data, clusters_t* clusters, int D, int M, int N) {
             }
         }
         
-        printf("R:\n");
+        DEBUG("R:\n");
         for(int d=0; d < D; d++) {
             for(int e=0; e < D; e++) 
-                printf("%.2f ",clusters->R[m*D*D+d*D+e]);
-            printf("\n");
+                DEBUG("%.2f ",clusters->R[m*D*D+d*D+e]);
+            DEBUG("\n");
         }
-        printf("\n");
+        DEBUG("\n");
 
     }
 
@@ -91,13 +91,13 @@ void constants(clusters_t* clusters, int M, int D) {
         // Compute constant
         clusters->constant[m] = -D*0.5*logf(2*PI) - 0.5*log_determinant;
 
-        // Sum for normalizing pi values
-        sum += clusters->pi[m];
+        // Sum for calculating pi values
+        sum += clusters->N[m];
     }
 
-    // Normalize pi values
+    // Compute pi values
     for(int m=0; m < M; m++) {
-        clusters->pi[m] = clusters->pi[m] / sum;
+        clusters->pi[m] = clusters->N[m] / sum;
     }
     
     free(matrix);
@@ -159,20 +159,18 @@ void estep2(float* data, clusters_t* clusters, int D, int M, int N, float* likel
 }
 
 void mstep_n(float* data, clusters_t* clusters, int D, int M, int N) {
-    printf("mstep_n: D: %d, M: %d, N: %d\n",D,M,N);
+    DEBUG("mstep_n: D: %d, M: %d, N: %d\n",D,M,N);
     for(int m=0; m < M; m++) {
         clusters->N[m] = 0.0;
         // compute effective size of each cluster by adding up soft membership values
         for(int n=0; n < N; n++) {
             clusters->N[m] += clusters->memberships[m*N+n];
         }
-        // normalize pi values later in constants kernel
-        clusters->pi[m] = clusters->N[m];
     }
 }
 
 void mstep_mean(float* data, clusters_t* clusters, int D, int M, int N) {
-    printf("mstep_mean: D: %d, M: %d, N: %d\n",D,M,N);
+    DEBUG("mstep_mean: D: %d, M: %d, N: %d\n",D,M,N);
     for(int m=0; m < M; m++) {
         for(int d=0; d < D; d++) {
             clusters->means[m*D+d] = 0.0;
@@ -185,7 +183,7 @@ void mstep_mean(float* data, clusters_t* clusters, int D, int M, int N) {
 }
 
 void mstep_covar(float* data, clusters_t* clusters, int D, int M, int N) {
-    printf("mstep_covar: D: %d, M: %d, N: %d\n",D,M,N);
+    DEBUG("mstep_covar: D: %d, M: %d, N: %d\n",D,M,N);
     float sum;
     float* means;
     for(int m=0; m < M; m++) {

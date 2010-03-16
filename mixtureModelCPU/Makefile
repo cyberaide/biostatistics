@@ -47,9 +47,6 @@ CCFILES		:= readData.cpp \
 
 C_DEPS		:= invert_matrix.h
 
-USECUBLAS := 1
-
-
 ################################################################################
 # Rules and targets
 
