@@ -253,7 +253,7 @@ main( int argc, char** argv) {
     DEBUG("done.\n"); 
     CUT_CHECK_ERROR("Seed Kernel execution failed: ");
    
-    DEBUG("Invoking constants kernel...",num_threads);
+    DEBUG("Invoking constants kernel...");
     // Computes the R matrix inverses, and the gaussian constant
     constants_kernel<<<original_num_clusters, 32>>>(d_clusters,original_num_clusters,num_dimensions);
     cudaThreadSynchronize();
@@ -294,7 +294,7 @@ main( int argc, char** argv) {
         DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
         regroup_start = clock();
         //regroup<<<NUM_BLOCKS, NUM_THREADS>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
-        estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
+        estep1<<<dim3(num_clusters,NUM_BLOCKS), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
         estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
         cudaThreadSynchronize();
         regroup_end = clock();
@@ -328,7 +328,7 @@ main( int argc, char** argv) {
         while(iters < MIN_ITERS || (iters < MAX_ITERS && fabs(change) > epsilon)) {
             old_likelihood = likelihood;
             
-            DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
+            DEBUG("Invoking reestimate_parameters (M-step) kernel...");
             params_start = clock();
             // This kernel computes a new N, pi isn't updated until compute_constants though
             mstep_N<<<num_clusters, NUM_THREADS_MSTEP>>>(d_fcs_data_by_event,d_clusters,num_dimensions,num_clusters,num_events);
@@ -360,7 +360,7 @@ main( int argc, char** argv) {
             DEBUG("done.\n");
             DEBUG("Model Parameters Kernel Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
             
-            DEBUG("Invoking constants kernel...",num_threads);
+            DEBUG("Invoking constants kernel...");
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_start = clock();
             constants_kernel<<<num_clusters, 32>>>(d_clusters,num_clusters,num_dimensions);
@@ -375,7 +375,7 @@ main( int argc, char** argv) {
             DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
-            estep1<<<dim3(NUM_BLOCKS,num_clusters), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
+            estep1<<<dim3(num_clusters,NUM_BLOCKS), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_events,d_likelihoods);
             estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events,d_likelihoods);
             cudaThreadSynchronize();
             CUT_CHECK_ERROR("E-step Kernel execution failed: ");

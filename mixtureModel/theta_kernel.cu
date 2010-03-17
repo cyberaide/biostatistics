@@ -284,13 +284,13 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
     // Make sure the events being accessed by the block are aligned to a multiple of 16
     num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     
-    *start = blockIdx.x * num_pixels_per_block + threadIdx.x;
+    *start = blockIdx.y * num_pixels_per_block + threadIdx.x;
     
     // Last block will handle the leftover events
-    if(blockIdx.x == NUM_BLOCKS-1) {
+    if(blockIdx.y == NUM_BLOCKS-1) {
         *stop = num_events;
     } else {
-        *stop = (blockIdx.x+1) * num_pixels_per_block;
+        *stop = (blockIdx.y+1) * num_pixels_per_block;
     }
 }
 
@@ -300,14 +300,14 @@ estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events
     // Cached cluster parameters
     __shared__ float means[NUM_DIMENSIONS];
     __shared__ float Rinv[NUM_DIMENSIONS*NUM_DIMENSIONS];
-    float cluster_pi;
+    float log_cluster_pi;
     float constant;
     const unsigned int tid = threadIdx.x;
  
     int start_index;
     int end_index;
 
-    int c = blockIdx.y;
+    int c = blockIdx.x;
 
     compute_indices(num_events,&start_index,&end_index);
     
@@ -332,7 +332,7 @@ estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events
         Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
     }
     
-    cluster_pi = clusters->pi[c];
+    log_cluster_pi = logf(clusters->pi[c]);
     constant = clusters->constant[c];
 
     // Sync to wait for all params to be loaded to shared memory
@@ -353,10 +353,9 @@ estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events
                 }
             }
         #endif
-        clusters->memberships[c*num_events+event] = -0.5f * like + constant + logf(cluster_pi); // numerator of the probability computation
+        clusters->memberships[c*num_events+event] = -0.5f * like + constant + log_cluster_pi; // numerator of the probability computation
     }
 }
-
     
 __global__ void
 estep2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clusters, int num_events, float* likelihood) {
@@ -500,7 +499,7 @@ mstep_N(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_clust
     // Let the first thread add up all the intermediate sums
     // Could do a parallel reduction...doubt it's really worth it for so few elements though
     if(tid == 0) {
-        clusters->N[c] = 0.0f;
+        clusters->N[c] = 0.01;
         for(int j=0; j<num_threads; j++) {
             clusters->N[c] += temp_sums[j];
         }
