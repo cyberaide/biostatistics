@@ -653,8 +653,8 @@ mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     __shared__ float means_col[NUM_CLUSTERS_PER_BLOCK];
     // copy the means for this cluster into shared memory
     if(tid < NUM_CLUSTERS_PER_BLOCK) {
-        means_row[tid] = clusters->means[c1*num_dimensions+row];
-        means_col[tid] = clusters->means[c2*num_dimensions+col];
+        means_row[tid] = clusters->means[(c1+tid)*num_dimensions+row];
+        means_col[tid] = clusters->means[(c2+tid)*num_dimensions+col];
     }
 
     // Sync to wait for all params to be loaded to shared memory
