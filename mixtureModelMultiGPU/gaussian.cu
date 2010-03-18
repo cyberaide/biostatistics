@@ -573,7 +573,8 @@ main( int argc, char** argv) {
                 startTimer(timers.m_step);
                 // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
                 dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
-                mstep_covariance1<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
+                //mstep_covariance1<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
+                mstep_covariance2<<<dim3((num_clusters+NUM_CLUSTERS_PER_BLOCK-1)/NUM_CLUSTERS_PER_BLOCK,num_dimensions*(num_dimensions+1)/2), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events);
                 cudaThreadSynchronize();
                 stopTimer(timers.m_step);
                 startTimer(timers.memcpy);

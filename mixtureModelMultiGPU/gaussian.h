@@ -20,6 +20,7 @@
 #define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
 #define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_DIMENSIONS 24
+#define NUM_CLUSTERS_PER_BLOCK 2
 
 // Which GPU to use, if more than 1
 #define DEVICE 0

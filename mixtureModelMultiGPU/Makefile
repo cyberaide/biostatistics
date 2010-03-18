@@ -50,7 +50,7 @@ USECUBLAS := 1
 # Rules and targets
 
 include ../../common/common.mk
-NVCCFLAGS += --ptxas-options=-v
+NVCCFLAGS += --ptxas-options=-v --maxrregcount=16
 NVCCFLAGS += -Xcompiler -fopenmp
 LIB += -lgomp
 
