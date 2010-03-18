@@ -310,13 +310,13 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
     // Make sure the events being accessed by the block are aligned to a multiple of 16
     num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     
-    *start = blockIdx.x * num_pixels_per_block + threadIdx.x;
+    *start = blockIdx.y * num_pixels_per_block + threadIdx.x;
     
     // Last block will handle the leftover events
-    if(blockIdx.x == gridDim.x-1) {
+    if(blockIdx.y == gridDim.x-1) {
         *stop = num_events;
     } else { 
-        *stop = (blockIdx.x+1) * num_pixels_per_block;
+        *stop = (blockIdx.y+1) * num_pixels_per_block;
     }
 }
 
@@ -333,7 +333,7 @@ estep1(float* data, clusters_t* clusters, int num_dimensions, int num_events) {
     int start_index;
     int end_index;
 
-    int c = blockIdx.y;
+    int c = blockIdx.x;
 
     compute_indices(num_events,&start_index,&end_index);
     

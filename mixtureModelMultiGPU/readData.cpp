@@ -37,8 +37,8 @@ float* readBIN(char* f, int* ndims, int* nevents) {
 
     fread(nevents,4,1,fin);
     fread(ndims,4,1,fin);
-    printf("Number of elements removed for memory alignment: %d\n",*nevents % 16);
-    *nevents -= *nevents % 16;
+    printf("Number of elements removed for memory alignment: %d\n",*nevents % (16 * 2));
+    *nevents -= *nevents % (16 * 2) ; // 2 gpus
     int num_elements = (*ndims)*(*nevents);
     printf("Number of rows: %d\n",*nevents);
     printf("Number of cols: %d\n",*ndims);
@@ -90,8 +90,8 @@ float* readCSV(char* f, int* ndims, int* nevents) {
         //pad_size = 0;
         //printf("Number of events in input file: %d\n",num_events);
         //printf("Number of padding events added for alignment: %d\n",pad_size);
-        printf("Number of events removed to ensure memory alignment %d\n",num_events % 16);
-        num_events -= num_events % 16;
+        printf("Number of events removed to ensure memory alignment %d\n",num_events % (16 * 2));
+        num_events -= num_events % (16 * 2);
 
         // Allocate space for all the FCS data
         data = (float*)malloc(sizeof(float) * num_dims * (num_events));

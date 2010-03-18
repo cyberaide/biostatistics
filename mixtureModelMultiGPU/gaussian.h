@@ -16,7 +16,7 @@
 #define COVARIANCE_DYNAMIC_RANGE 1E3
 
 // Number of blocks per cluster for the E-step
-#define	NUM_BLOCKS 16
+#define	NUM_BLOCKS 24
 #define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
 #define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_DIMENSIONS 24
