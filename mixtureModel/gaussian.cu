@@ -341,6 +341,7 @@ main( int argc, char** argv) {
             dim3 gridDim1(num_clusters,num_dimensions);
             //dim3 gridDim1_transpose(num_dimensions,num_clusters);
             mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            mstep_means2<<<dim3((num_clusters+1)/2,num_dimensions), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             //mstep_means_transpose<<<gridDim1_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             CUT_SAFE_CALL( cutStartTimer(memcpy_timer));
@@ -350,7 +351,8 @@ main( int argc, char** argv) {
             // Covariance is symmetric, so we only need to compute N*(N+1)/2 matrix elements per cluster
             dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
             //dim3 gridDim2_transpose(num_dimensions*(num_dimensions+1)/2,num_clusters);
-            mstep_covariance<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            //mstep_covariance<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            mstep_covariance2<<<dim3((num_clusters+1)/2,num_dimensions*(num_dimensions+1)/2), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             //mstep_covariance_transpose<<<gridDim2_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();
