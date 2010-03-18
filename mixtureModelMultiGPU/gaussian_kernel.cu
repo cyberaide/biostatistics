@@ -632,13 +632,12 @@ mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     int tid = threadIdx.x; // easier variable name for our thread ID
 
     // Determine what row,col this matrix is handling, also handles the symmetric element
-    int row,col,c1,c2;
+    int row,col,c1;
     compute_row_col(num_dimensions, &row, &col);
 
     __syncthreads();
     
     c1 = blockIdx.x * NUM_CLUSTERS_PER_BLOCK; // Determines what cluster this block is handling    
-    c2 = c1+1; // Determines what cluster this block is handling    
 
     #if DIAG_ONLY
     if(row != col) {
@@ -664,6 +663,10 @@ mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int
     
     float cov_sum1 = 0.0f;
     float cov_sum2 = 0.0f;
+    float cov_sum3 = 0.0f;
+    float cov_sum4 = 0.0f;
+    float cov_sum5 = 0.0f;
+    float cov_sum6 = 0.0f;
     float val1,val2;
         
     for(int c=0; c < NUM_CLUSTERS_PER_BLOCK; c++) {
@@ -674,10 +677,18 @@ mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int
         val1 = fcs_data[row*num_events+event];
         val2 = fcs_data[col*num_events+event];
         cov_sum1 += (val1-means_row[0])*(val2-means_col[0])*clusters->memberships[c1*num_events+event]; 
-        cov_sum2 += (val1-means_row[1])*(val2-means_col[1])*clusters->memberships[c2*num_events+event]; 
+        cov_sum2 += (val1-means_row[1])*(val2-means_col[1])*clusters->memberships[(c1+1)*num_events+event]; 
+        cov_sum3 += (val1-means_row[2])*(val2-means_col[2])*clusters->memberships[(c1+2)*num_events+event]; 
+        cov_sum4 += (val1-means_row[3])*(val2-means_col[3])*clusters->memberships[(c1+3)*num_events+event]; 
+        cov_sum5 += (val1-means_row[4])*(val2-means_col[4])*clusters->memberships[(c1+4)*num_events+event]; 
+        cov_sum6 += (val1-means_row[5])*(val2-means_col[5])*clusters->memberships[(c1+5)*num_events+event]; 
     }
     temp_sums[0*NUM_THREADS_MSTEP+tid] = cov_sum1;
     temp_sums[1*NUM_THREADS_MSTEP+tid] = cov_sum2;
+    temp_sums[2*NUM_THREADS_MSTEP+tid] = cov_sum3;
+    temp_sums[3*NUM_THREADS_MSTEP+tid] = cov_sum4;
+    temp_sums[4*NUM_THREADS_MSTEP+tid] = cov_sum5;
+    temp_sums[5*NUM_THREADS_MSTEP+tid] = cov_sum6;
 
     __syncthreads();
    
