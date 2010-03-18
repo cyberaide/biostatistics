@@ -340,7 +340,7 @@ main( int argc, char** argv) {
             // This kernel computes new means
             dim3 gridDim1(num_clusters,num_dimensions);
             //dim3 gridDim1_transpose(num_dimensions,num_clusters);
-            mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            //mstep_means<<<gridDim1, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             mstep_means2<<<dim3((num_clusters+1)/2,num_dimensions), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             //mstep_means_transpose<<<gridDim1_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
