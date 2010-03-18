@@ -352,7 +352,7 @@ main( int argc, char** argv) {
             dim3 gridDim2(num_clusters,num_dimensions*(num_dimensions+1)/2);
             //dim3 gridDim2_transpose(num_dimensions*(num_dimensions+1)/2,num_clusters);
             //mstep_covariance<<<gridDim2, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
-            mstep_covariance2<<<dim3((num_clusters+1)/2,num_dimensions*(num_dimensions+1)/2), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
+            mstep_covariance2<<<dim3((num_clusters+NUM_CLUSTERS_PER_BLOCK-1)/NUM_CLUSTERS_PER_BLOCK,num_dimensions*(num_dimensions+1)/2), NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             //mstep_covariance_transpose<<<gridDim2_transpose, NUM_THREADS_MSTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,num_events);
             cudaThreadSynchronize();
             params_end = clock();

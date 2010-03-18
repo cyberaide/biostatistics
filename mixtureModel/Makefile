@@ -54,6 +54,6 @@ USECUBLAS := 1
 # Rules and targets
 
 include ../../common/common.mk
-#NVCCFLAGS += --ptxas-options=-v --maxrregcount=17
+#NVCCFLAGS += --ptxas-options=-v --maxrregcount=16
 NVCCFLAGS += --ptxas-options=-v
 

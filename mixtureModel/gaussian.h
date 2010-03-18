@@ -20,7 +20,7 @@
 #define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
 #define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_DIMENSIONS 24
-#define NUM_CLUSTERS_PER_BLOCK 2
+#define NUM_CLUSTERS_PER_BLOCK 6
 
 // Which GPU to use, if more than 1
 #define DEVICE 0
@@ -29,9 +29,9 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 20
+#define MAX_ITERS 10
 // Minimum number of iterations for the EM convergence loop (normally 0 unless doing performance testing)
-#define MIN_ITERS 20
+#define MIN_ITERS 10
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
@@ -39,7 +39,7 @@
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only
-#define ENABLE_PRINT 1
+#define ENABLE_PRINT 0
 
 // Used to enable cluster result output to .results and .summary files
 #define ENABLE_OUTPUT 0
