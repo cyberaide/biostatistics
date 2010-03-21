@@ -313,7 +313,7 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
     *start = blockIdx.y * num_pixels_per_block + threadIdx.x;
     
     // Last block will handle the leftover events
-    if(blockIdx.y == gridDim.x-1) {
+    if(blockIdx.y == gridDim.y-1) {
         *stop = num_events;
     } else { 
         *stop = (blockIdx.y+1) * num_pixels_per_block;
