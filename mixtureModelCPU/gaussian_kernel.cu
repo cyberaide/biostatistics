@@ -1,4 +1,3 @@
-#define COVARIANCE_DYNAMIC_RANGE 1E6
 
 void seed_clusters(float *data, clusters_t* clusters, int D, int M, int N) {
     float* variances = (float*) malloc(sizeof(float)*D);
@@ -29,13 +28,16 @@ void seed_clusters(float *data, clusters_t* clusters, int D, int M, int N) {
         avgvar += variances[d];
     }
     avgvar /= (float) D;
-    
-    float seed;
+
+    // Initialization for random seeding and uniform seeding    
+    float fraction;
+    int seed;
     if(M > 1) {
-        seed = (N-1.0f)/(M-1.0f);
+        fraction = (N-1.0f)/(M-1.0f);
     } else {
-        seed = 0.0f;
+        fraction = 0.0;
     }
+    srand(clock());
 
     for(int m=0; m < M; m++) {
         clusters->N[m] = (float) N / (float) M;
@@ -46,10 +48,19 @@ void seed_clusters(float *data, clusters_t* clusters, int D, int M, int N) {
 
         // Choose cluster centers
         DEBUG("Means: ");
-        for(int d=0; d < D; d++) {
-            clusters->means[m*D+d] = data[(int)(((float)m)*seed)*D+d];
-            DEBUG("%.2f ",clusters->means[m*D+d]);
-        }
+        #if UNIFORM_SEED
+            for(int d=0; d < D; d++) {
+                clusters->means[m*D+d] = data[((int)(m*fraction))*D+d];
+                DEBUG("%.2f ",clusters->means[m*D+d]);
+            }
+        #else
+            seed = rand() % N;
+            DEBUG("Cluster %d seed = event #%d\n",m,seed);
+            for(int d=0; d < D; d++) {
+                clusters->means[m*D+d] = data[seed*D+d];
+                DEBUG("%.2f ",clusters->means[m*D+d]);
+            }
+        #endif
         DEBUG("\n");
 
         // Set covariances to identity matrices
@@ -89,7 +100,7 @@ void constants(clusters_t* clusters, int M, int D) {
         memcpy(&(clusters->Rinv[m*D*D]),matrix,sizeof(float)*D*D);
     
         // Compute constant
-        clusters->constant[m] = -D*0.5*logf(2*PI) - 0.5*log_determinant;
+        clusters->constant[m] = -D*0.5*logf(2.0f*PI) - 0.5*log_determinant;
 
         // Sum for calculating pi values
         sum += clusters->N[m];
@@ -104,10 +115,12 @@ void constants(clusters_t* clusters, int M, int D) {
 }
 
 void estep1(float* data, clusters_t* clusters, int D, int M, int N, float* likelihood) {
+    clock_t start,finish;
     // Compute likelihood for every data point in each cluster
     float like;
     float* means;
     float* Rinv;
+    start = clock();
     for(int m=0; m < M; m++) {
         means = (float*) &(clusters->means[m*D]);
         Rinv = (float*) &(clusters->Rinv[m*D*D]);
@@ -128,12 +141,15 @@ void estep1(float* data, clusters_t* clusters, int D, int M, int N, float* likel
             clusters->memberships[m*N+n] = -0.5f * like + clusters->constant[m] + logf(clusters->pi[m]); 
         }
     }
+    finish = clock();
+    DEBUG("estep1: %f seconds.\n",(double)(finish-start)/(double)CLOCKS_PER_SEC);
 }
 
 void estep2(float* data, clusters_t* clusters, int D, int M, int N, float* likelihood) {
+    clock_t start,finish;
+    start = clock();
     float max_likelihood, denominator_sum;
     *likelihood = 0.0f;
-
     for(int n=0; n < N; n++) {
         // initial condition, maximum is the membership in first cluster
         max_likelihood = clusters->memberships[n];
@@ -156,6 +172,8 @@ void estep2(float* data, clusters_t* clusters, int D, int M, int N, float* likel
             //printf("Membership of event %d in cluster %d: %.3f\n",n,m,clusters->memberships[m*N+n]);
         }
     }
+    finish = clock();
+    DEBUG("estep2: %f seconds.\n",(double)(finish-start)/(double)CLOCKS_PER_SEC);
 }
 
 void mstep_n(float* data, clusters_t* clusters, int D, int M, int N) {

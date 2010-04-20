@@ -11,7 +11,12 @@
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 30
 #define NUM_THREADS 512 // Must be power of 2 due to butterfly sum reductions
-#define NUM_DIMENSIONS 58
+#define NUM_DIMENSIONS 62
+
+#define COVARIANCE_DYNAMIC_RANGE 1E6
+
+// if 0, uses random, else picks events uniformly distributed in data set
+#define UNIFORM_SEED 0
 
 // Which GPU to use, if more than 1
 #define DEVICE 1
@@ -20,8 +25,8 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MIN_ITERS 1
-#define MAX_ITERS 1
+#define MIN_ITERS 0
+#define MAX_ITERS 100
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro

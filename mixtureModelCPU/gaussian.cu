@@ -177,7 +177,7 @@ main( int argc, char** argv) {
     float min_rissanen, rissanen;
     
     //////////////// Initialization done, starting kernels //////////////// 
-    DEBUG("Invoking seed_clusters kernel...");
+    DEBUG("Invoking seed_clusters kernel.\n");
     fflush(stdout);
 
     // seed_clusters sets initial pi values, 
@@ -185,23 +185,21 @@ main( int argc, char** argv) {
     // TODO: Does it make any sense to use multiple blocks for this?
     seed_start = clock();
     seed_clusters(fcs_data_by_event, &clusters, num_dimensions, original_num_clusters, num_events);
-    DEBUG("done.\n"); 
    
-    DEBUG("Invoking constants kernel...");
+    DEBUG("Invoking constants kernel.\n");
     // Computes the R matrix inverses, and the gaussian constant
     //constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     constants(&clusters,original_num_clusters,num_dimensions);
-    DEBUG("done.\n");
     seed_end = clock();
     seed_total = seed_end - seed_start;
     
     // Calculate an epsilon value
     //int ndata_points = num_events*num_dimensions;
-    float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.0001;
+    float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
     float likelihood, old_likelihood;
     int iters;
     
-    //epsilon = 1e-6;
+    epsilon = 1e-6;
     PRINT("Gaussian.cu: epsilon = %f\n",epsilon);
 
     // Variables for GMM reduce order
@@ -221,6 +219,7 @@ main( int argc, char** argv) {
         regroup_start = clock();
         estep1(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
         estep2(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
+        //estep2b(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
         regroup_end = clock();
         regroup_total += regroup_end - regroup_start;
         regroup_iterations++;
@@ -267,6 +266,7 @@ main( int argc, char** argv) {
             // Compute new cluster membership probabilities for all the events
             estep1(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
             estep2(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
+            //estep2b(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
             regroup_end = clock();
             regroup_total += regroup_end - regroup_start;
             regroup_iterations++;
@@ -563,14 +563,14 @@ void writeCluster(FILE* f, clusters_t clusters, int c, int num_dimensions) {
     fprintf(f,"N: %f\n",clusters.N[c]);
     fprintf(f,"Means: ");
     for(int i=0; i<num_dimensions; i++){
-        fprintf(f,"%.3f ",clusters.means[c*num_dimensions+i]);
+        fprintf(f,"%f ",clusters.means[c*num_dimensions+i]);
     }
     fprintf(f,"\n");
 
     fprintf(f,"\nR Matrix:\n");
     for(int i=0; i<num_dimensions; i++) {
         for(int j=0; j<num_dimensions; j++) {
-            fprintf(f,"%.3f ", clusters.R[c*num_dimensions*num_dimensions+i*num_dimensions+j]);
+            fprintf(f,"%f ", clusters.R[c*num_dimensions*num_dimensions+i*num_dimensions+j]);
         }
         fprintf(f,"\n");
     }
