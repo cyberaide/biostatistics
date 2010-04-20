@@ -39,7 +39,7 @@ EXECUTABLE	:= gaussianCPU
 CUFILES := gaussian.cu
 # CUDA dependency files
 CU_DEPS		:= \
-    gaussian_kernel.cu gaussian.h
+    gaussian_kernel.cu gaussian.h invert_matrix.cpp
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:= readData.cpp \

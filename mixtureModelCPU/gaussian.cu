@@ -190,6 +190,7 @@ main( int argc, char** argv) {
     // Computes the R matrix inverses, and the gaussian constant
     //constants_kernel<<<original_num_clusters, num_threads>>>(d_clusters,original_num_clusters,num_dimensions);
     constants(&clusters,original_num_clusters,num_dimensions);
+    constants_iterations++;
     seed_end = clock();
     seed_total = seed_end - seed_start;
     
@@ -215,7 +216,7 @@ main( int argc, char** argv) {
         // for each event and each cluster. Each event is independent,
         // so the events are distributed to different blocks 
         // (and hence different multiprocessors)
-        DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
+        DEBUG("Invoking regroup (E-step) kernel with %d blocks.\n",NUM_BLOCKS);
         regroup_start = clock();
         estep1(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
         estep2(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
@@ -223,7 +224,6 @@ main( int argc, char** argv) {
         regroup_end = clock();
         regroup_total += regroup_end - regroup_start;
         regroup_iterations++;
-        DEBUG("done.\n");
         DEBUG("Regroup Kernel Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
 
         DEBUG("Likelihood: %e\n",likelihood);
@@ -238,7 +238,7 @@ main( int argc, char** argv) {
         while(iters < MIN_ITERS || (fabs(change) > epsilon && iters < MAX_ITERS)) {
             old_likelihood = likelihood;
             
-            DEBUG("Invoking reestimate_parameters (M-step) kernel...");
+            DEBUG("Invoking reestimate_parameters (M-step) kernel.\n");
             params_start = clock();
             // This kernel computes a new N, pi isn't updated until compute_constants though
             mstep_n(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events);
@@ -247,21 +247,19 @@ main( int argc, char** argv) {
             params_end = clock();
             params_total += params_end - params_start;
             params_iterations++;
-            DEBUG("done.\n");
             DEBUG("Model M-Step Iteration Time: %f\n\n",((double)(params_end-params_start))/CLOCKS_PER_SEC);
             //return 0; // RETURN FOR FASTER PROFILING
             
-            DEBUG("Invoking constants kernel...");
+            DEBUG("Invoking constants kernel.\n");
             // Inverts the R matrices, computes the constant, normalizes cluster probabilities
             constants_start = clock();
             constants(&clusters,num_clusters,num_dimensions);
             constants_end = clock();
             constants_total += constants_end - constants_start;
             constants_iterations++;
-            DEBUG("done.\n");
             DEBUG("Constants Kernel Iteration Time: %f\n\n",((double)(constants_end-constants_start))/CLOCKS_PER_SEC);
 
-            DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
+            DEBUG("Invoking regroup (E-step) kernel with %d blocks.\n",NUM_BLOCKS);
             regroup_start = clock();
             // Compute new cluster membership probabilities for all the events
             estep1(fcs_data_by_dimension,&clusters,num_dimensions,num_clusters,num_events,&likelihood);
@@ -270,7 +268,6 @@ main( int argc, char** argv) {
             regroup_end = clock();
             regroup_total += regroup_end - regroup_start;
             regroup_iterations++;
-            DEBUG("done.\n");
             DEBUG("E-step Iteration Time: %f\n\n",((double)(regroup_end-regroup_start))/CLOCKS_PER_SEC);
         
             change = likelihood - old_likelihood;

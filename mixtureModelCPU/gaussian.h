@@ -11,12 +11,12 @@
 #define PI  3.1415926535897931
 #define	NUM_BLOCKS 30
 #define NUM_THREADS 512 // Must be power of 2 due to butterfly sum reductions
-#define NUM_DIMENSIONS 62
+#define NUM_DIMENSIONS 32
 
 #define COVARIANCE_DYNAMIC_RANGE 1E6
 
 // if 0, uses random, else picks events uniformly distributed in data set
-#define UNIFORM_SEED 0
+#define UNIFORM_SEED 1
 
 // Which GPU to use, if more than 1
 #define DEVICE 1
@@ -30,7 +30,7 @@
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only

@@ -100,7 +100,8 @@ void constants(clusters_t* clusters, int M, int D) {
         memcpy(&(clusters->Rinv[m*D*D]),matrix,sizeof(float)*D*D);
     
         // Compute constant
-        clusters->constant[m] = -D*0.5*logf(2.0f*PI) - 0.5*log_determinant;
+        clusters->constant[m] = -D*0.5f*logf(2.0f*PI) - 0.5f*log_determinant;
+        DEBUG("Cluster %d constant: %e\n",m,clusters->constant[m]);
 
         // Sum for calculating pi values
         sum += clusters->N[m];
@@ -138,7 +139,7 @@ void estep1(float* data, clusters_t* clusters, int D, int M, int N, float* likel
                     }
                 }
             #endif  
-            clusters->memberships[m*N+n] = -0.5f * like + clusters->constant[m] + logf(clusters->pi[m]); 
+            clusters->memberships[m*N+n] = -0.5f * like + clusters->constant[m] + log(clusters->pi[m]); 
         }
     }
     finish = clock();
@@ -161,14 +162,14 @@ void estep2(float* data, clusters_t* clusters, int D, int M, int N, float* likel
         // Computes sum of all likelihoods for this event
         denominator_sum = 0.0f;
         for(int m=0; m < M; m++) {
-            denominator_sum += expf(clusters->memberships[m*N+n] - max_likelihood);
+            denominator_sum += exp(clusters->memberships[m*N+n] - max_likelihood);
         }
-        denominator_sum = max_likelihood + logf(denominator_sum);
+        denominator_sum = max_likelihood + log(denominator_sum);
         *likelihood = *likelihood + denominator_sum;
 
         // Divide by denominator to get each membership
         for(int m=0; m < M; m++) {
-            clusters->memberships[m*N+n] = expf(clusters->memberships[m*N+n] - denominator_sum);
+            clusters->memberships[m*N+n] = exp(clusters->memberships[m*N+n] - denominator_sum);
             //printf("Membership of event %d in cluster %d: %.3f\n",n,m,clusters->memberships[m*N+n]);
         }
     }
@@ -190,13 +191,16 @@ void mstep_n(float* data, clusters_t* clusters, int D, int M, int N) {
 void mstep_mean(float* data, clusters_t* clusters, int D, int M, int N) {
     DEBUG("mstep_mean: D: %d, M: %d, N: %d\n",D,M,N);
     for(int m=0; m < M; m++) {
+        DEBUG("Cluster %d: ",m);
         for(int d=0; d < D; d++) {
             clusters->means[m*D+d] = 0.0;
             for(int n=0; n < N; n++) {
                 clusters->means[m*D+d] += data[d*N+n]*clusters->memberships[m*N+n];
             }
             clusters->means[m*D+d] /= clusters->N[m];
+            DEBUG("%f ",clusters->means[m*D+d]);
         }
+        DEBUG("\n");
     }
 }
 
