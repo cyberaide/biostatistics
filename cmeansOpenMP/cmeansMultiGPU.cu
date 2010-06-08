@@ -136,7 +136,7 @@ int main(int argc, char* argv[])
     // Create an array for the final Q matrix
     float* q_matrix = (float*) malloc(sizeof(float)*NUM_CLUSTERS*NUM_CLUSTERS);
     
-    float diff; // used to track difference in cluster centers between iterations
+    float diff, max_change; // used to track difference in cluster centers between iterations
 
     // Transpose the events matrix
     float* transposedEvents = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
@@ -171,7 +171,6 @@ int main(int argc, char* argv[])
         
         unsigned int tid = omp_get_thread_num();
         unsigned int num_cpu_threads = omp_get_num_threads();
-        printf("hello from thread %d of %d\n",tid,num_cpu_threads);
 
         // set and check the CUDA device for this CPU thread
         int gpu_id = -1;
@@ -325,23 +324,25 @@ int main(int argc, char* argv[])
                     }
                 }
                 diff = 0.0;
+                max_change = 0.0;
                 for(int i=0; i < NUM_CLUSTERS; i++){
                     DEBUG("GPU %d, Cluster %d: ",tid,i);
                     for(int k = 0; k < NUM_DIMENSIONS; k++){
                         DEBUG("%f ",tempClusters[tid][i*NUM_DIMENSIONS + k]);
                         diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - tempClusters[tid][i*NUM_DIMENSIONS + k]);
+                        max_change = fmaxf(max_change,fabs(myClusters[i*NUM_DIMENSIONS + k] - tempClusters[tid][i*NUM_DIMENSIONS + k]));
                     }
                     DEBUG("\n");
                 }
                 memcpy(myClusters,tempClusters[tid],sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS);
-                DEBUG("Diff = %f\n", diff);
+                DEBUG("Iteration %d: Total Change = %e, Max Change = %e\n", iterations, diff, max_change);
                 DEBUG("Done with iteration #%d\n", iterations);
             }
             stopTimer(timer_cpu);
             #pragma omp barrier
             iterations++;
             DEBUG("\n");
-        } while(iterations < MIN_ITERS || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
+        } while(iterations < MIN_ITERS || (max_change > THRESHOLD && iterations < MAX_ITERS)); 
 
         // Compute final membership vaues
         //startTimer(timer_gpu);
@@ -376,10 +377,15 @@ int main(int argc, char* argv[])
         stopTimer(timer_cpu);
         
 
-        if(tid == 0) {        
+        #pragma omp master
+        {
             if(abs(diff) > THRESHOLD){
-                PRINT("Warning: c-means did not converge to the %f threshold provided\n", THRESHOLD);
+                PRINT("Warning: C-means did not converge to the %e threshold provided\n", THRESHOLD);
+            } else {
+                PRINT("Converged after %d iterations.\n",iterations);
             }
+            PRINT("Last total change was: %e\n",diff);
+            PRINT("Last maximum change was: %e\n",max_change);
             PRINT("C-means complete\n");
         }
         
@@ -434,11 +440,15 @@ int main(int argc, char* argv[])
 
         fflush(stdout);
         #pragma omp barrier
- 
-        printf("\n\n"); 
-        printf("Thread %d: GPU memcpy Time (ms): %f\n",tid,getTimerValue(timer_memcpy));
-        printf("Thread %d: CPU processing Time (ms): %f\n",tid,getTimerValue(timer_cpu));
-        printf("Thread %d: GPU processing Time (ms): %f\n",tid,getTimerValue(timer_gpu));
+
+        #pragma omp critical 
+        { 
+            printf("\n"); 
+            printf("Thread %d: GPU memcpy Time (ms): %f\n",tid,getTimerValue(timer_memcpy));
+            printf("Thread %d: CPU processing Time (ms): %f\n",tid,getTimerValue(timer_cpu));
+            printf("Thread %d: GPU processing Time (ms): %f\n",tid,getTimerValue(timer_gpu));
+            printf("\n"); 
+        }
         
         #if !CPU_ONLY
             CUDA_SAFE_CALL(cudaFree(d_E));
@@ -464,6 +474,7 @@ int main(int argc, char* argv[])
             PRINT("\n");
         }
     }
+    PRINT("\n");
     
     #if ENABLE_OUTPUT 
         ReportSummary(newClusters, newCount, argv[1]);
@@ -487,9 +498,13 @@ int main(int argc, char* argv[])
 
 void generateInitialClusters(float* clusters, float* events){
     int seed;
+    srand(time(NULL));
     for(int i = 0; i < NUM_CLUSTERS; i++){
-        //seed = i * NUM_EVENTS / NUM_CLUSTERS;
-        seed = rand() % NUM_EVENTS;
+        #if RANDOM_SEED
+            seed = rand() % NUM_EVENTS;
+        #else
+            seed = i * NUM_EVENTS / NUM_CLUSTERS;
+        #endif
         for(int j = 0; j < NUM_DIMENSIONS; j++){
             clusters[i*NUM_DIMENSIONS + j] = events[seed*NUM_DIMENSIONS + j];
         }

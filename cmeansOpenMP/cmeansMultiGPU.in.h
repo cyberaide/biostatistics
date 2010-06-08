@@ -25,6 +25,7 @@
 
 // Parameters
 #define FUZZINESS $FUZZINESS$
+#define FUZZINESS_SQUARE $FUZZINESS_SQUARE$
 #define THRESHOLD $THRESHOLD$
 #define K1 $K1$
 #define K2 $K2$
@@ -36,6 +37,7 @@
 #define DISTANCE_MEASURE $DISTANCE_MEASURE$
 #define MIN_ITERS $MIN_ITERS$
 #define MAX_ITERS $MAX_ITERS$
+#define RANDOM_SEED $RANDOM_SEED$
 
 // Naive O(M^2) or optimized O(M) version of membership computation
 #define LINEAR 1
@@ -45,10 +47,10 @@
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations
-#define ENABLE_PRINT 0
+#define ENABLE_PRINT 1
 
 // Used to enable output of cluster results to .results and .summary files
-#define ENABLE_OUTPUT 0
+#define ENABLE_OUTPUT 1
 
 #if ENABLE_DEBUG
 #define DEBUG(fmt,args...) printf(fmt, ##args)
@@ -65,9 +67,9 @@
 // number of Threads and blocks
 #define Q_THREADS 192 // number of threads per block building Q
 #define NUM_THREADS $NUM_THREADS$  // number of threads per block
-#define NUM_THREADS_DISTANCE 512
+#define NUM_THREADS_DISTANCE 256
 #define NUM_THREADS_MEMBERSHIP 512
-#define NUM_THREADS_UPDATE 512
+#define NUM_THREADS_UPDATE 256
 #define NUM_BLOCKS NUM_CLUSTERS
 #define NUM_NUM NUM_THREADS
 #define PI (3.1415926)

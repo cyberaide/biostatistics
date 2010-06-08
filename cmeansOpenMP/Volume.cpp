@@ -18,8 +18,8 @@ void ReportSummary(float* clusters, int count, char* inFileName){
     sprintf(logFileName, "%s.summary", inFileName);
     cout << "Log file name = " << logFileName << endl;
     myfile.open(logFileName);
+    myfile << "Cluster Centers:" << endl;
     for(int i = 0; i < count; i ++){
-        myfile << "Cluster " << i << ": ";
         for(int j = 0; j < NUM_DIMENSIONS; j++){
             myfile << clusters[i*NUM_DIMENSIONS + j] << "\t";
         }
@@ -65,7 +65,7 @@ void ReportResults(float* events, float* memberships, int count, char* inFileNam
         for(int j = 0; j < count-1; j++){
             myfile << memberships[j*NUM_EVENTS+i] << ","; 
         }
-        myfile << memberships[(count-1)*NUM_EVENTS+i] << ","; 
+        myfile << memberships[(count-1)*NUM_EVENTS+i]; 
         myfile << endl;
     }
     myfile.close();
