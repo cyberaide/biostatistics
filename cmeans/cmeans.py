@@ -7,11 +7,13 @@ based on the input parameters
 import sys
 import os
 
+PROJECT_PATH = os.path.abspath(os.path.expanduser("~/NVIDIA_GPU_Computing_SDK/C/src/cmeans"))
+
 # Delimiter used in the input files
 DELIMITER = ","
 
 def usage():
-    print "Usage: ./cmeans.py INPUT_FILE NUM_CLUSTERS [THRESHOLD=0.0001] [MIN_ITERS=0] [MAX_ITERS=100] [DEVICE=0] [FUZZINESS=2] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [MDL=0] [CPU_ONLY=0]"
+    print "Usage: ./cmeans.py INPUT_FILE NUM_CLUSTERS [THRESHOLD=0.0001] [MIN_ITERS=0] [MAX_ITERS=100] [DEVICE=0] [FUZZINESS=2] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [MDL=0] [CPU_ONLY=0] [RANDOM_SEED=1] [TRUNCATE=1]"
     print
     print " INPUT_FILE and NUM_CLUSTERS are required."
     print " The rest of the parameters can be specified in NAME=VALUE form"
@@ -29,6 +31,7 @@ def parseInputArgs():
         'MAX_ITERS' : 100,
         'DEVICE' : 0,
         'FUZZINESS' : 2,
+        'FUZZINESS_SQUARE' : 1,
         'DISTANCE_MEASURE': 0,
         'K1': 1.0,
         'K2': 0.01,
@@ -38,6 +41,8 @@ def parseInputArgs():
         'TABU_TENURE': 5,
         'MDL': 0,
         'CPU_ONLY': 0,
+        'TRUNCATE': 1,
+        'RANDOM_SEED': 1,
     }
     num_params = len(params.keys())
     if num_args == num_params:
@@ -57,6 +62,8 @@ def parseInputArgs():
         params['TABU_TENURE'] = args[14]
         params['MDL'] = args[15]
         params['CPU_ONLY'] = args[16]
+        params['RANDOM_SEED'] = args[17]
+        params['TRUNCATE'] = args[18]
     elif num_args == 3:
         params['INPUT_FILE'] = args[1]
         params['NUM_CLUSTERS'] = args[2]
@@ -68,7 +75,7 @@ def parseInputArgs():
                 key,val = arg.split("=")
                 key = key.upper()
                 assert key in params.keys()
-                if key in ['K1','K2','K3','MEMBER_THRESHOLD','THRESHOLD']:
+                if key in ['K1','K2','K3','MEMBER_THRESHOLD','THRESHOLD','FUZZINESS']:
                     params[key] = float(val)
                 else:
                     params[key] = int(val)
@@ -84,6 +91,9 @@ def parseInputArgs():
         print
         usage()
         sys.exit(1)
+
+    if params['FUZZINESS'] != 2:
+        params['FUZZINESS_SQUARE'] = 0
 
     if os.path.exists(params['INPUT_FILE']):
         if params['INPUT_FILE'].lower().endswith(".bin"):
@@ -101,8 +111,10 @@ def parseInputArgs():
             params['NUM_DIMENSIONS'] = num_dimensions
             params['NUM_EVENTS'] = num_events
 
-        params['NUM_EVENTS'] -= params['NUM_EVENTS'] % 16
-        print "%d events removed to ensure memory alignment" % (params['NUM_EVENTS'] % 16)
+        if params['TRUNCATE']:
+            params['NUM_EVENTS'] -= params['NUM_EVENTS'] % 16
+            print "%d events removed to ensure memory alignment" % (params['NUM_EVENTS'] % 16)
+
     else:
         print "Invalid input file."
         sys.exit(1)
@@ -113,7 +125,9 @@ if __name__ == '__main__':
     params = parseInputArgs()
     from pprint import pprint
     pprint(params)
-     
+    
+    current_path = os.getcwd()
+    os.chdir(PROJECT_PATH) 
     header_file = open("cmeans.in.h",'r').read()
     new_header = open("cmeans.h",'w')
 
@@ -129,8 +143,10 @@ if __name__ == '__main__':
     os.system('make clean') # cpp files won't get recompiled if cmeans.h changes for some reason...
     error = os.system('make')
 
+    os.chdir(current_path)
+
     # Run the cmeans program
     if not error:
-        cmd = '../../bin/linux/release/cmeansSingleGPU "%s"' % params['INPUT_FILE']
+        cmd = '%s/../../bin/linux/release/cmeansSingleGPU "%s"' % (PROJECT_PATH,params['INPUT_FILE'])
         print cmd
         os.system(cmd)

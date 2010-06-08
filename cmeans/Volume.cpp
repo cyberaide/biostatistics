@@ -12,21 +12,27 @@
 using namespace std;
 
 void ReportSummary(float* clusters, int count, char* inFileName){
-    ofstream myfile;
-    
     char logFileName [512];
     sprintf(logFileName, "%s.summary", inFileName);
     cout << "Log file name = " << logFileName << endl;
-    myfile.open(logFileName);
-    for(int i = 0; i < count; i ++){
-        myfile << "Cluster " << i << ": ";
-        for(int j = 0; j < NUM_DIMENSIONS; j++){
-            myfile << clusters[i*NUM_DIMENSIONS + j] << "\t";
-        }
-        myfile << endl;
-    }
-    myfile.close();
 
+    //ofstream myfile;
+    //myfile.open(logFileName);
+    FILE* myfile;
+    myfile = fopen(logFileName,"w");
+    
+    for(int i = 0; i < count; i ++){
+        fprintf(myfile,"Cluster %d: ",i);
+        //myfile << "Cluster " << i << ": ";
+        for(int j = 0; j < NUM_DIMENSIONS; j++){
+            //myfile << clusters[i*NUM_DIMENSIONS + j] << "\t";
+            fprintf(myfile,"%f ",clusters[i*NUM_DIMENSIONS + j]);
+        }
+        //myfile << endl;
+        fprintf(myfile,"\n");
+    }
+    //myfile.close();
+    fclose(myfile);
 }
 
 void ReportBinaryResults(float* events, float* memberships, int count, char* inFileName){
@@ -65,7 +71,7 @@ void ReportResults(float* events, float* memberships, int count, char* inFileNam
         for(int j = 0; j < count-1; j++){
             myfile << memberships[j*NUM_EVENTS+i] << ","; 
         }
-        myfile << memberships[(count-1)*NUM_EVENTS+i] << ","; 
+        myfile << memberships[(count-1)*NUM_EVENTS+i]; 
         myfile << endl;
     }
     myfile.close();

@@ -171,11 +171,11 @@ __global__ void ComputeMembershipMatrix(float* distances, float* memberships) {
     // For each event
     if(i < NUM_EVENTS) {
         membershipValue = MembershipValueGPU(blockIdx.y, i, distances);
-        #if FUZZINESS == 2 
+        #if FUZZINESS_SQUARE 
             // This is much faster than the pow function
             membershipValue = membershipValue*membershipValue;
         #else
-            membershipValue = __powf(membershipValue,FUZZINESS);
+            membershipValue = __powf(membershipValue,FUZZINESS)+1e-30;
         #endif
         memberships[blockIdx.y*NUM_EVENTS+i] = membershipValue;
     }
@@ -191,10 +191,10 @@ __global__ void ComputeMembershipMatrixLinear(float* distances) {
     if(i < NUM_EVENTS) {
         for(int c=0; c < NUM_CLUSTERS; c++) {
             dist = distances[c*NUM_EVENTS+i];
-            #if FUZZINESS == 2
+            #if FUZZINESS_SQUARE 
                 dist = dist*dist;
             #else
-                dist = __powf(dist,2.0f/(FUZZINESS-1.0f));
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f))+1e-30;
             #endif
             denom += 1.0f / dist;
         }
@@ -203,13 +203,14 @@ __global__ void ComputeMembershipMatrixLinear(float* distances) {
             // not enough shared memory to store an array of distances
             // for each thread, so just recompute them like above
             dist = distances[c*NUM_EVENTS+i];
-            #if FUZZINESS == 2
+            #if FUZZINESS_SQUARE 
                 dist = dist*dist;
                 membershipValue = 1.0f/(dist*denom); // u
                 membershipValue *= membershipValue; // u^p, p=2
             #else
-                dist = __powf(dist,2.0f/(FUZZINESS-1.0f)); // u
-                membershipValue = __powf(dist*denom,-FUZZINESS); // u^p
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f))+1e-30;
+                membershipValue = 1.0f/(dist*denom); // u
+                membershipValue = __powf(membershipValue,FUZZINESS); // u^p
             #endif
             distances[c*NUM_EVENTS+i] = membershipValue;
         } 
@@ -233,10 +234,10 @@ __global__ void ComputeNormalizedMembershipMatrixLinear(float* distances) {
     if(i < NUM_EVENTS) {
         for(int c=0; c < NUM_CLUSTERS; c++) {
             dist = distances[c*NUM_EVENTS+i];
-            #if FUZZINESS == 2
+            #if FUZZINESS_SQUARE 
                 dist = dist*dist;
             #else
-                dist = __powf(dist,2.0f/(FUZZINESS-1.0f));
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f))+1e-30;
             #endif
             denom += 1.0f / dist;
         }
@@ -245,11 +246,12 @@ __global__ void ComputeNormalizedMembershipMatrixLinear(float* distances) {
             // not enough shared memory to store an array of distances
             // for each thread, so just recompute them like above
             dist = distances[c*NUM_EVENTS+i];
-            #if FUZZINESS == 2
+            #if FUZZINESS_SQUARE 
                 dist = dist*dist;
                 membershipValue = 1.0f/(dist*denom); // u
             #else
-                dist = __powf(dist,2.0f/(FUZZINESS-1.0f)); // u
+                dist = __powf(dist,2.0f/(FUZZINESS-1.0f))+1e-30; 
+                membershipValue = 1.0f/(dist*denom); // u
             #endif
             distances[c*NUM_EVENTS+i] = membershipValue;
         } 
@@ -266,7 +268,7 @@ __device__ float MembershipValueGPU(int clusterIndex, int eventIndex, const floa
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
 
-        #if FUZZINESS == 2
+        #if FUZZINESS_SQUARE 
             sum += (myClustDist/otherClustDist)*(myClustDist/otherClustDist);
         #else
     		sum += __powf((myClustDist/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
@@ -301,7 +303,7 @@ __device__ float MembershipValueDist(int clusterIndex, int eventIndex, float dis
 	float otherClustDist;
 	for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = distanceMatrix[j*NUM_EVENTS+eventIndex];
-        #if FUZZINESS == 2
+        #if FUZZINESS_SQUARE 
             sum += (distance/otherClustDist)*(distance/otherClustDist);
         #else
             sum += __powf((distance/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
@@ -323,14 +325,14 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
             sum += tmp*tmp;
         }
         //sum = sqrt(sum);
-        sum = sqrt(sum+1e-20);
+        sum = sqrt(sum+1e-30);
     #endif
     #if DISTANCE_MEASURE == 1 // Absolute value
         #pragma unroll 1 // Prevent compiler from unrolling this loop, eats up too many registers
         for(int i = 0; i < NUM_DIMENSIONS; i++){
             tmp = events[i*NUM_EVENTS+eventIndex] - center[i];
             //tmp = events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i];
-            sum += abs(tmp)+1e-20;
+            sum += abs(tmp)+1e-30;
         }
     #endif
     #if DISTANCE_MEASURE == 2 // Maximum distance 
@@ -339,7 +341,7 @@ __device__ float CalculateDistanceGPU(const float* center, const float* events, 
             tmp = abs(events[i*NUM_EVENTS + eventIndex] - center[i]);
             //tmp = abs(events[eventIndex*NUM_DIMENSIONS + i] - clusters[clusterIndex*NUM_DIMENSIONS + i]);
             if(tmp > sum)
-                sum = tmp+1e-20;
+                sum = tmp+1e-30;
         }
     #endif
 	return sum;

@@ -113,6 +113,8 @@ int main(int argc, char* argv[])
      
     DEBUG("Finished parsing input file\n");
     
+    CUT_SAFE_CALL(cutStopTimer(timer_io));
+    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
    
     //cublasStatus status;
     //status = cublasInit();
@@ -126,9 +128,6 @@ int main(int argc, char* argv[])
     
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
     float* newClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
-    
-    CUT_SAFE_CALL(cutStopTimer(timer_io));
-    CUT_SAFE_CALL(cutStartTimer(timer_cpu));
     
     clock_t total_start;
     total_start = clock();
@@ -154,7 +153,6 @@ int main(int argc, char* argv[])
 
     int size;
     #if !CPU_ONLY
-    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Allocating memory on GPU.\n");
     float* d_distanceMatrix;
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_distanceMatrix, sizeof(float)*NUM_EVENTS*NUM_CLUSTERS));
@@ -173,6 +171,9 @@ int main(int argc, char* argv[])
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_sizes, sizeof(float)*NUM_CLUSTERS));    
     float* sizes = (float*) malloc(sizeof(float)*NUM_CLUSTERS);
 
+    size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
+    CUDA_SAFE_CALL(cudaMemcpy(d_E, transposedEvents, size, cudaMemcpyHostToDevice)); // temporary
+    CUT_SAFE_CALL(cutStartTimer(timer_memcpy));
     DEBUG("Copying input data to GPU.\n");
     size = sizeof(float)*NUM_DIMENSIONS*NUM_EVENTS;
     //CUDA_SAFE_CALL(cudaMemcpy(d_E, myEvents, size, cudaMemcpyHostToDevice));
@@ -185,7 +186,7 @@ int main(int argc, char* argv[])
     #endif
     
     clock_t cpu_start, cpu_stop;
-    float diff;
+    float diff, max_change;
     cpu_start = clock();
     PRINT("Starting C-means\n");
     float averageTime = 0;
@@ -223,12 +224,12 @@ int main(int argc, char* argv[])
             start = clock();
             UpdateClusterCentersCPU_Optimized(myClusters, myEvents, newClusters);
             stop = clock();
-            printf("Processing time for Linear Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+            DEBUG("Processing time for Quadratic Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
         #else 
             start = clock();
             UpdateClusterCentersCPU_Linear(myClusters, myEvents, newClusters);
             stop = clock();
-            printf("Processing time for Quadratic Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
+            DEBUG("Processing time for Linear Method: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
         #endif
 
         DEBUG("Processing time for CPU: %f (ms) \n", (float)(stop - start)/(float)(CLOCKS_PER_SEC)*(float)1e3);
@@ -301,6 +302,9 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStopTimer(timer_memcpy));
         CUT_SAFE_CALL(cutStartTimer(timer_cpu));
         for(int i=0; i < NUM_CLUSTERS; i++) {
+            DEBUG("Size %d: %f\n",i,sizes[i]);
+        }
+        for(int i=0; i < NUM_CLUSTERS; i++) {
             for(int j=0; j < NUM_DIMENSIONS; j++) {
                 newClusters[i*NUM_DIMENSIONS+j] /= sizes[i];        
             }
@@ -318,22 +322,24 @@ int main(int argc, char* argv[])
         CUT_SAFE_CALL(cutStartTimer(timer_cpu));
         
         diff = 0.0;
+        max_change = 0.0;
         for(int i=0; i < NUM_CLUSTERS; i++){
             DEBUG("Center %d: ",i);     
             for(int k = 0; k < NUM_DIMENSIONS; k++){
                 DEBUG("%.2f ",newClusters[i*NUM_DIMENSIONS + k]);
                 diff += fabs(myClusters[i*NUM_DIMENSIONS + k] - newClusters[i*NUM_DIMENSIONS + k]);
+                max_change = fmaxf(max_change, fabs(myClusters[i*NUM_DIMENSIONS + k] - newClusters[i*NUM_DIMENSIONS + k]));
                 myClusters[i*NUM_DIMENSIONS + k] = newClusters[i*NUM_DIMENSIONS + k];
             }
             DEBUG("\n");
         }
-        DEBUG("Iteration %d Diff = %f\n", iterations, diff);
+        DEBUG("Iteration %d, Total Change = %e, Max Change = %e\n", iterations, diff, max_change);
 
         iterations++;
         
         CUT_SAFE_CALL(cutStopTimer(timer_cpu));
 
-    } while((iterations < MIN_ITERS) || (abs(diff) > THRESHOLD && iterations < MAX_ITERS)); 
+    } while((iterations < MIN_ITERS) || (max_change > THRESHOLD && iterations < MAX_ITERS)); 
 
     #if !CPU_ONLY 
     DEBUG("Computing final memberships\n");
@@ -365,6 +371,8 @@ int main(int argc, char* argv[])
 
     if(iterations == MAX_ITERS){
         PRINT("Warning: Did not converge to the %f threshold provided\n", THRESHOLD);
+        PRINT("Last total change was: %e\n",diff);
+        PRINT("Last maximum change was: %e\n",max_change);
     } else {
         PRINT("Converged after iterations: %d\n",iterations); 
     }
@@ -441,8 +449,13 @@ int main(int argc, char* argv[])
 
 void generateInitialClusters(float* clusters, float* events){
     int seed;
+    srand(time(NULL));
     for(int i = 0; i < NUM_CLUSTERS; i++){
-        seed = rand() % NUM_EVENTS;
+        #if RANDOM_SEED
+            seed = rand() % NUM_EVENTS;
+        #else
+            seed = i * NUM_EVENTS / NUM_CLUSTERS;
+        #endif
         for(int j = 0; j < NUM_DIMENSIONS; j++){
             clusters[i*NUM_DIMENSIONS + j] = events[seed*NUM_DIMENSIONS + j];
         }
@@ -482,7 +495,7 @@ __host__ float MembershipValue(const float* clusters, const float* events, int c
     float otherClustDist;
     for(int j = 0; j< NUM_CLUSTERS; j++){
         otherClustDist = CalculateDistanceCPU(clusters, events, j, eventIndex); 
-        sum += pow((float)(myClustDist/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
+        sum += powf((float)(myClustDist/otherClustDist),(2.0f/(FUZZINESS-1.0f)));
     }
     return 1.0f/sum;
 }
@@ -507,13 +520,13 @@ void UpdateClusterCentersCPU_Linear(const float* oldClusters, const float* event
         denominator = 0.0f;
         for(int c = 0; c < NUM_CLUSTERS; c++){
             distances[c] = CalculateDistanceCPU(oldClusters, events, c, n);
-            numerator[c] = powf(distances[c],2.0f/(FUZZINESS-1.0f));
+            numerator[c] = powf(distances[c],2.0f/(FUZZINESS-1.0f))+1e-30; // prevents divide by zero error if distance is really small and powf makes it underflow
             denominator = denominator + 1.0f/numerator[c];
         }
         
         // Add contribution to numerator and denominator
         for(int c = 0; c < NUM_CLUSTERS; c++){
-            membershipValue = powf(numerator[c]*denominator,(float)-FUZZINESS);
+            membershipValue = 1.0f/powf(numerator[c]*denominator,(float)FUZZINESS);
             for(int d = 0; d < NUM_DIMENSIONS; d++){
                 newClusters[c*NUM_DIMENSIONS+d] += events[n*NUM_DIMENSIONS+d]*membershipValue;
             }
@@ -557,7 +570,7 @@ void UpdateClusterCentersCPU_Optimized(const float* oldClusters, const float* ev
         for(int c = 0; c < NUM_CLUSTERS; c++){
             sum = 0;
             for(int i = 0; i < NUM_CLUSTERS; i++){
-                sum += pow((float)(distances[c]/distances[i]),(2.0f/(FUZZINESS-1.0f)));
+                sum += powf((float)(distances[c]/distances[i]),(2.0f/(FUZZINESS-1.0f)));
             }
             memberships[c] = 1.0f/sum;
         }
@@ -637,14 +650,14 @@ float* readCSV(char* filename) {
         printf("Error: File DNE\n");
         return NULL;
     }
-    char myline[1024];
+    char myline[10000];
 
     float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     myfile = fopen(filename, "r");
     #if LINE_LABELS
-        fgets(myline, 1024, myfile);
+        fgets(myline, 10000, myfile);
         for(int i = 0; i < NUM_EVENTS; i++){
-            fgets(myline, 1024, myfile);
+            fgets(myline, 10000, myfile);
             retVal[i*NUM_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
             for(int j = 1; j < NUM_DIMENSIONS; j++){
                 retVal[i*NUM_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));
@@ -652,7 +665,7 @@ float* readCSV(char* filename) {
         }
     #else
         for(int i = 0; i < NUM_EVENTS; i++){
-            fgets(myline, 1024, myfile);
+            fgets(myline, 10000, myfile);
             retVal[i*NUM_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
             for(int j = 1; j < NUM_DIMENSIONS; j++){
                 retVal[i*NUM_DIMENSIONS + j] = (float)atof(strtok(NULL, DELIMITER));

@@ -23,8 +23,13 @@
 #define DELIMITER ","
 #define LINE_LABELS 1
 
+// If 1, uses random events as initial cluster centers
+// If 0, uses uniformly distributed events as initial cluster centers
+#define RANDOM_SEED $RANDOM_SEED$
+
 // Parameters
 #define FUZZINESS $FUZZINESS$
+#define FUZZINESS_SQUARE $FUZZINESS_SQUARE$
 #define THRESHOLD $THRESHOLD$
 #define K1 $K1$
 #define K2 $K2$
@@ -49,7 +54,7 @@
 #define ENABLE_PRINT 1
 
 // Used to enable output of cluster results to .results and .summary files
-#define ENABLE_OUTPUT 0
+#define ENABLE_OUTPUT 1
 
 #if ENABLE_DEBUG
 #define DEBUG(fmt,args...) printf(fmt, ##args)
