@@ -19,7 +19,7 @@
 #include <omp.h>
 
 // includes, project
-#include <cutil.h>
+// #include <cutil.h>
 #include "gaussian.h"
 #include "invert_matrix.h"
 
@@ -150,19 +150,19 @@ main( int argc, char** argv) {
     }
     
     // Keep track of total time
-    unsigned int timer_total;
-    cutCreateTimer( &timer_total);
-    cutStartTimer( timer_total);
+    //unsigned int timer_total;
+    //cutCreateTimer( &timer_total);
+    //cutStartTimer( timer_total);
    
     // Keep track of I/O time
-    unsigned int timer_io;
-    cutCreateTimer( &timer_io);
-    cutStartTimer( timer_io);
+    //unsigned int timer_io;
+    //cutCreateTimer( &timer_io);
+    //cutStartTimer( timer_io);
     
     // Keep track of Master thread CPU Time (outside #omp parallel)
-    unsigned int timer_cpu;
-    cutCreateTimer( &timer_cpu);
-    cutStartTimer( timer_cpu);
+    //unsigned int timer_cpu;
+    //cutCreateTimer( &timer_cpu);
+    //cutStartTimer( timer_cpu);
     
     // Validate the command-line arguments, parse # of clusters, etc 
     int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
@@ -205,8 +205,8 @@ main( int argc, char** argv) {
         }
     }    
 
-    cutStopTimer(timer_io);
-    cutStartTimer(timer_cpu);
+    //cutStopTimer(timer_io);
+    //cutStartTimer(timer_cpu);
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
@@ -258,7 +258,7 @@ main( int argc, char** argv) {
     float likelihood, old_likelihood;
     float min_rissanen;
     
-    cutStopTimer( timer_cpu);
+    //cutStopTimer( timer_cpu);
 
     omp_set_num_threads(num_gpus);
     #pragma omp parallel shared(clusters,fcs_data_by_event,fcs_data_by_dimension,shared_likelihoods,likelihood,old_likelihood,ideal_num_clusters,min_rissanen,regroup_iterations) 
@@ -374,14 +374,14 @@ main( int argc, char** argv) {
             seed_clusters<<< 1, NUM_THREADS_MSTEP >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, my_num_events);
             cudaThreadSynchronize();
             DEBUG("done.\n"); 
-            CUT_CHECK_ERROR("Seed Kernel execution failed: ");
+            //CUT_CHECK_ERROR("Seed Kernel execution failed: ");
             
             DEBUG("Invoking constants kernel...",num_threads);
             // Computes the R matrix inverses, and the gaussian constant
             constants_kernel<<<original_num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,original_num_clusters,num_dimensions);
             constants_iterations++;
             cudaThreadSynchronize();
-            CUT_CHECK_ERROR("Constants Kernel execution failed: ");
+            //CUT_CHECK_ERROR("Constants Kernel execution failed: ");
             DEBUG("done.\n");
             stopTimer(timers.constants);
         
@@ -467,7 +467,7 @@ main( int argc, char** argv) {
             }
             DEBUG("done.\n");
             // check if kernel execution generated an error
-            CUT_CHECK_ERROR("Kernel execution failed");
+            //CUT_CHECK_ERROR("Kernel execution failed");
             stopTimer(timers.e_step);
 
             #pragma omp barrier
@@ -617,7 +617,7 @@ main( int argc, char** argv) {
                 stopTimer(timers.memcpy);
                 
                 cudaThreadSynchronize();
-                CUT_CHECK_ERROR("M-step Kernel execution failed: ");
+                //CUT_CHECK_ERROR("M-step Kernel execution failed: ");
                 #pragma omp master
                 {
                     params_iterations++;
@@ -630,7 +630,7 @@ main( int argc, char** argv) {
                 constants_kernel<<<num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,num_clusters,num_dimensions);
                 cudaThreadSynchronize();
                 stopTimer(timers.constants);
-                CUT_CHECK_ERROR("Constants Kernel execution failed: ");
+                //CUT_CHECK_ERROR("Constants Kernel execution failed: ");
                 #pragma omp master
                 {
                     constants_iterations++;
@@ -643,7 +643,7 @@ main( int argc, char** argv) {
                 estep1<<<dim3(num_clusters,NUM_BLOCKS), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
                 estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
                 cudaThreadSynchronize();
-                CUT_CHECK_ERROR("E-step Kernel execution failed: ");
+                //CUT_CHECK_ERROR("E-step Kernel execution failed: ");
                 stopTimer(timers.e_step);
                 #pragma omp master
                 {
@@ -652,7 +652,7 @@ main( int argc, char** argv) {
                 DEBUG("done.\n");
             
                 // check if kernel execution generated an error
-                CUT_CHECK_ERROR("Kernel execution failed");
+                //CUT_CHECK_ERROR("Kernel execution failed");
             
                 // Copy the likelihood totals from each block, sum them up to get a total
                 startTimer(timers.memcpy);
@@ -843,7 +843,7 @@ main( int argc, char** argv) {
     } // end of parallel block
 
     
-    cutStartTimer(timer_io);
+    //cutStartTimer(timer_io);
  
     char* result_suffix = ".results";
     char* summary_suffix = ".summary";
@@ -906,8 +906,8 @@ main( int argc, char** argv) {
         fclose(fresults);
     }
     
-    cutStopTimer(timer_io);
-    cutStartTimer(timer_cpu);
+    //cutStopTimer(timer_io);
+    //cutStartTimer(timer_cpu);
     
     // cleanup host memory
     free(fcs_data_by_event);
@@ -935,17 +935,17 @@ main( int argc, char** argv) {
     
     free(shared_likelihoods);
     
-    cutStopTimer(timer_cpu);
+    //cutStopTimer(timer_cpu);
     
-    printf( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
-    cutDeleteTimer(timer_io);
+    //printf( "I/O time: %f (ms)\n", cutGetTimerValue(timer_io));
+    //cutDeleteTimer(timer_io);
     
-    printf( "Main Thread CPU time: %f (ms)\n", cutGetTimerValue(timer_cpu));
-    cutDeleteTimer(timer_cpu);
+    //printf( "Main Thread CPU time: %f (ms)\n", cutGetTimerValue(timer_cpu));
+    //cutDeleteTimer(timer_cpu);
 
-    cutStopTimer(timer_total);
-    printf( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
-    cutDeleteTimer(timer_total);
+    //cutStopTimer(timer_total);
+    //printf( "Total time: %f (ms)\n", cutGetTimerValue(timer_total));
+    //cutDeleteTimer(timer_total);
 
     return 0;
 }

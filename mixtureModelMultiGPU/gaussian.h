@@ -9,6 +9,8 @@
  *
  */
 
+#include <stdio.h> // for FILE typedef
+
 #ifndef GAUSSIAN_H
 #define GAUSSIAN_H
 
@@ -51,22 +53,24 @@
 #define EMU 0
 
 #if ENABLE_DEBUG
-#define DEBUG(fmt,args...) printf(fmt, ##args)
+#define DEBUG(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define DEBUG(fmt,args...)
+#define DEBUG(fmt, ...)
 #endif
 
 #if ENABLE_PRINT
-#define PRINT(fmt,args...) printf(fmt, ##args)
+#define PRINT(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define PRINT(fmt,args...)
+#define PRINT(fmt, ...)
 #endif
 
 #ifdef EMU
-#define EMUPRINT(fmt,args...) printf(fmt, ##args)
+#define EMUPRINT(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define EMUPRINT(fmt,args...)
+#define EMUPRINT(fmt, ...)
 #endif
+
+#define CUDA_SAFE_CALL(...) (## __VA_ARGS__)
 
 typedef struct 
 {
