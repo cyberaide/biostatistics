@@ -18,7 +18,7 @@ DELIMITER = ","
 num_gpus = 2
 
 def usage():
-    print "Usage: ./cmeansMultiGPU.py INPUT_FILE NUM_CLUSTERS [THRESHOLD=0.0001] [MIN_ITERS=0] [MAX_ITERS=100] [DEVICE=0] [FUZZINESS=2] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [MDL=0] [CPU_ONLY=0] [TRUNCATE=1] [RANDOM_SEED=1]"
+    print "Usage: ./cmeans.py INPUT_FILE NUM_CLUSTERS [THRESHOLD=0.0001] [MIN_ITERS=0] [MAX_ITERS=100] [DEVICE=0] [FUZZINESS=2] [DISTANCE_MEASURE=0] [K1=1.0] [K2=0.01] [K3=1.5] [MEMBER_THRESHOLD=0.05] [TABU_ITER=100] [TABU_TENURE=5] [MDL=0] [CPU_ONLY=0] [TRUNCATE=1] [RANDOM_SEED=1]"
     print
     print " INPUT_FILE and NUM_CLUSTERS are required."
     print " The rest of the parameters can be specified in NAME=VALUE form"
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     new_header.close()
 
     # Compile the program
-    os.system('make clean') # cpp files won't get recompiled if cmeans.h changes for some reason...
+    os.system('make clean')
     error = os.system('make')
 
     os.chdir(current_path)
