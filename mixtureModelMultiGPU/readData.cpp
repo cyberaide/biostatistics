@@ -14,6 +14,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include "gaussian.h"
 
 using namespace std;
 
@@ -71,7 +72,7 @@ float* readCSV(char* f, int* ndims, int* nevents) {
         cout << "Unable to read the file " << f << endl;
         return NULL;
     }
-    
+   
     if(lines.size() > 0) {
         line1 = lines[0];
         string line2 (line1.begin(), line1.end());
@@ -85,13 +86,11 @@ float* readCSV(char* f, int* ndims, int* nevents) {
 
         lines.erase(lines.begin()); // Remove first line, assumed to be header
         int num_events = (int)lines.size();
-        //int pad_size = 64 - (num_events % 64);
-        //if(pad_size == 64) pad_size = 0;
-        //pad_size = 0;
-        //printf("Number of events in input file: %d\n",num_events);
-        //printf("Number of padding events added for alignment: %d\n",pad_size);
-        printf("Number of events removed to ensure memory alignment %d\n",num_events % (16 * 2));
-        num_events -= num_events % (16 * 2);
+        
+        #if TRUNCATE == 1
+            printf("Number of events removed to ensure memory alignment %d\n",num_events % (16 * 2));
+            num_events -= num_events % (16 * 2);
+        #endif
 
         // Allocate space for all the FCS data
         data = (float*)malloc(sizeof(float) * num_dims * (num_events));
@@ -112,13 +111,6 @@ float* readCSV(char* f, int* ndims, int* nevents) {
                 temp = strtok(NULL, ",");
             }
         }
-
-        //for(int i = num_events; i < num_events+pad_size; i++) {
-        //    for(int j = 0; j < num_dims; j++) {
-        //        data[i * num_dims + j] = 0.0f;
-        //    }
-        //}
-        //num_events += pad_size;
 
         *ndims = num_dims;
         *nevents = num_events;

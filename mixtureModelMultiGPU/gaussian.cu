@@ -112,17 +112,26 @@ void cleanup_profile_t(profile_t* p) {
  * Seeds the cluster centers (means) with random data points
  */
 void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int num_dimensions, int num_events) {
-    float seed;
+    float fraction;
+    int seed;
     if(num_clusters > 1) {
-        seed = (num_events-1.0f)/(num_clusters-1.0f);
+        fraction = (num_events-1.0f)/(num_clusters-1.0f);
     } else {
-        seed = 0.0;
+        fraction = 0.0;
     }
+    srand(time(NULL));
     // Sets the means from evenly distributed points in the input data
     for(int c=0; c < num_clusters; c++) {
-        for(int d=0; d < num_dimensions; d++) {
-            clusters->means[c*num_dimensions+d] = fcs_data[((int)(c*seed))*num_dimensions+d];
-        }
+        clusters->N[c] = (float)num_events/(float)num_clusters;
+        #if UNIFORM_SEED
+            for(int d=0; d < num_dimensions; d++)
+                clusters->means[c*num_dimensions+d] = fcs_data[((int)(c*fraction))*num_dimensions+d];
+        #else
+            seed = rand() % num_events; 
+            DEBUG("Cluster %d seed = event #%d\n",c,seed);
+            for(int d=0; d < num_dimensions; d++)
+                clusters->means[c*num_dimensions+d] = fcs_data[seed*num_dimensions+d];
+        #endif
     }
 }
 
@@ -186,7 +195,7 @@ main( int argc, char** argv) {
     PRINT("Parsing input file...");
     // This stores the data in a 1-D array with consecutive values being the dimensions from a single event
     // (num_events by num_dimensions matrix)
-    float* fcs_data_by_event = readData(argv[2],&num_dimensions,&num_events);    
+    float* fcs_data_by_event = readData(argv[2],&num_dimensions,&num_events);   
 
     if(!fcs_data_by_event) {
         printf("Error parsing input file. This could be due to an empty file ");
@@ -201,6 +210,10 @@ main( int argc, char** argv) {
     
     for(int e=0; e<num_events; e++) {
         for(int d=0; d<num_dimensions; d++) {
+            if(isnan(fcs_data_by_event[e*num_dimensions+d])) {
+                printf("Error: Found NaN value in input data. Exiting.\n");
+                return 1;
+            }
             fcs_data_by_dimension[d*num_events+e] = fcs_data_by_event[e*num_dimensions+d];
         }
     }    
@@ -304,8 +317,7 @@ main( int argc, char** argv) {
             my_num_events += num_events % num_gpus; // last gpu has to handle the remaining uneven events
         }
 
-        DEBUG("GPU %d will handling %d events\n",tid,my_num_events);
-        printf("GPU %d will handling %d events\n",tid,my_num_events);
+        DEBUG("GPU %d will handle %d events\n",tid,my_num_events);
         
         // Setup the cluster data structures on device
         // First allocate structures on the host, CUDA malloc the arrays
@@ -319,7 +331,7 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.means),sizeof(float)*num_dimensions*original_num_clusters));
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.R),sizeof(float)*num_dimensions*num_dimensions*original_num_clusters));
         CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.Rinv),sizeof(float)*num_dimensions*num_dimensions*original_num_clusters));
-        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.memberships),sizeof(float)*my_num_events*original_num_clusters));
+        CUDA_SAFE_CALL(cudaMalloc((void**) &(temp_clusters.memberships),sizeof(float)*my_num_events*(original_num_clusters+NUM_CLUSTERS_PER_BLOCK-original_num_clusters % NUM_CLUSTERS_PER_BLOCK)));
        
         // Allocate a struct on the device 
         clusters_t* d_clusters;
@@ -358,7 +370,7 @@ main( int argc, char** argv) {
         stopTimer(timers.memcpy);
         
         //////////////// Initialization done, starting kernels //////////////// 
-        DEBUG("Invoking seed_clusters kernel...");
+        DEBUG("Invoking seed_clusters kernel.\n");
 
         // seed_clusters sets initial pi values, 
         // finds the means / covariances and copies it to all the clusters
@@ -373,16 +385,14 @@ main( int argc, char** argv) {
             startTimer(timers.constants);
             seed_clusters<<< 1, NUM_THREADS_MSTEP >>>( d_fcs_data_by_event, d_clusters, num_dimensions, original_num_clusters, my_num_events);
             cudaThreadSynchronize();
-            DEBUG("done.\n"); 
             //CUT_CHECK_ERROR("Seed Kernel execution failed: ");
             
-            DEBUG("Invoking constants kernel...",num_threads);
+            DEBUG("Invoking constants kernel.\n");
             // Computes the R matrix inverses, and the gaussian constant
             constants_kernel<<<original_num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,original_num_clusters,num_dimensions);
             constants_iterations++;
             cudaThreadSynchronize();
             //CUT_CHECK_ERROR("Constants Kernel execution failed: ");
-            DEBUG("done.\n");
             stopTimer(timers.constants);
         
             startTimer(timers.memcpy);
@@ -405,6 +415,7 @@ main( int argc, char** argv) {
                 DEBUG("Cluster #%d\n",c);
 
                 DEBUG("\tN: %f\n",clusters[0].N[c]); 
+                DEBUG("\tpi: %f\n",clusters[0].pi[c]); 
 
                 // means
                 DEBUG("\tMeans: ");
@@ -412,6 +423,23 @@ main( int argc, char** argv) {
                     DEBUG("%.2f ",clusters[0].means[c*num_dimensions+d]);
                 }
                 DEBUG("\n");
+
+                DEBUG("\tR:\n\t");
+                for(int d=0; d < num_dimensions; d++) {
+                    for(int e=0; e < num_dimensions; e++)
+                        DEBUG("%.2f ",clusters->R[c*num_dimensions*num_dimensions+d*num_dimensions+e]);
+                    DEBUG("\n\t");
+                }
+                DEBUG("R-inverse:\n\t");
+                for(int d=0; d < num_dimensions; d++) {
+                    for(int e=0; e < num_dimensions; e++)
+                        DEBUG("%.2f ",clusters->Rinv[c*num_dimensions*num_dimensions+d*num_dimensions+e]);
+                    DEBUG("\n\t");
+                }
+                DEBUG("\n");
+                DEBUG("\tAvgvar: %e\n",clusters->avgvar[c]);
+                DEBUG("\tConstant: %e\n",clusters->constant[c]);
+
             }
             stopTimer(timers.cpu);
         }
@@ -431,10 +459,11 @@ main( int argc, char** argv) {
         startTimer(timers.cpu); 
         // Calculate an epsilon value
         //int ndata_points = num_events*num_dimensions;
-        float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.01;
+        float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.001;
         int iters;
         
         //epsilon = 1e-6;
+        #pragma omp master
         PRINT("Gaussian.cu: epsilon = %f\n",epsilon);
 
         float* d_likelihoods;
@@ -456,7 +485,7 @@ main( int argc, char** argv) {
             // do initial E-step
             // Calculates a cluster membership probability
             // for each event and each cluster.
-            DEBUG("Invoking E-step kernels...");
+            DEBUG("Invoking E-step kernels.");
             startTimer(timers.e_step);
             estep1<<<dim3(num_clusters,NUM_BLOCKS), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
             estep2<<<NUM_BLOCKS, NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,num_clusters,my_num_events,d_likelihoods);
@@ -465,7 +494,6 @@ main( int argc, char** argv) {
             {
                 regroup_iterations++;
             }
-            DEBUG("done.\n");
             // check if kernel execution generated an error
             //CUT_CHECK_ERROR("Kernel execution failed");
             stopTimer(timers.e_step);
@@ -491,6 +519,7 @@ main( int argc, char** argv) {
 
             float change = epsilon*2;
             
+            #pragma omp master
             PRINT("Performing EM algorithm on %d clusters.\n",num_clusters);
             iters = 0;
             // This is the iterative loop for the EM algorithm.
@@ -502,7 +531,7 @@ main( int argc, char** argv) {
                     old_likelihood = likelihood;
                 }
                 
-                DEBUG("Invoking reestimate_parameters (M-step) kernel...",num_threads);
+                DEBUG("Invoking reestimate_parameters (M-step) kernel.");
                 startTimer(timers.m_step);
                 // This kernel computes a new N, pi isn't updated until compute_constants though
                 mstep_N<<<num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,num_dimensions,num_clusters,my_num_events);
@@ -622,22 +651,26 @@ main( int argc, char** argv) {
                 {
                     params_iterations++;
                 }
-                DEBUG("done.\n");
                 
-                DEBUG("Invoking constants kernel...",num_threads);
+                DEBUG("Invoking constants kernel.");
                 // Inverts the R matrices, computes the constant, normalizes cluster probabilities
                 startTimer(timers.constants);
                 constants_kernel<<<num_clusters, NUM_THREADS_MSTEP>>>(d_clusters,num_clusters,num_dimensions);
                 cudaThreadSynchronize();
+                CUDA_SAFE_CALL(cudaMemcpy(clusters[tid].constant, temp_clusters.constant, sizeof(float)*num_clusters,cudaMemcpyDeviceToHost));
+                #pragma omp master 
+                {
+                    for(int temp_c=0; temp_c < num_clusters; temp_c++)
+                        DEBUG("Cluster %d constant: %e\n",temp_c,clusters[tid].constant[temp_c]);
+                }
                 stopTimer(timers.constants);
                 //CUT_CHECK_ERROR("Constants Kernel execution failed: ");
                 #pragma omp master
                 {
                     constants_iterations++;
                 }
-                DEBUG("done.\n");
 
-                DEBUG("Invoking regroup (E-step) kernel with %d blocks...",NUM_BLOCKS);
+                DEBUG("Invoking regroup (E-step) kernel with %d blocks.\n",NUM_BLOCKS);
                 startTimer(timers.e_step);
                 // Compute new cluster membership probabilities for all the events
                 estep1<<<dim3(num_clusters,NUM_BLOCKS), NUM_THREADS_ESTEP>>>(d_fcs_data_by_dimension,d_clusters,num_dimensions,my_num_events);
@@ -649,7 +682,6 @@ main( int argc, char** argv) {
                 {
                     regroup_iterations++;
                 }
-                DEBUG("done.\n");
             
                 // check if kernel execution generated an error
                 //CUT_CHECK_ERROR("Kernel execution failed");
@@ -700,6 +732,9 @@ main( int argc, char** argv) {
             
             // Calculate Rissanen Score
             rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
+            #pragma omp master
+            PRINT("\nLikelihood: %e\n",likelihood);
+            #pragma omp master
             PRINT("\nRissanen Score: %e\n",rissanen);
             
             #pragma omp barrier
@@ -806,8 +841,8 @@ main( int argc, char** argv) {
 
             #pragma omp barrier
         } // outer loop from M to 1 clusters
+        #pragma omp master
         PRINT("\nFinal rissanen Score was: %f, with %d clusters.\n",min_rissanen,ideal_num_clusters);
-        fflush(stdout); 
         #pragma omp barrier 
     
         // Print some profiling information
@@ -855,6 +890,7 @@ main( int argc, char** argv) {
     strcpy(summary_filename,argv[3]);
     strcat(result_filename,result_suffix);
     strcat(summary_filename,summary_suffix);
+
     
     PRINT("Summary filename: %s\n",summary_filename);
     PRINT("Results filename: %s\n",result_filename);
@@ -890,6 +926,12 @@ main( int argc, char** argv) {
     if(ENABLE_OUTPUT) { 
         // Open another output file for the event level clustering results
         FILE* fresults = fopen(result_filename,"w");
+        
+        char header[1000];
+        FILE* input_file = fopen(argv[2],"r");
+        fgets(header,1000,input_file);
+        fclose(input_file);
+        fprintf(fresults,"%s",header);
         
         for(int i=0; i<num_events; i++) {
             for(int d=0; d<num_dimensions-1; d++) {
@@ -1019,14 +1061,14 @@ void writeCluster(FILE* f, clusters_t clusters, int c, int num_dimensions) {
     fprintf(f,"N: %f\n",clusters.N[c]);
     fprintf(f,"Means: ");
     for(int i=0; i<num_dimensions; i++){
-        fprintf(f,"%.3f ",clusters.means[c*num_dimensions+i]);
+        fprintf(f,"%f ",clusters.means[c*num_dimensions+i]);
     }
     fprintf(f,"\n");
 
     fprintf(f,"\nR Matrix:\n");
     for(int i=0; i<num_dimensions; i++) {
         for(int j=0; j<num_dimensions; j++) {
-            fprintf(f,"%.3f ", clusters.R[c*num_dimensions*num_dimensions+i*num_dimensions+j]);
+            fprintf(f,"%f ", clusters.R[c*num_dimensions*num_dimensions+i*num_dimensions+j]);
         }
         fprintf(f,"\n");
     }
