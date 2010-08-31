@@ -209,6 +209,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="cudart.lib"
+				OutputFile="$(OutDir)\gmm.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="$(CUDA_LIB_PATH)"
 				GenerateDebugInformation="true"
@@ -356,6 +357,4 @@
 			>
 		</Filter>
 	</Files>
-	<Globals>
-	</Globals>
 </VisualStudioProject>

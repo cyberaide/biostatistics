@@ -34,7 +34,7 @@
 ################################################################################
 
 # Add source files here
-EXECUTABLE	:= gaussianMultiGPU
+EXECUTABLE	:= gmm
 # CUDA source files (compiled with cudacc)
 CUFILES	:= gaussian.cu
 # CUDA dependency files
