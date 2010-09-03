@@ -294,19 +294,18 @@ __device__ void compute_indices(int num_events, int* start, int* stop) {
 }
 
 __global__ void
-estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events, float* likelihood) {
+estep1(float* fcs_data, clusters_t* clusters, const int num_dimensions, const int num_events, float* likelihood) {
     
     // Cached cluster parameters
     __shared__ float means[NUM_DIMENSIONS];
     __shared__ float Rinv[NUM_DIMENSIONS*NUM_DIMENSIONS];
-    float log_cluster_pi;
-    float constant;
-    const unsigned int tid = threadIdx.x;
+    
+    unsigned const int tid = threadIdx.x;
  
     int start_index;
     int end_index;
 
-    int c = blockIdx.x;
+    const int c = blockIdx.x;
 
     compute_indices(num_events,&start_index,&end_index);
     
@@ -331,13 +330,12 @@ estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events
         Rinv[i] = clusters->Rinv[c*num_dimensions*num_dimensions+i]; 
     }
     
-    log_cluster_pi = logf(clusters->pi[c]);
-    constant = clusters->constant[c];
+    float log_cluster_pi = logf(clusters->pi[c]);
+    float constant = clusters->constant[c];
 
     // Sync to wait for all params to be loaded to shared memory
     __syncthreads();
 
-    
     for(int event=start_index; event<end_index; event += NUM_THREADS_ESTEP) {
         like = 0.0f;
         // this does the loglikelihood calculation
@@ -348,10 +346,10 @@ estep1(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_events
         #else
             for(int i=0; i<num_dimensions; i++) {
                 for(int j=0; j<num_dimensions; j++) {
-                    like += (fcs_data[i*num_events+event]-means[i]) * (fcs_data[j*num_events+event]-means[j]) * Rinv[i*num_dimensions+j];
+					like += (fcs_data[i*num_events+event]-means[i])*(fcs_data[j*num_events+event]-means[j])*Rinv[i*num_dimensions+j];
                 }
             }
-        #endif
+        #endif	
         clusters->memberships[c*num_events+event] = -0.5f * like + constant + log_cluster_pi; // numerator of the probability computation
     }
 }
@@ -365,7 +363,7 @@ estep2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_cluste
     float denominator_sum;
     
     // Break up the events evenly between the blocks
-    int num_pixels_per_block = num_events / NUM_BLOCKS;
+    int num_pixels_per_block = num_events / gridDim.x;
     // Make sure the events being accessed by the block are aligned to a multiple of 16
     num_pixels_per_block = num_pixels_per_block - (num_pixels_per_block % 16);
     int tid = threadIdx.x;
@@ -375,7 +373,7 @@ estep2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_cluste
     start_index = blockIdx.x * num_pixels_per_block + tid;
     
     // Last block will handle the leftover events
-    if(blockIdx.x == NUM_BLOCKS-1) {
+    if(blockIdx.x == gridDim.x-1) {
         end_index = num_events;
     } else {
         end_index = (blockIdx.x+1) * num_pixels_per_block;
@@ -405,8 +403,7 @@ estep2(float* fcs_data, clusters_t* clusters, int num_dimensions, int num_cluste
         
         // Divide by denominator, also effectively normalize probabilities
         for(int c=0; c<num_clusters; c++) {
-            clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - temp);
-            //printf("Probability that pixel #%d is in cluster #%d: %f\n",pixel,c,clusters->memberships[c*num_events+pixel]);
+            clusters->memberships[c*num_events+pixel] = expf(clusters->memberships[c*num_events+pixel] - temp);         
         }
     }
     
@@ -671,8 +668,10 @@ mstep_covariance2(float* fcs_data, clusters_t* clusters, int num_dimensions, int
 
     #if DIAG_ONLY
     if(row != col) {
-        clusters->R[c*num_dimensions*num_dimensions+row*num_dimensions+col] = 0.0f;
-        clusters->R[c*num_dimensions*num_dimensions+col*num_dimensions+row] = 0.0f;
+		for(int c=0; c < NUM_CLUSTERS_PER_BLOCK; c++) {
+			clusters->R[c*num_dimensions*num_dimensions+row*num_dimensions+col] = 0.0f;
+			clusters->R[c*num_dimensions*num_dimensions+col*num_dimensions+row] = 0.0f;
+		}
         return;
     }
     #endif 

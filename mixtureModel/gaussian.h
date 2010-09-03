@@ -17,9 +17,9 @@
 
 // Number of blocks per cluster for the E-step
 #define NUM_BLOCKS 24
-#define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
+#define NUM_THREADS_ESTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
-#define NUM_DIMENSIONS 24
+#define NUM_DIMENSIONS 32
 #define NUM_CLUSTERS_PER_BLOCK 6
 
 // Which GPU to use, if more than 1
@@ -29,9 +29,9 @@
 #define DIAG_ONLY 0
 
 // Maximum number of iterations for the EM convergence loop
-#define MAX_ITERS 10
+#define MAX_ITERS 100
 // Minimum number of iterations for the EM convergence loop (normally 0 unless doing performance testing)
-#define MIN_ITERS 10
+#define MIN_ITERS 1
 
 // Prints verbose output during the algorithm
 // Enables the DEBUG macro
@@ -39,32 +39,50 @@
 
 // Used to enable regular print outs (such as the Rissanen scores, clustering results)
 // This should be enabled for general use and disabled for performance evaluations only
-#define ENABLE_PRINT 0
+#define ENABLE_PRINT 1
 
 // Used to enable cluster result output to .results and .summary files
-#define ENABLE_OUTPUT 0
+#define ENABLE_OUTPUT 1
 
 // Used to enable EMUPRINT macro, this can only be used when compiled for
 // in emulation mode. It is used to print out during cuda kernels
 #define EMU 0
 
 #if ENABLE_DEBUG
-#define DEBUG(fmt,args...) printf(fmt, ##args)
+#define DEBUG(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define DEBUG(fmt,args...)
+#define DEBUG(fmt, ...)
 #endif
 
 #if ENABLE_PRINT
-#define PRINT(fmt,args...) printf(fmt, ##args)
+#define PRINT(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define PRINT(fmt,args...)
+#define PRINT(fmt, ...)
 #endif
 
 #ifdef EMU
-#define EMUPRINT(fmt,args...) printf(fmt, ##args)
+#define EMUPRINT(fmt, ...) printf(fmt, ## __VA_ARGS__)
 #else
-#define EMUPRINT(fmt,args...)
+#define EMUPRINT(fmt, ...)
 #endif
+
+#define CUDA_SAFE_CALL(call) do {                                 \
+    cudaError err = call;                                                    \
+    if( cudaSuccess != err) {                                                \
+        fprintf(stderr, "Cuda error in file '%s' in line %i : %s.\n",        \
+            __FILE__, __LINE__, cudaGetErrorString( err) );                  \
+             exit(EXIT_FAILURE);                                             \
+    } } while (0)
+
+#define CUT_CHECK_ERROR(errorMessage) do {                                 \
+        cudaThreadSynchronize();                                           \
+         cudaError_t err = cudaGetLastError();                             \
+         if( cudaSuccess != err) {                                         \
+                     fprintf(stderr, "Cuda error: %s in file '%s' in line %i : %s.\n",    \
+                                             errorMessage, __FILE__, __LINE__, cudaGetErrorString( err) );\
+                     exit(EXIT_FAILURE);                                                  \
+                 } } while (0)
+
 
 typedef struct 
 {
