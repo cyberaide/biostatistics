@@ -19,7 +19,6 @@
 #include <omp.h>
 
 // includes, project
-// #include <cutil.h>
 #include "gaussian.h"
 #include "invert_matrix.h"
 
@@ -36,6 +35,7 @@ void copy_cluster(clusters_t dest, int c_dest, clusters_t src, int c_src, int nu
 void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, int num_dimensions);
 
 // Since cutil timers aren't thread safe, we do it manually with cuda events
+// Removing dependence on cutil is always nice too...
 typedef struct {
     cudaEvent_t start;
     cudaEvent_t stop;
@@ -119,7 +119,7 @@ void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int 
     } else {
         fraction = 0.0;
     }
-    srand(time(NULL));
+    srand((unsigned int) time(NULL));
     // Sets the means from evenly distributed points in the input data
     for(int c=0; c < num_clusters; c++) {
         clusters->N[c] = (float)num_events/(float)num_clusters;
@@ -135,75 +135,34 @@ void seed_clusters(clusters_t* clusters, float* fcs_data, int num_clusters, int 
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Program main
-////////////////////////////////////////////////////////////////////////////////
-int
-main( int argc, char** argv) {
-    int original_num_clusters, desired_num_clusters, ideal_num_clusters, stop_number;
-    
-    int regroup_iterations = 0;
+clusters_t* cluster(int original_num_clusters, int desired_num_clusters, int* final_num_clusters, int num_dimensions, int num_events, float* fcs_data_by_event) {
+
+	int regroup_iterations = 0;
     int params_iterations = 0;
     int constants_iterations = 0;
     int reduce_iterations = 0;
-    
-    int num_gpus;
-    CUDA_SAFE_CALL(cudaGetDeviceCount(&num_gpus));
-    if (num_gpus < 1) {
-        printf("ERROR: No CUDA capable GPUs detected.\n");
-        return -1;
-    } else if(num_gpus == 1) {
-        printf("Warning: Only 1 CUDA GPU detected. Running single GPU version would be more efficient.\n");
-    } else {
-        PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
-    }
-    
-    // Keep track of total time
-    //unsigned int timer_total;
-    //cutCreateTimer( &timer_total);
-    //cutStartTimer( timer_total);
-   
-    // Keep track of I/O time
-    //unsigned int timer_io;
-    //cutCreateTimer( &timer_io);
-    //cutStartTimer( timer_io);
-    
-    // Keep track of Master thread CPU Time (outside #omp parallel)
-    //unsigned int timer_cpu;
-    //cutCreateTimer( &timer_cpu);
-    //cutStartTimer( timer_cpu);
-    
-    // Validate the command-line arguments, parse # of clusters, etc 
-    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
-    
-    // Don't continue if we had a problem with the program arguments
-    if(error) {
-        return 1;
-    }
-    
-    // Number of clusters to stop iterating at.
+	int ideal_num_clusters;
+	int stop_number;
+
+	// Number of clusters to stop iterating at.
     if(desired_num_clusters == 0) {
         stop_number = 1;
     } else {
         stop_number = desired_num_clusters;
     }
 
-    int num_dimensions;
-    int num_events;
-    
-    // Read FCS data   
-    PRINT("Parsing input file...");
-    // This stores the data in a 1-D array with consecutive values being the dimensions from a single event
-    // (num_events by num_dimensions matrix)
-    float* fcs_data_by_event = readData(argv[2],&num_dimensions,&num_events);   
-
-    if(!fcs_data_by_event) {
-        printf("Error parsing input file. This could be due to an empty file ");
-        printf("or an inconsistent number of dimensions. Aborting.\n");
-        return 1;
+    int num_gpus;
+    CUDA_SAFE_CALL(cudaGetDeviceCount(&num_gpus));
+    if (num_gpus < 1) {
+        printf("ERROR: No CUDA capable GPUs detected.\n");
+        return NULL;
+    } else if(num_gpus == 1) {
+        printf("Warning: Only 1 CUDA GPU detected. Running single GPU version would be more efficient.\n");
+    } else {
+        PRINT("Using %d Host-threads with %d GPUs\n",num_gpus,num_gpus);
     }
-    
-    // Transpose the event data (allows coalesced access pattern in E-step kernel)
+	
+	// Transpose the event data (allows coalesced access pattern in E-step kernel)
     // This has consecutive values being from the same dimension of the data 
     // (num_dimensions by num_events matrix)
     float* fcs_data_by_dimension  = (float*) malloc(sizeof(float)*num_events*num_dimensions);
@@ -212,7 +171,7 @@ main( int argc, char** argv) {
         for(int d=0; d<num_dimensions; d++) {
             if(isnan(fcs_data_by_event[e*num_dimensions+d])) {
                 printf("Error: Found NaN value in input data. Exiting.\n");
-                return 1;
+                return NULL;
             }
             fcs_data_by_dimension[d*num_events+e] = fcs_data_by_event[e*num_dimensions+d];
         }
@@ -223,10 +182,8 @@ main( int argc, char** argv) {
    
     PRINT("Number of events: %d\n",num_events);
     PRINT("Number of dimensions: %d\n\n",num_dimensions);
-    
     PRINT("Starting with %d cluster(s), will stop at %d cluster(s).\n",original_num_clusters,stop_number);
    
-    
     // Setup the cluster data structures on host
     // This the shared memory space between the GPUs
     clusters_t* clusters = (clusters_t*) malloc(sizeof(clusters_t)*num_gpus);
@@ -240,29 +197,29 @@ main( int argc, char** argv) {
         clusters[g].Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
         if(!clusters[g].means || !clusters[g].R || !clusters[g].Rinv) { 
             printf("ERROR: Could not allocate memory for clusters.\n"); 
-            return 1; 
+            return NULL; 
         }
     }
     // Only need one copy of all the memberships
     clusters[0].memberships = (float*) malloc(sizeof(float)*num_events*original_num_clusters);
     if(!clusters[0].memberships) {
         printf("ERROR: Could not allocate memory for clusters.\n"); 
-        return 1; 
+        return NULL; 
     }
     
     // Declare another set of clusters for saving the results of the best configuration
-    clusters_t saved_clusters;
-    saved_clusters.N = (float*) malloc(sizeof(float)*original_num_clusters);
-    saved_clusters.pi = (float*) malloc(sizeof(float)*original_num_clusters);
-    saved_clusters.constant = (float*) malloc(sizeof(float)*original_num_clusters);
-    saved_clusters.avgvar = (float*) malloc(sizeof(float)*original_num_clusters);
-    saved_clusters.means = (float*) malloc(sizeof(float)*num_dimensions*original_num_clusters);
-    saved_clusters.R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
-    saved_clusters.Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
-    saved_clusters.memberships = (float*) malloc(sizeof(float)*num_events*original_num_clusters);
-    if(!saved_clusters.means || !saved_clusters.R || !saved_clusters.Rinv || !saved_clusters.memberships) { 
+    clusters_t* saved_clusters = (clusters_t*) malloc(sizeof(clusters_t));
+    saved_clusters->N = (float*) malloc(sizeof(float)*original_num_clusters);
+    saved_clusters->pi = (float*) malloc(sizeof(float)*original_num_clusters);
+    saved_clusters->constant = (float*) malloc(sizeof(float)*original_num_clusters);
+    saved_clusters->avgvar = (float*) malloc(sizeof(float)*original_num_clusters);
+    saved_clusters->means = (float*) malloc(sizeof(float)*num_dimensions*original_num_clusters);
+    saved_clusters->R = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
+    saved_clusters->Rinv = (float*) malloc(sizeof(float)*num_dimensions*num_dimensions*original_num_clusters);
+    saved_clusters->memberships = (float*) malloc(sizeof(float)*num_events*original_num_clusters);
+    if(!saved_clusters->means || !saved_clusters->R || !saved_clusters->Rinv || !saved_clusters->memberships) { 
         printf("ERROR: Could not allocate memory for clusters.\n"); 
-        return 1; 
+        return NULL; 
     }
     DEBUG("Finished allocating shared cluster structures on host\n");
         
@@ -273,17 +230,14 @@ main( int argc, char** argv) {
     
     //cutStopTimer( timer_cpu);
 
+    // Main thread splits into one thread per GPU at this point
     omp_set_num_threads(num_gpus);
     #pragma omp parallel shared(clusters,fcs_data_by_event,fcs_data_by_dimension,shared_likelihoods,likelihood,old_likelihood,ideal_num_clusters,min_rissanen,regroup_iterations) 
     {
-        
         // Set the device for this thread
         unsigned int tid  = omp_get_thread_num();
         unsigned int num_cpu_threads = omp_get_num_threads();
-        if(num_cpu_threads != num_gpus) {
-            printf("ERROR: Number of threads did not match number of GPUs. Perhaps not enough CPU cores?");
-            exit(1);
-        }
+
         cudaSetDevice(tid);
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, tid);
@@ -459,7 +413,7 @@ main( int argc, char** argv) {
         startTimer(timers.cpu); 
         // Calculate an epsilon value
         //int ndata_points = num_events*num_dimensions;
-        float epsilon = (1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)*log((float)num_events*num_dimensions)*0.001;
+        float epsilon = (1+num_dimensions+0.5f*(num_dimensions+1)*num_dimensions)*logf((float)num_events*num_dimensions)*0.001f;
         int iters;
         
         //epsilon = 1e-6;
@@ -731,7 +685,7 @@ main( int argc, char** argv) {
             DEBUG("GPU %d done with copying cluster data from device\n",tid); 
             
             // Calculate Rissanen Score
-            rissanen = -likelihood + 0.5*(num_clusters*(1+num_dimensions+0.5*(num_dimensions+1)*num_dimensions)-1)*logf((float)num_events*num_dimensions);
+            rissanen = -likelihood + 0.5f*(num_clusters*(1.0f+num_dimensions+0.5f*(num_dimensions+1.0f)*num_dimensions)-1.0f)*logf((float)num_events*num_dimensions);
             #pragma omp master
             PRINT("\nLikelihood: %e\n",likelihood);
             #pragma omp master
@@ -747,14 +701,14 @@ main( int argc, char** argv) {
                     min_rissanen = rissanen;
                     ideal_num_clusters = num_clusters;
                     // Save the cluster configuration somewhere
-                    memcpy(saved_clusters.N,clusters[0].N,sizeof(float)*num_clusters);
-                    memcpy(saved_clusters.pi,clusters[0].pi,sizeof(float)*num_clusters);
-                    memcpy(saved_clusters.constant,clusters[0].constant,sizeof(float)*num_clusters);
-                    memcpy(saved_clusters.avgvar,clusters[0].avgvar,sizeof(float)*num_clusters);
-                    memcpy(saved_clusters.means,clusters[0].means,sizeof(float)*num_dimensions*num_clusters);
-                    memcpy(saved_clusters.R,clusters[0].R,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
-                    memcpy(saved_clusters.Rinv,clusters[0].Rinv,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
-                    memcpy(saved_clusters.memberships,clusters[0].memberships,sizeof(float)*num_events*num_clusters);
+                    memcpy(saved_clusters->N,clusters[0].N,sizeof(float)*num_clusters);
+                    memcpy(saved_clusters->pi,clusters[0].pi,sizeof(float)*num_clusters);
+                    memcpy(saved_clusters->constant,clusters[0].constant,sizeof(float)*num_clusters);
+                    memcpy(saved_clusters->avgvar,clusters[0].avgvar,sizeof(float)*num_clusters);
+                    memcpy(saved_clusters->means,clusters[0].means,sizeof(float)*num_dimensions*num_clusters);
+                    memcpy(saved_clusters->R,clusters[0].R,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
+                    memcpy(saved_clusters->Rinv,clusters[0].Rinv,sizeof(float)*num_dimensions*num_dimensions*num_clusters);
+                    memcpy(saved_clusters->memberships,clusters[0].memberships,sizeof(float)*num_events*num_clusters);
                 }
             }
             #pragma omp barrier
@@ -877,7 +831,60 @@ main( int argc, char** argv) {
         CUDA_SAFE_CALL(cudaFree(d_clusters));
     } // end of parallel block
 
+	// main thread cleanup
+	free(fcs_data_by_dimension);
+	for(int g=0; g < num_gpus; g++) {
+        free(clusters[g].N);
+        free(clusters[g].pi);
+        free(clusters[g].constant);
+        free(clusters[g].avgvar);
+        free(clusters[g].means);
+        free(clusters[g].R);
+        free(clusters[g].Rinv);
+    }
+    free(clusters[0].memberships);
+	free(shared_likelihoods);
+
+	*final_num_clusters = ideal_num_clusters;
+	return saved_clusters;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Program main
+////////////////////////////////////////////////////////////////////////////////
+int
+main( int argc, char** argv) {
+    int original_num_clusters, desired_num_clusters, ideal_num_clusters;
     
+    // Validate the command-line arguments, parse # of clusters, etc 
+    int error = validateArguments(argc,argv,&original_num_clusters,&desired_num_clusters);
+    
+    // Don't continue if we had a problem with the program arguments
+    if(error) {
+        return 1;
+    }
+
+    int num_dimensions;
+    int num_events;
+    
+    // Read FCS data   
+    PRINT("Parsing input file...");
+    // This stores the data in a 1-D array with consecutive values being the dimensions from a single event
+    // (num_events by num_dimensions matrix)
+    float* fcs_data_by_event = readData(argv[2],&num_dimensions,&num_events);   
+
+    if(!fcs_data_by_event) {
+        printf("Error parsing input file. This could be due to an empty file ");
+        printf("or an inconsistent number of dimensions. Aborting.\n");
+        return 1;
+    }
+       
+	clusters_t* clusters = cluster(original_num_clusters, desired_num_clusters, &ideal_num_clusters, num_dimensions, num_events, fcs_data_by_event);
+
+	clusters_t saved_clusters;
+	memcpy(&saved_clusters,clusters,sizeof(clusters_t));
+
     //cutStartTimer(timer_io);
  
     char* result_suffix = ".results";
@@ -953,18 +960,6 @@ main( int argc, char** argv) {
     
     // cleanup host memory
     free(fcs_data_by_event);
-    free(fcs_data_by_dimension);
-    
-    for(int g=0; g < num_gpus; g++) {
-        free(clusters[g].N);
-        free(clusters[g].pi);
-        free(clusters[g].constant);
-        free(clusters[g].avgvar);
-        free(clusters[g].means);
-        free(clusters[g].R);
-        free(clusters[g].Rinv);
-    }
-    free(clusters[0].memberships);
 
     free(saved_clusters.N);
     free(saved_clusters.pi);
@@ -974,8 +969,6 @@ main( int argc, char** argv) {
     free(saved_clusters.R);
     free(saved_clusters.Rinv);
     free(saved_clusters.memberships);
-    
-    free(shared_likelihoods);
     
     //cutStopTimer(timer_cpu);
     
@@ -1134,7 +1127,7 @@ void add_clusters(clusters_t clusters, int c1, int c2, clusters_t temp_cluster, 
     // Invert the matrix
     invert_cpu(temp_cluster.Rinv,num_dimensions,&log_determinant);
     // Compute the constant
-    temp_cluster.constant[0] = (-num_dimensions)*0.5*logf(2*PI)-0.5*log_determinant;
+    temp_cluster.constant[0] = (-num_dimensions)*0.5f*logf(2.0f*PI)-0.5f*log_determinant;
     
     // avgvar same for all clusters
     temp_cluster.avgvar[0] = clusters.avgvar[0];
