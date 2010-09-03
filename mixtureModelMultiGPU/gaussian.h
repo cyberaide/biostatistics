@@ -27,7 +27,7 @@
 
 // Number of blocks per cluster for the E-step
 #define	NUM_BLOCKS 24
-#define NUM_THREADS_ESTEP 512 // should be a power of 2 for parallel reductions to work
+#define NUM_THREADS_ESTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_THREADS_MSTEP 256 // should be a power of 2 for parallel reductions to work
 #define NUM_DIMENSIONS 24
 #define NUM_CLUSTERS_PER_BLOCK 6
@@ -77,7 +77,7 @@
 #define EMUPRINT(fmt, ...)
 #endif
 
-#  define CUDA_SAFE_CALL( call) do {                                 \
+#define CUDA_SAFE_CALL( call) do {                                 \
     cudaError err = call;                                                    \
     if( cudaSuccess != err) {                                                \
         fprintf(stderr, "Cuda error in file '%s' in line %i : %s.\n",        \
