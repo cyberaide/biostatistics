@@ -116,8 +116,11 @@ int* TabuSearch(float* matrix, char* inputFile){
         minimumConfig[i] = 1;
     }
     int history[NUM_CLUSTERS];
-    memset(history,0,sizeof(int)*NUM_CLUSTERS);
-    float minimumScore = EvaluateSolution(matrix, config);
+    //memset(history,0,sizeof(int)*NUM_CLUSTERS);
+   	for (int i=0;i<NUM_CLUSTERS;i++){
+	history[i] = 0;
+	} 
+	float minimumScore = EvaluateSolution(matrix, config);
     
     
     int minimumIndex =0;
@@ -172,16 +175,11 @@ int* TabuSearch(float* matrix, char* inputFile){
                 minimumConfig[i] = config[i];
             }
         }
-
-    
-        
         myfile << i << ", " << bitCount(config) << ", " << currentScore << "," << "\n";
-
     }
     myfile.close();
     free(config);
     return minimumConfig;
-
 }
 
 int bitCount (int* n)  {
