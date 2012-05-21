@@ -1,54 +1,32 @@
 ################################################################################
-#
-# Copyright 1993-2006 NVIDIA Corporation.  All rights reserved.
-#
-# NOTICE TO USER:   
-#
-# This source code is subject to NVIDIA ownership rights under U.S. and 
-# international Copyright laws.  
-#
-# NVIDIA MAKES NO REPRESENTATION ABOUT THE SUITABILITY OF THIS SOURCE 
-# CODE FOR ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR 
-# IMPLIED WARRANTY OF ANY KIND.  NVIDIA DISCLAIMS ALL WARRANTIES WITH 
-# REGARD TO THIS SOURCE CODE, INCLUDING ALL IMPLIED WARRANTIES OF 
-# MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.   
-# IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL, 
-# OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS 
-# OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE 
-# OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE 
-# OR PERFORMANCE OF THIS SOURCE CODE.  
-#
-# U.S. Government End Users.  This source code is a "commercial item" as 
-# that term is defined at 48 C.F.R. 2.101 (OCT 1995), consisting  of 
-# "commercial computer software" and "commercial computer software 
-# documentation" as such terms are used in 48 C.F.R. 12.212 (SEPT 1995) 
-# and is provided to the U.S. Government only as a commercial end item.  
-# Consistent with 48 C.F.R.12.212 and 48 C.F.R. 227.7202-1 through 
-# 227.7202-4 (JUNE 1995), all U.S. Government End Users acquire the 
-# source code with only those rights set forth herein.
-#
-################################################################################
-#
-# Build script for project
-#
+# Build script for MPI/CUDA implementation of cmeans on Delta
+# lihui@indiana.edu   5/9/2012
 ################################################################################
 
-# Add source files here
-EXECUTABLE	:= cmeansMPI
-# CUDA source files (compiled with cudacc)
-CUFILES := cmeansMPI.cu
-# CUDA dependency files
-CU_DEPS		:= cmeansMPI.h cmeansMPI_kernel.cu
+all:mpi_cuda
 
-# C/C++ source files (compiled with gcc / c++)
-CCFILES		:= MDL.cpp Volume.cpp 
-
-################################################################################
-# Rules and targets
-include ../../common/common.mk
+CC	= g++
 
 NVCCFLAGS += --ptxas-options=-v
-NVCCFLAGS += -Xcompiler -fopenmp
-NVCCFLAGS += -I/usr/local/mvapich2-1.0-gnu-ofed-1.2/include -DMPICH_IGNORE_CXX_SEEK
-LIB += -L/usr/local/mvapich2-1.0-gnu-ofed-1.2/lib -lmpich -lgomp
+NVCCFLAGS += -Xcompiler -fopenmp 
+INCLUDE   = -I. -I/N/soft/intel/impi/4.0.0.028/include64/
+INCLUDE   += -I/opt/cuda/include/ -I/opt/NVIDIA_GPU_Computing_SDK/C/common/inc/
+LIBPATH = -L/N/soft/intel/impi/4.0.0.028/lib64/ -L/opt/cuda/lib64/ -L/opt/NVIDIA_GPU_Computing_SDK/C/lib/
 
+.c.o:
+	$(CC) -c $<
+OBJ		= Volume.o cmeansMPI.o MDL.o
+
+MDL.o: MDL.cpp
+	$(CC) -c MDL.cpp $(INCLUDE) -lcudart
+Volume.o: Volume.cpp
+	$(CC) -c Volume.cpp $(INCLUDE) -lcudart $(INCLUDE)
+#cmeansMPI_kernel.o: cmeansMPI_kernel.cu
+#	nvcc -c cmeansMPI_kernel.cu -o cmeansMPI_kernel.o $(INCLUDE)
+cmeansMPI.o: cmeansMPI.cu
+	nvcc -c cmeansMPI.cu -o cmeansMPI.o $(INCLUDE) -lcudart -lmpi -lgomp $(NVCCFLAGS)
+
+mpi_cuda: $(OBJ)
+	$(CC) -o mpi_cuda_cmeans $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lmpi -fopenmp -lcutil_x86_64
+clean:
+	rm *.o mpi_cuda_cmeans
