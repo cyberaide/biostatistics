@@ -40,7 +40,10 @@ int* TabuSearch(float* matrix, char* inputFile){
         minimumConfig[i] = 1;
     }
     int history[NUM_CLUSTERS];
-    memset(history,0,sizeof(int)*NUM_CLUSTERS);
+    //memset(history,0,sizeof(int)*NUM_CLUSTERS);
+    for (int i = 0; i < NUM_CLUSTERS; i++){
+	history[i] = 0;
+    }
     float minimumScore = EvaluateSolution(matrix, config);
     
     

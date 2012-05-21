@@ -1,3 +1,4 @@
+#include <mpi.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +11,6 @@
 #include <float.h>
 #include <cmeansMPI_kernel.cu>
 #include "MDL.h"
-#include <mpi.h>
 
 void printCudaError() {
     cudaError_t error = cudaGetLastError();
@@ -644,7 +644,7 @@ float* readCSV(char* filename) {
     float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
     myfile = fopen(filename, "r");
     #if LINE_LABELS
-        fgets(myline, 1024, myfile);
+        //fgets(myline, 1024, myfile);
         for(int i = 0; i < NUM_EVENTS; i++){
             fgets(myline, 1024, myfile);
             retVal[i*NUM_DIMENSIONS] = (float)atof(strtok(myline, DELIMITER));
