@@ -1,0 +1,4 @@
+for ((size=3;size<=7;size+=1))
+do
+./openmp_cmeans ../../GPU/cmeans/test${size}m.dat
+done
