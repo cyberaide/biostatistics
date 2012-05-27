@@ -1,0 +1,4 @@
+for ((size=1;size<=7;size+=1))
+do
+mpiexec -l -machinefile 2nodes -n 2 ./openmp_cmeans ../../GPU/cmeans/test${size}m.dat
+done
