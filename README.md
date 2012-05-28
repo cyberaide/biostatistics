@@ -16,7 +16,7 @@ A) Including Four Implementations of C-means on Delta on FutureGrid
 ================================================
 B) There exist three tags:
 
-1) v1.0 original source code from Panborn
+1) v1.0 original source code from Pangborn
 
 2) v1.1 modified version that work with Delta
 
