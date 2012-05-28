@@ -3,7 +3,7 @@ biostatistics
 ================================================
 source code repository for biostatistics project
 
-Last Update: 5/27/2012
+last Update: 5/27/2012
 ================================================
 
 
