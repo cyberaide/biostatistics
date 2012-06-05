@@ -140,7 +140,7 @@ int main(int argc, char* argv[])
     // run as many CPU threads as there are CUDA devices
     omp_set_num_threads(num_cpus);  // create as many CPU threads as there are CUDA devices
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators,memberships,finalClusterConfig)
-    {
+    {	
         int tid = omp_get_thread_num();
         int num_cpu_threads = omp_get_num_threads();
         #pragma omp barrier
@@ -157,11 +157,11 @@ int main(int argc, char* argv[])
         int iterations = 0;
         do{
 
-    //UpdateClusterCentersCPU_Linear(t* oldClusters, const float* events,
-    //float* tempClusters, float* tempDenominators,
-    //int start, int end){
+    	//UpdateClusterCentersCPU_Linear(t* oldClusters, const float* events,
+    	//float* tempClusters, float* tempDenominators,
+    	//int start, int end){
 
-	    UpdateClusterCentersCPU_Linear(myClusters,myEvents,tempClusters[tid],tempDenominators[tid],start,finish);
+	UpdateClusterCentersCPU_Linear(myClusters,myEvents,tempClusters[tid],tempDenominators[tid],start,finish);
  
             #pragma omp barrier
             #pragma omp master
@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
     elapsed = (finish.tv_sec - start.tv_sec);
  
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed);
+    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0);
     fclose(fh);
     
     int newCount = NUM_CLUSTERS;
