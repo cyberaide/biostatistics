@@ -119,9 +119,9 @@ int main(int argc, char* argv[])
 	return 1;
 	}
 	generateInitialClusters(myClusters, myEvents);
-    }
+    }//fi
 
-    MPI_Bcast(&NUM_EVENTS,NUM_DIMENSIONS*NUM_CLUSTERS,MPI_FLOAT,0,MPI_COMM_WORLD);
+    MPI_Bcast(&NUM_EVENTS,1,MPI_INT,0,MPI_COMM_WORLD);
     MPI_Bcast(myClusters, NUM_DIMENSIONS*NUM_CLUSTERS,MPI_FLOAT,0,MPI_COMM_WORLD);
     events_per_node = NUM_EVENTS / num_nodes;
 
@@ -255,10 +255,11 @@ int main(int argc, char* argv[])
    
     clock_gettime(CLOCK_MONOTONIC, &finish);
     elapsed = (finish.tv_sec - start.tv_sec);
+    float msec = (finish.tv_nsec-start.tv_nsec)/1000000000.0;
 
     if(rank==0) {
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed);
+    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed+msec);
     fclose(fh);
     
     int newCount = NUM_CLUSTERS;
