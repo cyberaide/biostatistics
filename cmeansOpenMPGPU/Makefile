@@ -26,10 +26,9 @@ Volume.o: Volume.cpp
 #	nvcc -c cmeansMPI_kernel.cu -o cmeansMPI_kernel.o $(INCLUDE)
 
 cmeansMultiGPU.o: cmeansMultiGPU.cu
-	nvcc -c cmeansMultiGPU.cu -o cmeansMultiGPU.o $(INCLUDE) -lcudart -lmpi -lgomp $(NVCCFLAGS)
+	nvcc -c cmeansMultiGPU.cu -o cmeansMultiGPU.o $(INCLUDE) -lcudart -lcublas -lgomp $(NVCCFLAGS)
 
 openmp_cuda: $(OBJ)
-	$(CC) -o openmp_cuda_cmeans $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lmpi -fopenmp -lcutil_x86_64
-#	tcc -o openmp_cuda_cmeans $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -openmp -lcutil_x86_64
+	$(CC) -o openmp_cuda_cmeans $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lcublas -fopenmp -lcutil_x86_64
 clean:
 	rm *.o openmp_cuda_cmeans
