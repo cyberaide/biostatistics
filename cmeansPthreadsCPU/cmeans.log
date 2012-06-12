@@ -1,0 +1,11 @@
+num_events:3000000  time:268.554596 
+num_events:4000000  time:357.123123 
+num_events:1000000  time:90.337162 
+num_events:2000000  time:177.951860 
+num_events:3000000  time:271.370369 
+num_events:7000000  time:633.136477 
+num_events:5000000  time:445.994850 
+num_events:6000000  time:539.507810 
+num_events:1000000  time:1102.598739 
+c-means num_events:1000000  time:181.425878 with 12 pthreads
+c-means num_events:1000000  time:289.124719 with 4 pthreads

@@ -1,0 +1,4 @@
+for ((size=1;size<=3;size+=1))
+do
+./pthread_cmeans ../../GPU/test-data/test${size}m.dat 12
+done
