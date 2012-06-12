@@ -91,11 +91,14 @@ int main(int argc, char* argv[])
 {
     unsigned int timer_io;    // Timer for I/O, such as reading FCS file and outputting result files
     unsigned int timer_total; // Total time
-    if(argc != 2){
-        printf("Usage Error: must supply data file. e.g. programe_name @opt(flags) file.in\n");
+    if(argc != 3){
+        printf("Usage %s [file.in][num_threads]\n",argv[0]);
+        printf(" num_threads == 0, num_threads = omp_get_num_proces()\n");
         return 1;
     }//fi
 
+    int num_threads = 0;
+    sscanf(argv[2], "%d", &num_threads);
     int rank, num_nodes, len, provided,num_cpus;
     char name[MPI_MAX_PROCESSOR_NAME]; 
 
@@ -103,7 +106,10 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD,&num_nodes);
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
     MPI_Get_processor_name(name, &len);
+
     num_cpus = omp_get_num_procs();
+    if (num_threads > 0)
+    num_cpus = num_threads;
 
     float *myEvents;
     clock_t cpu_start;
@@ -111,7 +117,7 @@ int main(int argc, char* argv[])
     int events_per_node, events_being_sent;
     struct timespec start, finish; 
     double elapsed; 
-    clock_gettime(CLOCK_MONOTONIC, &start); 
+    //clock_gettime(CLOCK_MONOTONIC, &start); 
     float* myClusters = (float*)malloc(sizeof(float)*NUM_CLUSTERS*NUM_DIMENSIONS);
     if(rank == 0) {
         myEvents = ParseSampleInput(argv[1]);
@@ -120,7 +126,7 @@ int main(int argc, char* argv[])
 	}
 	generateInitialClusters(myClusters, myEvents);
     }//fi
-
+    clock_gettime(CLOCK_MONOTONIC, &start);
     MPI_Bcast(&NUM_EVENTS,1,MPI_INT,0,MPI_COMM_WORLD);
     MPI_Bcast(myClusters, NUM_DIMENSIONS*NUM_CLUSTERS,MPI_FLOAT,0,MPI_COMM_WORLD);
     events_per_node = NUM_EVENTS / num_nodes;
@@ -259,7 +265,7 @@ int main(int argc, char* argv[])
 
     if(rank==0) {
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed+msec);
+    fprintf(fh,"num_events:%d  computation time:%f  using :%d threads\n",NUM_EVENTS,elapsed+msec, num_cpus);
     fclose(fh);
     
     int newCount = NUM_CLUSTERS;
