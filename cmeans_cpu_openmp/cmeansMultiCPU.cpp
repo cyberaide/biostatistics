@@ -93,11 +93,13 @@ int main(int argc, char* argv[])
     unsigned int timer_io;    // Timer for I/O, such as reading FCS file and outputting result files
     unsigned int timer_total; // Total time
     //[program name]  [data file]
-    if(argc != 2){
-        printf("Usage Error: must supply data file. e.g. programe_name @opt(flags) file.in\n");
+    if(argc != 3){
+        printf("Usage %s [file.in][num_threads]\n");
+	printf("num_threads == 0 means num_threads = omp_get_num_procs()\n");
         return 1;
     }//fi
-
+    int num_threads = 0;
+    sscanf(argv[2], "%d", &num_threads);
     float* myEvents = ParseSampleInput(argv[1]);
     clock_t cpu_start;
    
@@ -114,6 +116,9 @@ int main(int argc, char* argv[])
 
     
     int num_cpus = omp_get_num_procs();       // number of CUDA GPUs
+    if(num_threads >  0)
+  	num_cpus = num_threads;
+
     // printf("number of host CPUs:\t%d\n", omp_get_num_procs());
     srand((unsigned)(time(0)));
     
@@ -142,9 +147,9 @@ int main(int argc, char* argv[])
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators,memberships,finalClusterConfig)
     {	
         int tid = omp_get_thread_num();
-        int num_cpu_threads = omp_get_num_threads();
+        //int num_cpu_threads = omp_get_num_threads();
         #pragma omp barrier
-        printf("CPU thread %d (of %d)\n", tid, num_cpu_threads);
+        //printf("CPU thread %d (of %d)\n", tid, num_cpu_threads);
         
         //Compute starting/finishing indexes for the events for each thread
         int events_per_cpu = NUM_EVENTS / num_cpus;
@@ -214,7 +219,7 @@ int main(int argc, char* argv[])
     elapsed = (finish.tv_sec - start.tv_sec);
  
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0);
+    fprintf(fh,"num_events:%d  computation time:%f num_threads:%d\n",NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0, num_cpus);
     fclose(fh);
     
     int newCount = NUM_CLUSTERS;

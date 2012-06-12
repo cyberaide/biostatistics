@@ -301,10 +301,9 @@ int main(int argc, char* argv[])
 
     if(rank ==0){ 
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"c-means num_events:%d  time:%f with %d pthreads\n",
+    fprintf(fh,"num_events:%d  computation time:%f with %d pthreads\n",
 	NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0,num_threads);
     fclose(fh);
-    
     
     int newCount = NUM_CLUSTERS;
     //#if ENABLE_OUTPUT 
