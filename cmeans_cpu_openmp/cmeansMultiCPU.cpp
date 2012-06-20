@@ -13,6 +13,7 @@
 #include <float.h>
 #include "MDL.h"
 #include "cmeansMultiCPU.h"
+using namespace std;
 
 int NUM_EVENTS;  //number of events exists in input file
 
@@ -94,12 +95,12 @@ int main(int argc, char* argv[])
     unsigned int timer_total; // Total time
     //[program name]  [data file]
     if(argc != 3){
-        printf("Usage %s [file.in][num_threads]\n");
-	printf("num_threads == 0 means num_threads = omp_get_num_procs()\n");
+        printf("Usage : %s [file.in][num_threads]\n",argv[0]);
         return 1;
     }//fi
-    int num_threads = 0;
+    int num_threads;
     sscanf(argv[2], "%d", &num_threads);
+
     float* myEvents = ParseSampleInput(argv[1]);
     clock_t cpu_start;
    
@@ -116,10 +117,8 @@ int main(int argc, char* argv[])
 
     
     int num_cpus = omp_get_num_procs();       // number of CUDA GPUs
-    if(num_threads >  0)
-  	num_cpus = num_threads;
-
-    // printf("number of host CPUs:\t%d\n", omp_get_num_procs());
+    num_cpus = num_threads; 
+    printf("number of host CPUs:%d  using %d threads\n", omp_get_num_procs(),num_threads);
     srand((unsigned)(time(0)));
     
     // Allocate arrays for the cluster centers
@@ -147,9 +146,9 @@ int main(int argc, char* argv[])
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators,memberships,finalClusterConfig)
     {	
         int tid = omp_get_thread_num();
-        //int num_cpu_threads = omp_get_num_threads();
+        int num_cpu_threads = omp_get_num_threads();
         #pragma omp barrier
-        //printf("CPU thread %d (of %d)\n", tid, num_cpu_threads);
+        printf("CPU thread %d (of %d)\n", tid, num_cpu_threads);
         
         //Compute starting/finishing indexes for the events for each thread
         int events_per_cpu = NUM_EVENTS / num_cpus;
@@ -219,7 +218,7 @@ int main(int argc, char* argv[])
     elapsed = (finish.tv_sec - start.tv_sec);
  
     FILE* fh = fopen("cmeans.log","a");
-    fprintf(fh,"num_events:%d  computation time:%f num_threads:%d\n",NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0, num_cpus);
+    fprintf(fh,"num_events:%d  time:%f \n",NUM_EVENTS,elapsed+(finish.tv_nsec-start.tv_nsec)/1000000000.0);
     fclose(fh);
     
     int newCount = NUM_CLUSTERS;
@@ -263,6 +262,129 @@ float* readBIN(char* f) {
     fclose(fin);
     return data;
 }
+
+float* readFCS (char*filename){
+
+	FILE* myfile = fopen(filename, "r");
+    if(myfile == NULL){
+        printf("Error: File DNE\n");
+        return NULL;
+    }//if
+    int initialHeaderSize = 59;
+    char myline[initialHeaderSize];
+    //float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
+    myfile = fopen(filename, "r");
+    fgets(myline, initialHeaderSize, myfile);
+    //printf("%s\n",myline);
+
+    char *pFCSVersion = strtok(myline, " ");
+    printf("%s\n",pFCSVersion);
+
+    char *pToBeginText = strtok(NULL, " ");
+    //printf("hi 0.0 :%s\n",pToBeginText);
+    int toBeginText = atoi(pToBeginText);
+
+    char *pToEndText = strtok(NULL, " ");
+    int toEndText = atoi(pToEndText);
+    //printf("hi 0.1 :%s\n",pToEndText);
+
+    char *pToBeginDATA = strtok(NULL, " ");
+    int toBeginDATA = atoi(pToBeginDATA);
+    //printf("hi 0.2 :%s\n",pToBeginDATA);
+
+    char *pToEndDATA = strtok(NULL, " ");
+    //printf("hi 0.3 :%s\n",pToEndDATA);
+    int toEndDATA = atoi(pToEndDATA);
+
+    char *pToBeginANAL = strtok(NULL, " ");
+    //printf("hi 0.4 :%s\n",pToBeginANAL);
+    int toBeginANAL = atoi(pToBeginANAL);
+
+    char *pToEndANAL = strtok(NULL, " ");
+    //printf("hi 0.5 :%s\n",pToEndANAL);
+    int toEndANAL = atoi(pToEndANAL);
+
+    long remainingHeaderSize = toBeginText - initialHeaderSize;
+    char* restOfHeader_Array = (char*)malloc(sizeof(char)*remainingHeaderSize);	// Create an empty character array
+   	fgets(restOfHeader_Array, remainingHeaderSize, myfile);		// Populate the character array called restOfHeaderArray.
+    //String restOfHeader = new String(restOfHeader_Array);
+    //String fullHEADER = header + restOfHeader;
+
+   	long sizeTEXT = toEndText - toBeginText + 1;
+	char* primaryTextSection = (char*)malloc(sizeof(char)*sizeTEXT);
+   	fgets(primaryTextSection, sizeTEXT, myfile);
+
+   	//char delimiter[2];
+   	//sprintf(delimiter,"%c",primaryTextSection[0]);
+   	//delimiter[1] = '\0';
+   	//printf("size:%d delimiter:%s\n",sizeTEXT,delimiter);
+   	//printf("deliter:%c|%d| strlen:%d\n",delimiter[0],delimiter[0],strlen(pStr));
+
+   	char *pch;
+   	char *pStr = (char *)(primaryTextSection+1);
+
+   	pch = strtok(pStr," \n\r\f");
+   	int beginstext = 0;
+   	char *dataType;
+   	int tot;
+   	int par;
+
+   	while (pch!=NULL){
+	   		if (strcmp(pch,"$DATATYPE")==0)
+   	   		{
+	   		pch = strtok(NULL," \n\r\f");
+	   		dataType = pch;
+   	   		printf("$DATATYPE:%s\n",dataType);
+   	   		}//if
+
+
+   	   		if (strcmp(pch,"$TOT")==0)
+   	   		{
+   	   		pch = strtok(NULL," \n\r\f");
+   	   		tot = atoi(pch);
+   	   		printf("$TOT:%d\n",tot);
+   	   		}//if
+
+   	   		if (strcmp(pch,"$PAR")==0)
+   	   	   	{
+   	   	   		pch = strtok(NULL," \n\r\f");
+   	   	   		tot = atoi(pch);
+   	   	   		printf("$PAR:%d\n",tot);
+   	   	   	}//if
+
+   	   		pch = strtok(NULL," \n\r\f");
+   	   		//printf("TOT val:%s\n",pch);
+   	   		//tot = atoi(pch);
+   	   		//}
+   	   		//pch = strtok(NULL," \n\r");
+   	   		//printf("pch:%s\n",pch);
+   	}//while
+   	//printf("reading finished: toBeginDATA:%d\n",toBeginDATA);
+
+   	NUM_EVENTS = tot;
+   	float *dataMatrix = NULL;
+   	if (strcmp(dataType,"F")==0)									// $DATATYPE = F (float); $PnB = 32
+   		{
+   		rewind(myfile);
+   		fseek (myfile , toBeginDATA , SEEK_SET );
+
+   		//FileWriter fstream = new FileWriter(outputFileName);
+   		//BufferedWriter out = new BufferedWriter(fstream);
+   		dataMatrix = (float *)malloc(sizeof(float)*tot*par);
+
+   		float v;
+   		for (int i = 0; i < tot; i++){
+   				for (int j = 0; j < par; j++){
+   					fread((void*)(&v), sizeof(v), 1, myfile);
+   					dataMatrix[i*tot+j] = v;
+   					//out.write(dataMatrix[i][j]+",");
+   					}
+   					//out.write(dataMatrix[i][par-1]+"\n");
+   		}//for
+   		fclose(myfile);
+   		}//strcmp(dataType,"F")==0)
+   	return dataMatrix;
+}//float readFCS
 
 float* readCSV(char* filename) {
     FILE* myfile = fopen(filename, "r");
@@ -308,8 +430,13 @@ float* ParseSampleInput(char* f){
     printf("File Extension: %s\n",f+length-3);
     if(strcmp(f+length-3,"bin") == 0) {
         return readBIN(f);
-    } else {
+    }
+    if (strcmp(f+length-3,"fcs")==0){
+    	   return readFCS(f);
+    }
+    if (strcmp(f+length-3,"csv")==0){
         return readCSV(f);
     }
+    return readCSV(f);
 }
 
