@@ -160,7 +160,7 @@ int main(int argc, char* argv[])
     //   Recall that all variables declared inside an "omp parallel" scope are
     //   local to each CPU thread
     //
-    //num_gpus = 1;
+    num_gpus = 1;
     omp_set_num_threads(num_gpus);  // create as many CPU threads as there are CUDA devices
     //omp_set_num_threads(2*num_gpus);// create twice as many CPU threads as there are CUDA devices
     #pragma omp parallel shared(myClusters,diff,tempClusters,tempDenominators,memberships,finalClusterConfig)
@@ -526,6 +526,130 @@ float* readBIN(char* f) {
     return data;
 }
 
+float* readFCS (char*filename){
+
+	FILE* myfile = fopen(filename, "r");
+    if(myfile == NULL){
+        printf("Error: File DNE\n");
+        return NULL;
+    }//if
+    int initialHeaderSize = 59;
+    char myline[initialHeaderSize];
+    //float* retVal = (float*)malloc(sizeof(float)*NUM_EVENTS*NUM_DIMENSIONS);
+    myfile = fopen(filename, "r");
+    fgets(myline, initialHeaderSize, myfile);
+    //printf("%s\n",myline);
+
+    char *pFCSVersion = strtok(myline, " ");
+    printf("%s\n",pFCSVersion);
+
+    char *pToBeginText = strtok(NULL, " ");
+    //printf("hi 0.0 :%s\n",pToBeginText);
+    int toBeginText = atoi(pToBeginText);
+
+    char *pToEndText = strtok(NULL, " ");
+    int toEndText = atoi(pToEndText);
+    //printf("hi 0.1 :%s\n",pToEndText);
+
+    char *pToBeginDATA = strtok(NULL, " ");
+    int toBeginDATA = atoi(pToBeginDATA);
+    //printf("hi 0.2 :%s\n",pToBeginDATA);
+
+    char *pToEndDATA = strtok(NULL, " ");
+    //printf("hi 0.3 :%s\n",pToEndDATA);
+    int toEndDATA = atoi(pToEndDATA);
+
+    char *pToBeginANAL = strtok(NULL, " ");
+    //printf("hi 0.4 :%s\n",pToBeginANAL);
+    int toBeginANAL = atoi(pToBeginANAL);
+
+    char *pToEndANAL = strtok(NULL, " ");
+    //printf("hi 0.5 :%s\n",pToEndANAL);
+    int toEndANAL = atoi(pToEndANAL);
+
+    long remainingHeaderSize = toBeginText - initialHeaderSize;
+    char* restOfHeader_Array = (char*)malloc(sizeof(char)*remainingHeaderSize);	// Create an empty character array
+   	fgets(restOfHeader_Array, remainingHeaderSize, myfile);		// Populate the character array called restOfHeaderArray.
+    //String restOfHeader = new String(restOfHeader_Array);
+    //String fullHEADER = header + restOfHeader;
+
+   	long sizeTEXT = toEndText - toBeginText + 1;
+	char* primaryTextSection = (char*)malloc(sizeof(char)*sizeTEXT);
+   	fgets(primaryTextSection, sizeTEXT, myfile);
+
+   	//char delimiter[2];
+   	//sprintf(delimiter,"%c",primaryTextSection[0]);
+   	//delimiter[1] = '\0';
+   	//printf("size:%d delimiter:%s\n",sizeTEXT,delimiter);
+   	//printf("deliter:%c|%d| strlen:%d\n",delimiter[0],delimiter[0],strlen(pStr));
+
+   	char *pch;
+   	char *pStr = (char *)(primaryTextSection+1);
+
+   	pch = strtok(pStr," \n\r\f");
+   	int beginstext = 0;
+   	char *dataType;
+   	int tot;
+   	int par;
+
+   	while (pch!=NULL){
+	   		if (strcmp(pch,"$DATATYPE")==0)
+   	   		{
+	   		pch = strtok(NULL," \n\r\f");
+	   		dataType = pch;
+   	   		printf("$DATATYPE:%s\n",dataType);
+   	   		}//if
+
+
+   	   		if (strcmp(pch,"$TOT")==0)
+   	   		{
+   	   		pch = strtok(NULL," \n\r\f");
+   	   		tot = atoi(pch);
+   	   		printf("$TOT:%d\n",tot);
+   	   		}//if
+
+   	   		if (strcmp(pch,"$PAR")==0)
+   	   	   	{
+   	   	   		pch = strtok(NULL," \n\r\f");
+   	   	   		tot = atoi(pch);
+   	   	   		printf("$PAR:%d\n",tot);
+   	   	   	}//if
+
+   	   		pch = strtok(NULL," \n\r\f");
+   	   		//printf("TOT val:%s\n",pch);
+   	   		//tot = atoi(pch);
+   	   		//}
+   	   		//pch = strtok(NULL," \n\r");
+   	   		//printf("pch:%s\n",pch);
+   	}//while
+   	//printf("reading finished: toBeginDATA:%d\n",toBeginDATA);
+
+   	//NUM_EVENTS = tot;
+   	float *dataMatrix = NULL;
+   	if (strcmp(dataType,"F")==0)									// $DATATYPE = F (float); $PnB = 32
+   		{
+   		rewind(myfile);
+   		fseek (myfile , toBeginDATA , SEEK_SET );
+
+   		//FileWriter fstream = new FileWriter(outputFileName);
+   		//BufferedWriter out = new BufferedWriter(fstream);
+   		dataMatrix = (float *)malloc(sizeof(float)*tot*par);
+
+   		float v;
+   		for (int i = 0; i < tot; i++){
+   				for (int j = 0; j < par; j++){
+   					fread((void*)(&v), sizeof(v), 1, myfile);
+   					dataMatrix[i*tot+j] = v;
+   					//out.write(dataMatrix[i][j]+",");
+   					}
+   					//out.write(dataMatrix[i][par-1]+"\n");
+   		}//for
+   		fclose(myfile);
+   		}//strcmp(dataType,"F")==0)
+   	return dataMatrix;
+}//float readFCS
+
+
 
 float* readCSV(char* filename) {
     FILE* myfile = fopen(filename, "r");
@@ -563,11 +687,17 @@ float* readCSV(char* filename) {
 float* ParseSampleInput(char* f){
     int length = strlen(f);
     printf("File Extension: %s\n",f+length-3);
+    
     if(strcmp(f+length-3,"bin") == 0) {
         return readBIN(f);
-    } else {
+    }
+    if (strcmp(f+length-3,"fcs")==0){
+    	   return readFCS(f);
+    }
+    if (strcmp(f+length-3,"csv")==0){
         return readCSV(f);
     }
+    return readCSV(f);
 }
 
 void FreeMatrix(float* d_matrix){
