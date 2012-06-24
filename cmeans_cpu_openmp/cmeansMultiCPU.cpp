@@ -348,7 +348,7 @@ float* readFCS (char*filename){
    	   		if (strcmp(pch,"$PAR")==0)
    	   	   	{
    	   	   		pch = strtok(NULL," \n\r\f");
-   	   	   		tot = atoi(pch);
+   	   	   		par = atoi(pch);
    	   	   		printf("$PAR:%d\n",tot);
    	   	   	}//if
 
@@ -376,7 +376,7 @@ float* readFCS (char*filename){
    		for (int i = 0; i < tot; i++){
    				for (int j = 0; j < par; j++){
    					fread((void*)(&v), sizeof(v), 1, myfile);
-   					dataMatrix[i*tot+j] = v;
+   					dataMatrix[i*par+j] = v;
    					//out.write(dataMatrix[i][j]+",");
    					}
    					//out.write(dataMatrix[i][par-1]+"\n");
