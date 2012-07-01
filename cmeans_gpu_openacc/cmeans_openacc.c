@@ -1,9 +1,8 @@
 //###############################################################################
-// source code  for OpenACC implementation of cmeans using GPUs on Delta
-// lihui@indiana.edu   last update 6/24/2012
+//source code  for OpenACC implementation of cmeans using multi-core on Delta
+//lihui@indiana.edu   last update 6/25/2012
 //###############################################################################
-
-
+ 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -43,65 +42,67 @@ float CalculateDistanceCPU(const float* clusters, const float** events, int clus
 //Work on different parts of events and run in parallel.
 
 void UpdateClusterCentersCPU_Linear(const float* oldClusters, const float** events, 
-    float* tempClusters, float* tempDenominators,
-    int start, int end){
+    		float* tempClusters, float* tempDenominators,
+    		float**distances, float** memberships){
 	
-    ///float membershipValue;//, denominator;
-    //float* numerator = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
-    float* distances = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
-    //float* memberships = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
-
-    for(int i = 0; i < NUM_DIMENSIONS*NUM_CLUSTERS; i++) {
-       tempClusters[i] = 0;
-    }//for
-
-    for(int i = 0; i < NUM_CLUSTERS; i++) {
-        //numerator[i] = 0;
-        tempDenominators[i] = 0;
-    }//for
-
-//remove the data dependency by using redundant buffer
-//#pragma acc for independent, parallel
-#pragma acc data region copyout(tempClusters[0:(NUM_CLUSTERS*NUM_DIMENSIONS)],tempDenominators[0:NUM_CLUSTERS]),\
-	 copyin(events[0:NUM_EVENTS][0:NUM_DIMENSIONS],oldClusters[0:NUM_CLUSTERS*NUM_DIMENSIONS]\
-		)
+//float* numerator = (float*)malloc(sizeof(float)*NUM_CLUSTERS);
+printf("NUM_EVENTS:%d\n",NUM_EVENTS);
+#pragma acc region \
+	create(memberships[0:NUM_EVENTS][0:NUM_CLUSTERS],\
+		distances[0:NUM_EVENTS][0:NUM_CLUSTERS],\
+		tempDenominators[0:NUM_CLUSTERS]),\
+	 present_or_copyin(events[0:NUM_EVENTS][0:NUM_DIMENSIONS]),\
+	 copyin(oldClusters[0:NUM_CLUSTERS*NUM_DIMENSIONS]),\
+	 copyout(tempClusters[0:NUM_CLUSTERS*NUM_DIMENSIONS])
 {
-
 int c,d,i,n;
-#pragma acc region for parallel, vector(8)
-    for(n = start; n < end; n++){
+#pragma acc for independent, parallel
+    for(n = 0; n < NUM_EVENTS; n++){
         float denominator = 0.0f;
-	float tempDenon = 0.0f;
-	//float *pevents = events[n];	
-	#pragma acc for seq
+	#pragma acc for independent,parallel
         for(c = 0; c < NUM_CLUSTERS; c++){
     		float sum = 0.0f;
     		for(i = 0; i < NUM_DIMENSIONS; i++){
         		float tmp = events[n][i] - oldClusters[c*NUM_DIMENSIONS + i];
         		sum += tmp*tmp;
     		}//for
-    		sum = sqrt(sum+1e-30);
-            	//distances[c] = sum;//CalculateDistanceCPU(oldClusters, events, c, n);
-            	//numerator[c] = powf(sum/*distances[c]*/,2.0f/(FUZZINESS-1.0f))+1e-30; 
-           	float numerator = powf(sum,2.0f/(FUZZINESS-1.0f))+1e-30; 	
-		denominator = denominator + 1.0f/numerator;
-        	//}//for
+    		sum = sqrt(sum+1e-20);
+            	distances[n][c] = sum;//CalculateDistanceCPU(oldClusters, events, c, n);
+            	//numerator[c] = powf(sum/*distances[c]*/,2.0f/(FUZZINESS-1.0f))+1e-20; 
+		//denominator = denominator + 1.0f/numerator[c];
+       	}//for
+    }
+#pragma acc wait
 
-		//Add contribution to numerator and denominator
-		//#pragma acc for seq
-        	//for(int c = 0; c < NUM_CLUSTERS; c++){
-            	float membershipValue = 1.0f/powf(numerator*denominator,(float)FUZZINESS);
-            	for(d = 0; d < NUM_DIMENSIONS; d++){
-                	tempClusters[c*NUM_DIMENSIONS+d] += events[n][d]*membershipValue;
-            	}
-            	tempDenominators[c] += membershipValue;
-        }//for
+#pragma acc for independent, parallel
+    for(n = 0; n < NUM_EVENTS; n++){
+	//float denominator = 0.0f;
+	//float numerator;//[100];
+
+	#pragma acc for seq
+       	for(c = 0; c < NUM_CLUSTERS; c++){
+		float abc=0;
+		//float numerator = powf(distances[n][c],2.0f/(FUZZINESS-1.0f))+1e-20;
+		//float denominator = 1.0f/numerator;
+	}//for
+
+#if 1
+	#pragma acc for kernel
+	for(c = 0; c < NUM_CLUSTERS; c++){
+            	memberships[n][c] = 1.0f/powf(numerator*denominator,(float)FUZZINESS);
+            	//for(d = 0; d < NUM_DIMENSIONS; d++){
+                // 	tempClusters[c*NUM_DIMENSIONS+d] += events[n][d]*membershipValue;
+        }
+#endif
+        	//tempDenominators[c] += membershipValue;
     }//for
 }//pragma acc data region
 
+printf("hello\n");
     //free(numerator);
-    free(distances);
-    //free(memberships);
+    //free(distances);
+    //free(buf1);
+    //free(buf2);
 }//void
 
 int main(int argc, char* argv[])
@@ -157,41 +158,27 @@ int main(int argc, char* argv[])
     // run as many CPU threads as there are CUDA devices
     {	
         
-        //Compute starting/finishing indexes for the events for each thread
+    	float** distances = (float**)malloc(sizeof(float*)*NUM_EVENTS);
+    	float** memberships = (float**)malloc(sizeof(float*)*NUM_EVENTS);
+    	float*buf1 = (float *)malloc(sizeof(float)*NUM_EVENTS*NUM_CLUSTERS);
+    	float*buf2 = (float *)malloc(sizeof(float)*NUM_EVENTS*NUM_CLUSTERS);
+    	for(int i = 0; i < NUM_EVENTS; i++){
+        	memberships[i] = buf1+i*NUM_CLUSTERS;
+        	distances[i] = buf2+i*NUM_CLUSTERS;
+    	}//for
 
         int iterations = 0;
         do{
 
-    	//UpdateClusterCentersCPU_Linear(t* oldClusters, const float* events,
-    	//float* tempClusters, float* tempDenominators,
-    	//int start, int end){
-
-	UpdateClusterCentersCPU_Linear(myClusters,myEvents,tempClusters,tempDenominators,0,NUM_EVENTS);
+	UpdateClusterCentersCPU_Linear(myClusters,myEvents,tempClusters,tempDenominators,distances,memberships);
             {
                 // Sum up the partial cluster centers (numerators)
-                /* 
-		for(int i=1; i < num_cpus; i++) {
-                    for(int c=0; c < NUM_CLUSTERS; c++) {
-                        for(int d=0; d < NUM_DIMENSIONS; d++) {
-                            tempClusters[0][c*NUM_DIMENSIONS+d] += tempClusters[i][c*NUM_DIMENSIONS+d];
-                        }
-                    }
-                }*/
-
-		/*
-                // Sum up the denominator for each cluster
-                for(int i=1; i < num_cpus; i++) {
-                    for(int c=0; c < NUM_CLUSTERS; c++) {
-                        tempDenominators[0][c] += tempDenominators[i][c];
-                    }
-                }
-		*/
-
                 // Divide to get the final clusters
                 for(int c=0; c < NUM_CLUSTERS; c++) {
                     for(int d=0; d < NUM_DIMENSIONS; d++) {
                         tempClusters[c*NUM_DIMENSIONS+d] /= tempDenominators[c];
-                    }
+			tempClusters[c*NUM_DIMENSIONS+d] = 1.0;
+                    }//for
                 }//for
 
                 diff = 0.0;
@@ -206,9 +193,11 @@ int main(int argc, char* argv[])
                 DEBUG("Iteration %d: Total Change = %e, Max Change = %e\n", iterations, diff, max_change);
                 DEBUG("Done with iteration #%d\n", iterations);
             }//#pragma omp master
-
             iterations++;
         } while(iterations < MIN_ITERS || (iterations < MAX_ITERS)); 
+
+ 	free(buf1);
+    	free(buf2);
 
     }   // end of omp_parallel block
    
