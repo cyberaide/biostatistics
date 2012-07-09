@@ -18,8 +18,6 @@
 
 
 /*
-
-
 __device__ int hash_func(char* str, int len)
 {
 	int hash, i;
@@ -29,46 +27,13 @@ __device__ int hash_func(char* str, int len)
 }
 */
 
-__device__ void MAP_COUNT_FUNC//(void *key, void *val, size_t keySize, size_t valSize)
-{
-	WC_KEY_T* pKey = (WC_KEY_T*)key;
-	WC_VAL_T* pVal = (WC_VAL_T*)val;
 
-	char* ptrBuf = pKey->file + pVal->line_offset;
-	int line_size = pVal->line_size;
+__device__ void map2(void *KEY, void*VAL, int keySize, int valSize, d_global_state *d_g_state, int map_task_idx){
+		//printf("map2 TID:%d, key:%d, val:%s\n",TID,*(int*)KEY,(char *)VAL);
 
-	char* p = ptrBuf;
-	int lsize = 0;
-	int wsize = 0;
-	char* start = ptrBuf;
-
-	while(1)
-	{
-		for (; *p >= 'A' && *p <= 'Z'; p++, lsize++);
-		*p = '\0';
-		++p;
-		++lsize;
-		wsize = (int)(p - start);
-		if (wsize > 6)
-		{
-			//printf("%s, wsize:%d\n", start, wsize);	
-			//EMIT_INTER_COUNT_FUNC(wsize, sizeof(int));
-			EMIT_INTER_COUNT_FUNC(sizeof(char), sizeof(int));
-		}//if
-		for (; (lsize < line_size) && (*p < 'A' || *p > 'Z'); p++, lsize++);
-		if (lsize >= line_size) break;
-		start = p;
-	}
-}
-
-__device__ void map2(d_global_state *d_g_state,int map_task_id){
-		
-		if (map_task_id>=d_g_state->h_num_input_record)	return;
-		char *p = (char *)(d_g_state->d_input_keyval_arr[map_task_id].val);
-		int len = d_g_state->d_input_keyval_arr[map_task_id].valSize;
 		int wsize = 0;
 		char *start;
-		//printf("map2 TID:%d, index:%d val:%s\n",TID, index,p);
+		char *p = (char *)VAL;
 		while(1)
 		{
 			start = p;
@@ -77,16 +42,19 @@ __device__ void map2(d_global_state *d_g_state,int map_task_id){
 			++p;
 			wsize=(int)(p-start);
 			if (wsize>6){
-				char *key = (char *)malloc(wsize);
-				memcpy(key,start,wsize);
-				int wc = 1;
-				EmitIntermediate2(key, &wc, wsize, sizeof(int), d_g_state, map_task_id);
-				//printf("\t\tTID:%d, index:%d: %s\n",TID, index, start);
+				char *wkey = (char *) malloc (wsize);
+				memcpy(wkey,start,wsize);
+				int *wc = (int *) malloc (sizeof(int));
+				*wc=1;
+				EmitIntermediate2(wkey, wc, wsize, sizeof(int), d_g_state, map_task_idx);
+				if(TID>1500)
+				printf("\t\tmap2: TID:%d, index:%s\n",TID, wkey);
 			}//if
-			len = len-wsize;
-			if(len<=0)
+			valSize = valSize - wsize;
+			if(valSize<=0)
 				break;
 		}//while
+
 }//map2
 
 
@@ -96,46 +64,7 @@ __device__ void map(void *key, void *val, int keySize, int valSize,
 		 char*	interKeys, char*interVals, int4*interOffsetSizes, int*curIndex,
 		 d_global_state d_g_state,int map_task_id)
 {
-	
-	WC_KEY_T* pKey = (WC_KEY_T*)key;
-	WC_VAL_T* pVal = (WC_VAL_T*)val;
-
-	char* filebuf = pKey->file;
-	char* ptrBuf = filebuf + pVal->line_offset;
-	int line_size = pVal->line_size;
-
-	char *pWord = ptrBuf;
-	*(pWord+line_size)='\0';
-
-	printf("Map->EmitIntermediate: map_task_id:%d Key:%s\n",map_task_id,pWord);
-
-	char* p = ptrBuf;
-	char* start = ptrBuf;
-	int lsize = 0;
-	int wsize = 0;
-	
-	while(1)
-	{
-		for (; *p >= 'A' && *p <= 'Z'; p++, lsize++);
-		*p = '\0';
-		++p;
-		++lsize;
-		wsize = (int)(p - start);
-		int* o_val = (int*)GET_OUTPUT_BUF(0);
-		*o_val = wsize;
-		if (wsize > 6) 
-		{
-		//printf("%s, %d\n", start, wsize);
-		int count = 1;
-		//printf("Map->EmitIntermediate -> while: map_task_id:%d key:%s\n",map_task_id,start);
-		EmitIntermediate((char*)start,(char*)&count,wsize,sizeof(int),psKeySizes,psValSizes,
-			                         psCounts,keyValOffsets,interKeys,interVals,interOffsetSizes,curIndex, (d_g_state), map_task_id);
-		//EMIT_INTERMEDIATE_FUNC(start, o_val, wsize, sizeof(int));
-		}//if
-		for (; (lsize < line_size) && (*p < 'A' || *p > 'Z'); p++, lsize++);
-		if (lsize >= line_size) break;
-		start = p;	
-	}//while
+		
 	//__syncthreads();
 }
 #endif //__MAP_CU__

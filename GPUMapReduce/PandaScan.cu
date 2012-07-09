@@ -69,7 +69,7 @@ __device__ void loadSharedChunkFromMem(int *s_data,
     int thid = threadIdx.x;
     mem_ai = baseIndex + threadIdx.x;
     mem_bi = mem_ai + blockDim.x;
-
+	
     ai = thid;
     bi = thid + blockDim.x;
 	

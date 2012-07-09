@@ -31,9 +31,9 @@
 #include <stdarg.h>
 
 //helper for shared that are common to CUDA SDK samples
-#include <shrUtils.h>
-#include <sdkHelper.h>  
-#include <shrQATest.h>  
+//#include <shrUtils.h>
+//#include <sdkHelper.h>  
+//#include <shrQATest.h>  
 
 
 #define _DEBUG 0x01
@@ -47,12 +47,21 @@
 		}\
 	}while (0)
 
-#define BLOCK_ID (gridDim.y * blockIdx.x + blockIdx.y)
-#define THREAD_ID (threadIdx.x)
-#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
+#define THREADS_PER_BLOCK (blockDim.x*blockDim.y)
+#define BLOCK_ID	(gridDim.y	* blockIdx.x  + blockIdx.y)
+#define THREAD_ID	(blockDim.x	* threadIdx.y + threadIdx.x)
+//#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
+#define TID (BLOCK_ID * THREADS_PER_BLOCK + THREAD_ID)
+
+#define NUM_THREADS	256
+#define NUM_BLOCKS	256
+#define STRIDE	32
+
 
 #define checkCudaErrors(err)  __checkCudaErrors (err, __FILE__, __LINE__)
-inline void __checkCudaErrors(cudaError err, const char *file, const int line );
+
+extern "C"
+void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
 
@@ -67,10 +76,9 @@ typedef struct
 
 typedef struct
 {
-   int *arr_len;
-   int *arr_alloc_len;
-   int **int_arr;
-
+   int arr_len;
+   //int *arr_alloc_len;
+   //int **int_arr;
    keyval_t *arr;
 } keyval_arr_t;
 
@@ -88,6 +96,9 @@ typedef struct
    int val_arr_len;
    val_t * vals;
 } keyvals_t;
+
+
+
 	
 typedef struct 
 {	
@@ -101,7 +112,7 @@ typedef struct
 
   //data for intermediate results
   int *d_intermediate_keyval_total_count;
-  int *d_intermediate_keyval_arr_arr_len;
+  int d_intermediate_keyval_arr_arr_len;
   keyval_arr_t *d_intermediate_keyval_arr_arr;
   keyval_arr_t *h_intermediate_keyval_arr_arr;
   keyval_t* d_intermediate_keyval_arr;
@@ -113,6 +124,7 @@ typedef struct
   keyvals_t *h_sorted_keyvals_arr;
 
   //data for reduce results
+  int d_reduced_keyval_arr_len;
   keyval_t* d_reduced_keyval_arr;
 
 } d_global_state;
@@ -124,17 +136,11 @@ typedef struct
 typedef int4 cmp_type_t;
 
 
-extern "C"
-int sort_GPU (void * d_inputKeyArray, 
-              int totalKeySize, 
-              void * d_inputValArray, 
-              int totalValueSize, 
-              cmp_type_t * d_inputPointerArray, 
-              int rLen, 
-              void * d_outputKeyArray, 
-              void * d_outputValArray, 
-              cmp_type_t * d_outputPointerArray,
-              int2 ** h_outputKeyListRange);
+__global__ void printData(d_global_state d_g_state );
+__global__ void printData2(d_global_state d_g_state );
+__global__ void printData3(d_global_state d_g_state );
+__global__ void printData4(int index, int j, val_t *p);
+
 
 extern "C"
 void sort_CPU(d_global_state *d_g_state);
@@ -207,143 +213,36 @@ typedef struct
 } Spec_t;
 
 
+__device__ void Emit2 (void*		key, 
+						void*		val, 
+						int		keySize, 
+						int		valSize,
+		           d_global_state *d_g_state);
 
-__device__ void EmitInterCount(int	keySize,
-                               int	valSize,
-                               int*	interKeysSizePerTask,
-                               int*	interValsSizePerTask,
-                               int*	interCountPerTask);
+
+
 
 __device__ void EmitIntermediate2(void *key, 
 								  void *val, 
 								  int keySize, 
 								  int valSize, 
-								  d_global_state *d_g_state, 
-								  int map_task_id);
+								  d_global_state *d_g_state,
+								  int map_task_idx
+								  );
 
 
-__device__ void EmitIntermediate(void*		key, 
-				 void*		val, 
-				 int		keySize, 
-				 int		valSize,
-				 int*	psKeySizes,
-				 int*	psValSizes,
-				 int*	psCounts,
-				 int2*		keyValOffsets,
-				 char*		interKeys,
-				 char*		interVals,
-				 int4*		interOffsetSizes,
-				 int*	curIndex, d_global_state d_g_state, int map_task_id);
 
-
-__device__ void EmitCount(int		keySize,
-			  int		valSize,
-			  int*		outputKeysSizePerTask,
-			  int*		outputValsSizePerTask,
-			  int*		outputCountPerTask);
-
-__device__ void Emit  (char*		key, 
-                       char*		val, 
-		       int		keySize, 
-                       int		valSize,
-		       int*		psKeySizes, 
-		       int*		psValSizes, 
-		       int*		psCounts, 
-		       int2*		keyValOffsets, 
-		       char*		outputKeys,
-	               char*		outputVals,
-	               int4*		outputOffsetSizes,
-	               int*		curIndex);
 
 __device__ void *GetVal(void *vals, int4* interOffsetSizes, int index, int valStartIndex);
 __device__ void *GetKey(void *key, int4* interOffsetSizes, int index, int valStartIndex);
 
-#define MAP_COUNT_FUNC \
-	map_count(void*		key,\
-		  void*		val,\
-		  int	keySize,\
-		  int	valSize,\
-		  int*	interKeysSizePerTask,\
-		  int*	interValsSizePerTask,\
-		  int*	interCountPerTask)
-
-#define EMIT_INTER_COUNT_FUNC(keySize, valSize)\
-		EmitInterCount(keySize, valSize, \
-		interKeysSizePerTask, interValsSizePerTask, interCountPerTask)
 
 
-
-#define MAP_FUNC \
-	 map	(void*		key, \
-		 void*		val, \
-		 int		keySize, \
-		 int		valSize,\
-		 int*	psKeySizes, \
-		 int*	psValSizes, \
-		 int*	psCounts, \
-		 int2*		keyValOffsets, \
-		 char*		interKeys,\
-		 char*		interVals,\
-		 int4*		interOffsetSizes,\
-		 int*	curIndex,\
-		 d_global_state d_g_state, int map_task_id)
-
-
-
-#define REDUCE_COUNT_FUNC \
-	reduce_count(void		*key,\
-	         void		*vals,\
-		 int		keySize,\
-		 int		valCount,\
-		 int4*		interOffsetSizes,\
-		 int*	outputKeysSizePerTask,\
-		 int*	outputValsSizePerTask,\
-		 int*	outputCountPerTask)
-
-#define EMIT_COUNT_FUNC(newKeySize, newValSize) \
-	EmitCount(newKeySize,\
-			  newValSize,\
-			  outputKeysSizePerTask,\
-			  outputValsSizePerTask,\
-			  outputCountPerTask)
-
-#define REDUCE_FUNC \
-	reduce(void*	 key, \
-		   void*	 vals, \
-		   int	 keySize, \
-		   int	 valCount, \
-		   int*	 psKeySizes,\
-		   int*	 psValSizes, \
-		   int*	 psCounts, \
-		   int2*	 keyValOffsets,\
-		   int4*	 interOffsetSizes,\
-		   char*	 outputKeys, \
-		   char*	 outputVals,\
-		   int4*	 outputOffsetSizes, \
-		   int* curIndex,\
-			int valStartIndex)
-
-#define EMIT_FUNC(newKey, newVal, newKeySize, newValSize) \
-	Emit((char*)newKey,\
-	     (char*)newVal,\
-		 newKeySize,\
-		 newValSize,\
-		 psKeySizes,\
-		 psValSizes,\
-		 psCounts, \
-		 keyValOffsets, \
-		 outputKeys,\
-		 outputVals,\
-		 outputOffsetSizes,\
-		 curIndex)
 
 extern __shared__ char sbuf[];
 #define GET_OUTPUT_BUF(offset) (sbuf + threadIdx.x * 5 * sizeof(int) + offset)
 #define GET_VAL_FUNC(vals, index) GetVal(vals, interOffsetSizes, index, valStartIndex)
 #define GET_KEY_FUNC(key, index) GetKey(key, interOffsetSizes, index, valStartIndex)
-
-extern "C"
-Spec_t *GetDefaultSpec();
 
 extern "C"
 d_global_state *GetDGlobalState();
@@ -356,18 +255,16 @@ void AddMapInputRecord2(d_global_state*		spec,
 		   int		valSize);
 
 
-extern "C"
-void AddMapInputRecord(Spec_t*		spec, 
-		   void*		key, 
-		   void*		val, 
-		   int		keySize, 
-		   int		valSize);
 
 extern "C"
-void MapReduce(Spec_t *spec, d_global_state *d_g_state);
+void MapReduce2(d_global_state *d_g_state);
+
 
 extern "C"
 void FinishMapReduce(Spec_t* spec);
+
+extern "C"
+void FinishMapReduce2(d_global_state* state);
 
 void MakeMapInput(Spec_t *spec,
 		  char *fdata, 

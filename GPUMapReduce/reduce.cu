@@ -16,29 +16,19 @@
 #include "Panda.h"
 
 //-------------------------------------------------------------------------
-//No Reduce in this application
+//Reduce Function in this application
 //-------------------------------------------------------------------------
-__device__ void REDUCE_COUNT_FUNC//(void* key, void* vals, size_t keySize, size_t valCount)
-{
-}
 
-__device__ void REDUCE_FUNC//(void* key, void* vals, size_t keySize, size_t valCount)
-{
-}
 
-__device__ void reduce2(d_global_state d_g_state,int map_task_id){
+__device__ void reduce2(void *KEY, val_t* VAL, int keySize, int valCount, d_global_state d_g_state){
 		
-		printf("reduce2   map_task_id:%d  arr_len:%d\n",map_task_id,d_g_state.d_sorted_keyvals_arr_len);
-		if (map_task_id>=d_g_state.d_sorted_keyvals_arr_len)	return;
-
-		keyvals_t *p = &(d_g_state.d_sorted_keyvals_arr[map_task_id]);
-		int len = p->val_arr_len;
 		int count = 0;
-		for (int i=0;i<len;i++){
-			count += *(int *)(p->vals[i].val);
-			printf("word: %s val:%d  val_arr_len:%d\n",p->key, *(int *)(p->vals[i].val),len);					
-		}	
+		for (int i=0;i<valCount;i++){
 
-}//map2
+			count += *(int *)(VAL[i].val);
+		}//
+		Emit2(KEY,&count,keySize,sizeof(int),&d_g_state);
+		
+}//reduce2
 
 #endif //__REDUCE_CU__

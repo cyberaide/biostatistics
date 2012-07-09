@@ -10,12 +10,68 @@
  
  */
 
-#ifndef __PANDAUTILS_CU__
-#define __PANDAUTILS_CU__
-
 #include "Panda.h"
 
 
+
+#ifndef __PANDAUTILS_CU__
+#define __PANDAUTILS_CU__
+
+void __checkCudaErrors(cudaError err, const char *file, const int line )
+{
+    if(cudaSuccess != err)
+    {
+        fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",file, line, (int)err, cudaGetErrorString( err ) );
+        exit(-1);        
+    }
+}
+
+__global__ void printData(d_global_state d_g_state ){
+	//printf("-----------printData TID:%d\n",TID);
+	
+	if(TID>d_g_state.h_num_input_record)return;
+	
+	int begin=0;
+	int end=0;
+	for (int i=0;i<TID;i++){
+		begin += (d_g_state.d_intermediate_keyval_arr_arr[i].arr_len);
+	}//for
+	end = begin + (d_g_state.d_intermediate_keyval_arr_arr[TID].arr_len);
+	//printf("copyData:%d begin:%d, end:%d\n",TID,begin,end);
+	
+	for(int i=begin; i<end; i++){
+		keyval_t * p1 = &(d_g_state.d_intermediate_keyval_arr[i]);
+		printf("printData TID:%d keySize:%d key %s val:%d\n",TID,p1->keySize, p1->key, *(int*)p1->val);
+	}//for
+}//printData
+
+
+__global__ void printData2(d_global_state d_g_state ){
+	//printf("-----------printData TID:%d\n",TID);
+	if(TID>d_g_state.h_num_input_record)return;
+	keyval_t * p1 = &(d_g_state.d_input_keyval_arr[TID]);
+	int len = p1->valSize -1;
+	((char *)(p1->val))[len] = '\0';
+	printf("printData TID:%d keySize:%d key %d val:%s\n",TID,p1->keySize, *(int*)(p1->key), p1->val);
+}//printData
+
+__global__ void printData3(d_global_state d_g_state ){
+	//printf("-----------printData TID:%d\n",TID);
+	if(TID>d_g_state.h_num_input_record)return;
+	keyvals_t * p1 = &(d_g_state.d_sorted_keyvals_arr[TID]);
+	//printf("printData3 TID:%d key:%s",TID, p1->key);
+	for (int i=0;i<p1->val_arr_len;i++)
+		printf("printData3 :TID:%d, i:%d  key:%s, val:%d\n",TID, i,p1->key, *(int*)p1->vals[i].val);
+	//printf("\n");
+	//printf("printData 3 TID:%d i:[%d] keySize:%d key %s val:%d\n",TID,i, p1->keySize, p1->key, *(int*)(p1->vals[i].val));
+}//printData
+
+__global__ void printData4(int index, int j, val_t *p){
+	for (int i=0;i<j;i++){
+		//printf("print4: i:%d, j:%d valSize:%d val:%d \n",index, j, (p[i]->valSize),*(int*)p[i]->val);
+		printf("print4: index:%d, i:%d valSize:%d val:%d \n",index, i, p[i].valSize,*(int*)p[i].val);
+	}//for
+}
 
 
 //--------------------------------------------------------
