@@ -24,9 +24,9 @@ __device__ void reduce2(void *KEY, val_t* VAL, int keySize, int valCount, d_glob
 		
 		int count = 0;
 		for (int i=0;i<valCount;i++){
-
 			count += *(int *)(VAL[i].val);
 		}//
+		
 		Emit2(KEY,&count,keySize,sizeof(int),&d_g_state);
 		
 }//reduce2

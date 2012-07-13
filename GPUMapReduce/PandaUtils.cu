@@ -29,20 +29,44 @@ void __checkCudaErrors(cudaError err, const char *file, const int line )
 __global__ void printData(d_global_state d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	
-	if(TID>d_g_state.h_num_input_record)return;
+
+	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
+	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_idx = block_start_idx 
+		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
+		+ (threadIdx.x%STRIDE);
+	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+
+	if(thread_end_idx>d_g_state.h_num_input_record)
+		thread_end_idx = d_g_state.h_num_input_record;
+
+	int begin, end, val_pos, key_pos;
+	char *val_p,*key_p;
+
+	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
-	int begin=0;
-	int end=0;
-	for (int i=0;i<TID;i++){
-		begin += (d_g_state.d_intermediate_keyval_arr_arr[i].arr_len);
-	}//for
-	end = begin + (d_g_state.d_intermediate_keyval_arr_arr[TID].arr_len);
-	//printf("copyData:%d begin:%d, end:%d\n",TID,begin,end);
+		begin=0;
+		end=0;
+		for (int i=0;i<map_task_idx;i++){
+			begin += (d_g_state.d_intermediate_keyval_arr_arr[i].arr_len);
+		}//for
+		end = begin + (d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr_len);
+		//printf("copyData:%d begin:%d, end:%d\n",TID,begin,end);
 	
-	for(int i=begin; i<end; i++){
-		keyval_t * p1 = &(d_g_state.d_intermediate_keyval_arr[i]);
-		printf("printData TID:%d keySize:%d key %s val:%d\n",TID,p1->keySize, p1->key, *(int*)p1->val);
+		for(int i=begin;i<end;i++){
+			//keyval_t * p1 = &(d_g_state.d_intermediate_keyval_arr[i]);
+			val_pos = d_g_state.d_intermediate_keyval_pos_arr[i].valPos;
+			key_pos = d_g_state.d_intermediate_keyval_pos_arr[i].keyPos;
+			val_p = (char*)(d_g_state.d_intermediate_vals_shared_buff)+val_pos;
+			key_p = (char*)(d_g_state.d_intermediate_keys_shared_buff)+key_pos;
+			//keyval_t * p2 = &(d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr[i-begin]);
+			//memcpy(key_p,p2->key,p2->keySize);
+			//memcpy(val_p,p2->val,p2->valSize);
+			printf("printData: TID:%d key: %s  val:%d\n",TID,key_p,*(int *)val_p);
+		}//for
+		//if (index*recordsPerTask >= recordNum) return;
 	}//for
+
 }//printData
 
 
@@ -80,12 +104,12 @@ __global__ void printData4(int index, int j, val_t *p){
 //param	: start_tv
 //--------------------------------------------------------
 
-
-
+/*
 void startTimer(TimeVal_t *start_tv)
 {
    //gettimeofday((struct timeval*)start_tv, NULL);
 }
+*/
 
 //--------------------------------------------------------
 //end a timer, and print out a message
@@ -93,9 +117,10 @@ void startTimer(TimeVal_t *start_tv)
 //param	: msg message to print out
 //param	: start_tv
 //--------------------------------------------------------
+/*
 void endTimer(char *msg, TimeVal_t *start_tv)
 {
-   /*cudaThreadSynchronize();
+   cudaThreadSynchronize();
    struct timeval end_tv;
 
    gettimeofday(&end_tv, NULL);
@@ -104,10 +129,10 @@ void endTimer(char *msg, TimeVal_t *start_tv)
    time_t ms = end_tv.tv_usec - start_tv->tv_usec;
 
    time_t diff = sec * 1000000 + ms;
-	*/
+
    //printf("%10s:\t\t%fms\n", msg, (double)((double)diff/1000.0));
 }//void
-
+*/
 
 //----------------------------------------------------------
 //print output records
@@ -117,6 +142,7 @@ void endTimer(char *msg, TimeVal_t *start_tv)
 //param: printFunc -- a function pointer
 //	void printFunc(void* key, void* val, int keySize, int valSize)
 //----------------------------------------------------------
+
 void PrintOutputRecords(Spec_t* spec, int num, PrintFunc_t printFunc)
 {
 	/*

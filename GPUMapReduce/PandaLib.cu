@@ -493,15 +493,12 @@ __global__ void Reducer2(d_global_state d_g_state)
 		for (int index = start;index<end;index++){
 			int valSize = d_g_state.d_keyval_pos_arr[index].valSize;
 			int valPos = d_g_state.d_keyval_pos_arr[index].valPos;
-		//	printf("reduce_task_idx:%d		valSize:%d  valPos:%d\n",reduce_task_idx,valSize,valPos);
+			//printf("reduce_task_idx:%d		valSize:%d  valPos:%d\n",reduce_task_idx,valSize,valPos);
 			val_t_arr[index-start].valSize = valSize;
 			val_t_arr[index-start].val = (char*)d_g_state.d_intermediate_vals_shared_buff + valPos;
-	//printf("reduce_task_idx:%d		key:%s val:%d\n",reduce_task_idx,key, *(int*)val_t_arr[index-start].val);
+			//printf("reduce_task_idx:%d		key:%s val:%d\n",reduce_task_idx,key, *(int*)val_t_arr[index-start].val);
 		}
-		
 		reduce2(key, val_t_arr, keySize, end-start, d_g_state);
-		
-	
 	}//for
 
 	//int map_task_id = TID;

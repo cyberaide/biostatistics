@@ -1,4 +1,5 @@
 /*	
+
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
 	Code Name: Panda 0.1
@@ -7,7 +8,7 @@
 	Developer: Hui Li (lihui@indiana.edu)
 
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
- 
+
 */
 
 
@@ -50,18 +51,19 @@
 #define THREADS_PER_BLOCK (blockDim.x*blockDim.y)
 #define BLOCK_ID	(gridDim.y	* blockIdx.x  + blockIdx.y)
 #define THREAD_ID	(blockDim.x	* threadIdx.y + threadIdx.x)
-//#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
 #define TID (BLOCK_ID * THREADS_PER_BLOCK + THREAD_ID)
+//#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
 
-#define NUM_THREADS	256
-#define NUM_BLOCKS	256
+//NOTE NUM_THREADS*NUM_BLOCKS > STRIDE !
+#define NUM_THREADS	64
+#define NUM_BLOCKS	4
 #define STRIDE	32
 
 
 #define checkCudaErrors(err)  __checkCudaErrors (err, __FILE__, __LINE__)
 
 extern "C"
-void __checkCudaErrors(cudaError err, const char *file, const int line );
+ void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
 
@@ -73,6 +75,31 @@ typedef struct
    int keySize;
    int valSize;
 } keyval_t;
+
+typedef struct
+{
+   int keySize;
+   int valSize;
+   int keyPos;
+   int valPos;
+} keyval_pos_t;
+
+
+typedef struct
+{
+   int valSize;
+   int valPos;
+} val_pos_t;
+
+typedef struct
+{
+   int keySize;
+   int keyPos;
+
+   int val_arr_len;
+   val_pos_t * val_pos_arr;
+} sorted_keyval_pos_t;
+
 
 typedef struct
 {
@@ -97,8 +124,6 @@ typedef struct
    val_t * vals;
 } keyvals_t;
 
-
-
 	
 typedef struct 
 {	
@@ -117,11 +142,29 @@ typedef struct
   keyval_arr_t *h_intermediate_keyval_arr_arr;
   keyval_t* d_intermediate_keyval_arr;
 
+  void *d_intermediate_keys_shared_buff;
+  void *d_intermediate_vals_shared_buff;
+  keyval_pos_t *d_intermediate_keyval_pos_arr;
+
+  void *h_intermediate_keys_shared_buff;
+  void *h_intermediate_vals_shared_buff;
+  keyval_pos_t *h_intermediate_keyval_pos_arr;
+
+
   //data for sorted intermediate results
   int d_sorted_keyvals_arr_len;
-  int d_sorted_keyvals_arr_alloc_len;
+  //int d_sorted_keyvals_arr_alloc_len;
   keyvals_t *d_sorted_keyvals_arr;
   keyvals_t *h_sorted_keyvals_arr;
+
+  void *h_sorted_keys_shared_buff;
+  void *h_sorted_vals_shared_buff;
+  sorted_keyval_pos_t *h_sorted_keyval_pos_arr;
+
+  void *d_sorted_keys_shared_buff;
+  void *d_sorted_vals_shared_buff;
+  keyval_pos_t *d_keyval_pos_arr;
+  int *d_pos_arr_4_sorted_keyval_pos_arr;
 
   //data for reduce results
   int d_reduced_keyval_arr_len;
@@ -144,6 +187,9 @@ __global__ void printData4(int index, int j, val_t *p);
 
 extern "C"
 void sort_CPU(d_global_state *d_g_state);
+
+extern "C"
+void sort_CPU3(d_global_state *d_g_state);
 
 extern "C"
 void saven_initialPrefixSum(unsigned int maxNumElements);
@@ -238,7 +284,6 @@ __device__ void *GetKey(void *key, int4* interOffsetSizes, int index, int valSta
 
 
 
-
 extern __shared__ char sbuf[];
 #define GET_OUTPUT_BUF(offset) (sbuf + threadIdx.x * 5 * sizeof(int) + offset)
 #define GET_VAL_FUNC(vals, index) GetVal(vals, interOffsetSizes, index, valStartIndex)
@@ -260,32 +305,28 @@ extern "C"
 void MapReduce2(d_global_state *d_g_state);
 
 
-extern "C"
-void FinishMapReduce(Spec_t* spec);
+
 
 extern "C"
 void FinishMapReduce2(d_global_state* state);
 
-void MakeMapInput(Spec_t *spec,
-		  char *fdata, 
-		  int fsize,
-		  void *(*make_routine)(void*), 
-		  int threadNum,
-		  void *other);
+
 
 //-------------------------------------------------------
 //MarsUtils.cu
 //-------------------------------------------------------
-typedef struct timeval TimeVal_t;
+//typedef struct timeval TimeVal_t;
 
+/*
 extern "C"
 void startTimer(TimeVal_t *timer);
 
 extern "C"
 void endTimer(char *info, TimeVal_t *timer);
+*/
 
 #ifdef _DEBUG
-#define DoLog(...) do{printf(__VA_ARGS__);printf("\n");}while(0)
+#define DoLog(...) do{printf("[DoLog]:");printf(__VA_ARGS__);printf("\n");}while(0)
 #else
 #define DoLog(...) //do{printf(__VA_ARGS__);printf("\n");}while(0)
 #endif

@@ -23,6 +23,7 @@
 
 int main( int argc, char** argv) 
 {
+
 	if (argc != 2)
 	{
 		printf("usage: %s [data file]\n", argv[0]);
@@ -33,23 +34,34 @@ int main( int argc, char** argv)
 	d_global_state *d_g_state = GetDGlobalState();
 	//spec->workflow = MAP_GROUP;
 	
-	printf("start %s ...\n",argv[0]);
+	printf("new - start %s ...\n",argv[0]);
+	/*
 	TimeVal_t allTimer;
 	startTimer(&allTimer);
 	TimeVal_t preTimer;
 	startTimer(&preTimer);
-	
+	*/
 	char str[256];
+	char strInput[2200];
 	FILE *myfp;
 	myfp = fopen(argv[1], "r");
 	int iKey = 0;
+	int totalLen = 0;
 	while(fgets(str,sizeof(str),myfp) != NULL)
     {
+		
 		for (int i = 0; i < strlen(str); i++)
 		str[i] = toupper(str[i]);
 		//printf("%s\t len:%d\n", str,strlen(str));
-		AddMapInputRecord2(d_g_state, &iKey, str, sizeof(int), strlen(str));
+		strcpy((strInput + totalLen),str);
+		totalLen += strlen(str);
+		if(totalLen>2048){
+		//printf("strLen:%s\n",strInput);
+		AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), strlen(str));
+		totalLen=0;
 		iKey++;
+		}
+		
     }//while
 	fclose(myfp);
 
@@ -60,11 +72,12 @@ int main( int argc, char** argv)
 	//----------------------------------------------
 	MapReduce2(d_g_state);
 	
-	endTimer("all", &allTimer);
+	//endTimer("all", &allTimer);
 
 	//----------------------------------------------
 	//finish
 	//----------------------------------------------
+
 	FinishMapReduce2(d_g_state);
 	//cudaFree(d_filebuf);
 	

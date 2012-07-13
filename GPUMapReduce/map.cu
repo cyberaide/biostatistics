@@ -47,8 +47,8 @@ __device__ void map2(void *KEY, void*VAL, int keySize, int valSize, d_global_sta
 				int *wc = (int *) malloc (sizeof(int));
 				*wc=1;
 				EmitIntermediate2(wkey, wc, wsize, sizeof(int), d_g_state, map_task_idx);
-				if(TID>1500)
-				printf("\t\tmap2: TID:%d, index:%s\n",TID, wkey);
+				//if(TID>1500)
+				//printf("\t\tmap2: TID:%d, index:%s\n",TID, wkey);
 			}//if
 			valSize = valSize - wsize;
 			if(valSize<=0)
