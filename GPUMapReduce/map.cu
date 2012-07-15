@@ -30,7 +30,7 @@ __device__ int hash_func(char* str, int len)
 
 __device__ void map2(void *KEY, void*VAL, int keySize, int valSize, d_global_state *d_g_state, int map_task_idx){
 		//printf("map2 TID:%d, key:%d, val:%s\n",TID,*(int*)KEY,(char *)VAL);
-
+	
 		int wsize = 0;
 		char *start;
 		char *p = (char *)VAL;
@@ -46,7 +46,7 @@ __device__ void map2(void *KEY, void*VAL, int keySize, int valSize, d_global_sta
 				memcpy(wkey,start,wsize);
 				int *wc = (int *) malloc (sizeof(int));
 				*wc=1;
-				EmitIntermediate2(wkey, wc, wsize, sizeof(int), d_g_state, map_task_idx);
+				//EmitIntermediate2(wkey, wc, wsize, sizeof(int), d_g_state, map_task_idx);
 				//if(TID>1500)
 				//printf("\t\tmap2: TID:%d, index:%s\n",TID, wkey);
 			}//if

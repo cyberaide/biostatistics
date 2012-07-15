@@ -23,7 +23,7 @@
 
 int main( int argc, char** argv) 
 {
-
+	
 	if (argc != 2)
 	{
 		printf("usage: %s [data file]\n", argv[0]);
@@ -34,7 +34,7 @@ int main( int argc, char** argv)
 	d_global_state *d_g_state = GetDGlobalState();
 	//spec->workflow = MAP_GROUP;
 	
-	printf("new - start %s ...\n",argv[0]);
+	printf("start %s ...\n",argv[0]);
 	/*
 	TimeVal_t allTimer;
 	startTimer(&allTimer);
@@ -54,10 +54,10 @@ int main( int argc, char** argv)
 		str[i] = toupper(str[i]);
 		//printf("%s\t len:%d\n", str,strlen(str));
 		strcpy((strInput + totalLen),str);
-		totalLen += strlen(str);
+		totalLen += (int)strlen(str);
 		if(totalLen>2048){
 		//printf("strLen:%s\n",strInput);
-		AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), strlen(str));
+		AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), (int)strlen(str));
 		totalLen=0;
 		iKey++;
 		}

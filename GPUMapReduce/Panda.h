@@ -63,7 +63,7 @@
 #define checkCudaErrors(err)  __checkCudaErrors (err, __FILE__, __LINE__)
 
 extern "C"
- void __checkCudaErrors(cudaError err, const char *file, const int line );
+void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
 
@@ -153,7 +153,6 @@ typedef struct
 
   //data for sorted intermediate results
   int d_sorted_keyvals_arr_len;
-  //int d_sorted_keyvals_arr_alloc_len;
   keyvals_t *d_sorted_keyvals_arr;
   keyvals_t *h_sorted_keyvals_arr;
 
@@ -326,7 +325,7 @@ void endTimer(char *info, TimeVal_t *timer);
 */
 
 #ifdef _DEBUG
-#define DoLog(...) do{printf("[DoLog]:");printf(__VA_ARGS__);printf("\n");}while(0)
+#define DoLog(...) do{printf("[PandaLog]:");printf(__VA_ARGS__);printf("\n");}while(0)
 #else
 #define DoLog(...) //do{printf(__VA_ARGS__);printf("\n");}while(0)
 #endif

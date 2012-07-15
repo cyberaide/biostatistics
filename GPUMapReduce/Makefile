@@ -1,9 +1,9 @@
 ################################################################################
-# Build script for MPI/CUDA implementation of PandaSort on Delta
-# lihui@indiana.edu   5/28/2012
+# Makefile for Panda source code
+# lihui@indiana.edu   7/01/2012
 ################################################################################
 
-all:mpi_cuda
+all:panda_application
 
 CC	= g++
 NVCC	= nvcc
@@ -15,7 +15,7 @@ LIBPATH =  -L./ -L/opt/cuda/lib64/ -L/opt/NVIDIA_GPU_Computing_SDK/C/lib/
 
 .c.o:
 	$(CC) -c $<
-#PandaLib.cu PandaInc.h PandaUtils.cpp PandaScan.cu PandaSort.cu
+
 OBJ		= main.o PandaLib.o PandaUtils.o PandaScan.o PandaSort.o
 
 PandaLib.o: PandaLib.cu
@@ -29,7 +29,7 @@ PandaSort.o: PandaSort.cu
 
 main.o: main.cu
 	nvcc -arch=sm_20 -c main.cu -o main.o $(INCLUDE) -lcudart
-mpi_cuda: $(OBJ)
-	nvcc -arch=sm_20 -o cuda_kmeans $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lcutil_x86_64
+panda_application: $(OBJ)
+	nvcc -arch=sm_20 -o panda_wc $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lcutil_x86_64
 clean:
-	rm *.o cuda_kmeans
+	rm *.o panda_wc

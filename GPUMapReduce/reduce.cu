@@ -21,7 +21,7 @@
 
 
 __device__ void reduce2(void *KEY, val_t* VAL, int keySize, int valCount, d_global_state d_g_state){
-		
+
 		int count = 0;
 		for (int i=0;i<valCount;i++){
 			count += *(int *)(VAL[i].val);

@@ -169,7 +169,7 @@ __global__ void Mapper2(
 
 	if(thread_end_idx>d_g_state.h_num_input_record)
 		thread_end_idx = d_g_state.h_num_input_record;
-	//printf("Mapper TID:%d, thread_start_idx:%d  thread_end_idx:%d totalThreads:%d\n",TID, thread_start_idx,thread_end_idx,gridDim.x*blockDim.x);
+	printf("Mapper TID:%d, thread_start_idx:%d  thread_end_idx:%d totalThreads:%d\n",TID, thread_start_idx,thread_end_idx,gridDim.x*blockDim.x);
 	
 	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 		

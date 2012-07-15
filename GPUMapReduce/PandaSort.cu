@@ -538,7 +538,7 @@ void bitonicSortGPU(void* d_rawData, int totalLenInBytes, cmp_type_t* d_Rin, int
 		size = size/2;
 		level++;
 	}
-
+	
 	if( (1<<level) < rLen )
 	{
 		level++;
@@ -1093,7 +1093,7 @@ int getChunkBoundary(void *d_source, cmp_type_t* d_Rin, int rLen, int2 ** h_outp
 		setBoundaryInt2_kernel<<<grid,thread>>>(d_boundary, start, resultNumChunks, rLen, d_outputKeyListRange);
 	} 
 	cudaThreadSynchronize();
-
+	
 	*h_outputKeyListRange=(int2*)malloc(sizeof(int2)*resultNumChunks);
 	( cudaMemcpy( *h_outputKeyListRange, d_outputKeyListRange, sizeof(int2)*resultNumChunks, cudaMemcpyDeviceToHost) );
 	
@@ -1104,18 +1104,18 @@ int getChunkBoundary(void *d_source, cmp_type_t* d_Rin, int rLen, int2 ** h_outp
 	
 __global__ void copyDataFromDevice2Host1(d_global_state d_g_state)
 {	
-
+	
 	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 	int thread_start_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
-
+	
 	//if (TID>=d_g_state.h_num_input_record)return;
 	if(thread_end_idx>d_g_state.h_num_input_record)
 		thread_end_idx = d_g_state.h_num_input_record;
-
+	
 	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 	int begin=0;
@@ -1133,29 +1133,29 @@ __global__ void copyDataFromDevice2Host1(d_global_state d_g_state)
 		//printf("copyData1: TID:%d keySize %d valSize:%d p2->key:%s  p1->key:%s\n",map_task_idx,p1->keySize,p1->valSize,p2->key,p1->key);
 	}//for
 	//if (index*recordsPerTask >= recordNum) return;
-
+	
 	}
 }	
-
+	
 __global__ void copyDataFromDevice2Host3(d_global_state d_g_state)
 {	
-
+	
 	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 	int thread_start_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
-
+	
 	//if (TID>=d_g_state.h_num_input_record)return;
 	if(thread_end_idx>d_g_state.h_num_input_record)
 		thread_end_idx = d_g_state.h_num_input_record;
-
+	
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
-
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
+	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+		
 		begin=0;
 		end=0;
 		for (int i=0;i<map_task_idx;i++){
@@ -1163,7 +1163,7 @@ __global__ void copyDataFromDevice2Host3(d_global_state d_g_state)
 		}//for
 		end = begin + (d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr_len);
 		//printf("copyData:%d begin:%d, end:%d\n",TID,begin,end);
-	
+		
 		for(int i=begin;i<end;i++){
 			//keyval_t * p1 = &(d_g_state.d_intermediate_keyval_arr[i]);
 			val_pos = d_g_state.d_intermediate_keyval_pos_arr[i].valPos;
@@ -1177,15 +1177,12 @@ __global__ void copyDataFromDevice2Host3(d_global_state d_g_state)
 		}//for
 		//if (index*recordsPerTask >= recordNum) return;
 	}//for
-	
 }//__global__	
-
-
-
-
+		
+		
 __global__ void copyDataFromDevice2Host2(d_global_state d_g_state)
 {	
-
+	
 	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 	int thread_start_idx = block_start_idx 
