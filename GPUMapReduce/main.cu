@@ -21,51 +21,55 @@
 //param: datafile 
 //-----------------------------------------------------------------------
 
-int main( int argc, char** argv) 
-{
-	
-	if (argc != 2)
-	{
-		printf("usage: %s [data file]\n", argv[0]);
-		exit(-1);	
-	}
-	
+void * GPU_MapReduce(void *ptr){
+
+	thread_info_t *thread_info = (thread_info_t *)ptr;
+	int tid = thread_info->tid;
+	char *fn = thread_info->file_name;
+	int num_gpus = thread_info->num_gpus;
+	cudaSetDevice(tid % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
+	int gpu_id;
+    cudaGetDevice(&gpu_id);
+	printf("tid:%d num_gpus:%d gpu_id:%d fn:%s\n",tid,num_gpus,gpu_id,fn);
+
+	FILE *myfp;
+	myfp = fopen(fn, "r");
+
 	//configuration for Panda MapRedduce
 	d_global_state *d_g_state = GetDGlobalState();
 	//spec->workflow = MAP_GROUP;
 	
-	printf("start %s ...\n",argv[0]);
-	/*
-	TimeVal_t allTimer;
-	startTimer(&allTimer);
-	TimeVal_t preTimer;
-	startTimer(&preTimer);
-	*/
 	char str[256];
-	char strInput[2200];
-	FILE *myfp;
-	myfp = fopen(argv[1], "r");
+	char strInput[10100];
+	//FILE *myfp;
+	//myfp = fopen(argv[1], "r");
+	
+
 	int iKey = 0;
 	int totalLen = 0;
+
 	while(fgets(str,sizeof(str),myfp) != NULL)
     {
-		
 		for (int i = 0; i < strlen(str); i++)
 		str[i] = toupper(str[i]);
 		//printf("%s\t len:%d\n", str,strlen(str));
 		strcpy((strInput + totalLen),str);
 		totalLen += (int)strlen(str);
-		if(totalLen>2048){
+		if(totalLen>10000){
 		//printf("strLen:%s\n",strInput);
-		AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), (int)strlen(str));
+		totalLen = 100;
+		//TODO
+		AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), totalLen);
 		totalLen=0;
 		iKey++;
-		}
-		
+
+		if (iKey%100==0)
+			printf("iKey:%d\n",iKey);
+		}//if
+
     }//while
 	fclose(myfp);
-
-	printf("input:%s  \ttotal lines:%d\n",argv[1],iKey);
+	printf("input:%s  \ttotal lines:%d\n",fn,iKey);
 	
 	//----------------------------------------------
 	//map/reduce
@@ -84,6 +88,50 @@ int main( int argc, char** argv)
 	//handle the buffer different
 	//free(h_filebuf);
 	//handle the buffer different
+	return NULL;
+}
 
+int main( int argc, char** argv) 
+{
+	
+	if (argc != 3)
+	{
+		printf("usage: %s [data file1][data file2]\n", argv[0]);
+		exit(-1);	
+	}//if
+	
+	printf("start %s  %s..%s.\n",argv[0],argv[1],argv[2]);
+
+	/*
+	TimeVal_t allTimer;
+	startTimer(&allTimer);
+	TimeVal_t preTimer;
+	startTimer(&preTimer);
+	*/
+
+	pthread_t no_threads[2];
+	thread_info_t thread_info[2];
+	
+	int num_gpus = 0;
+	cudaGetDeviceCount(&num_gpus);
+	
+
+	for (int i=0; i<num_gpus; i++){
+		thread_info[i].file_name = argv[i+1];
+		thread_info[i].num_gpus = num_gpus;
+		thread_info[i].tid = i;
+		cudaDeviceProp gpu_dev;
+		cudaGetDeviceProperties(&gpu_dev, i);
+        printf("   %d: %s\n", i, gpu_dev.name);
+		if (pthread_create(&(no_threads[i]),NULL,GPU_MapReduce,(char *)&(thread_info[i]))!=0) 
+			perror("Thread creation failed!\n");
+	}//for
+
+	for (int i=0; i<num_gpus;i++){
+	void *exitstat;
+	if (pthread_join(no_threads[i],&exitstat)!=0)
+	perror("joining failed");
+	}//for
+	
 	return 0;
 }

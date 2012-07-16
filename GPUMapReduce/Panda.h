@@ -1,5 +1,4 @@
 /*	
-
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
 	Code Name: Panda 0.1
@@ -8,16 +7,22 @@
 	Developer: Hui Li (lihui@indiana.edu)
 
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
-
 */
 
+/*
+#ifdef WIN32 
+#include <windows.h> 
+#endif 
+#include <iostream> 
+#include <pthread.h>
+*/
 
 #ifndef __PANDA_H__
 #define __PANDA_H__
 
 //#include <unistd.h>
 //#include <sys/mman.h>
-//#include <pthread.h>
+
 //#include <cutil.h>
 //#include <sys/time.h>
 #include <stdio.h>
@@ -30,6 +35,7 @@
 #include <assert.h>
 #include <time.h>
 #include <stdarg.h>
+#include <pthread.h>
 
 //helper for shared that are common to CUDA SDK samples
 //#include <shrUtils.h>
@@ -55,7 +61,7 @@
 //#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
 
 //NOTE NUM_THREADS*NUM_BLOCKS > STRIDE !
-#define NUM_THREADS	64
+#define NUM_THREADS	128
 #define NUM_BLOCKS	4
 #define STRIDE	32
 
@@ -66,6 +72,13 @@ extern "C"
 void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
+typedef struct {
+	char *file_name;
+	int tid;
+	int num_gpus;
+} thread_info_t;
+
+void Start_Pthread(int keySize);
 
 //used for unsorted values
 typedef struct
@@ -189,6 +202,9 @@ void sort_CPU(d_global_state *d_g_state);
 
 extern "C"
 void sort_CPU3(d_global_state *d_g_state);
+
+extern "C"
+void *GPU_MapReduce(void *ptr);
 
 extern "C"
 void saven_initialPrefixSum(unsigned int maxNumElements);
@@ -325,7 +341,7 @@ void endTimer(char *info, TimeVal_t *timer);
 */
 
 #ifdef _DEBUG
-#define DoLog(...) do{printf("[PandaLog]:");printf(__VA_ARGS__);printf("\n");}while(0)
+#define DoLog(...) do{printf("[PandaLog][%s]\t",__FUNCTION__);printf(__VA_ARGS__);printf("\n");}while(0)
 #else
 #define DoLog(...) //do{printf(__VA_ARGS__);printf("\n");}while(0)
 #endif

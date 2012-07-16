@@ -51,7 +51,6 @@ __device__ int getCompareValue(void *d_rawData, cmp_type_t value1, cmp_type_t va
 	}//if
 	else
 		compareValue=compare((void*)(((char*)d_rawData)+v1), value1.y, (void*)(((char*)d_rawData)+v2), value2.y); 
-
 	return compareValue;
 }//__device__
 
@@ -1221,12 +1220,11 @@ __global__ void copyDataFromDevice2Host2(d_global_state d_g_state)
 void sort_CPU3(d_global_state* d_g_state){
 	
 	cudaThreadSynchronize();
-	DoLog("sort CPU start begin to copy data from device to host memory len:%d",d_g_state->h_num_input_record);
+	DoLog("begin to copy data from device to host memory");
 	int *count_arr = (int *)malloc(sizeof(int)*d_g_state->h_num_input_record);
-	DoLog("allocate memory for d_intermediate_keyval_total_count size:%d\n",sizeof(int)*d_g_state->h_num_input_record);
+	//DoLog("allocate memory for d_intermediate_keyval_total_count size:%d\n",sizeof(int)*d_g_state->h_num_input_record);
 	checkCudaErrors(cudaMemcpy(count_arr, d_g_state->d_intermediate_keyval_total_count, sizeof(int)*d_g_state->h_num_input_record, cudaMemcpyDeviceToHost));
 	long total_count = 0;
-	
 	int index = 0;
 	for(int i=0;i<d_g_state->h_num_input_record;i++){
 		//printf("arr_len[%d]=:%d\n",i,count_arr[i]);
@@ -1234,7 +1232,7 @@ void sort_CPU3(d_global_state* d_g_state){
 		index++;
 	}//for
 	
-	DoLog("total_count:%lu  num_input_records:%d\n", total_count, d_g_state->h_num_input_record);
+	DoLog("total number of intermediate records:%lu  num_input_records:%d", total_count, d_g_state->h_num_input_record);
 	checkCudaErrors(cudaMalloc((void **)&(d_g_state->d_intermediate_keyval_arr),sizeof(keyval_t)*total_count));
 	copyDataFromDevice2Host1<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
 	cudaThreadSynchronize();
@@ -1255,23 +1253,22 @@ void sort_CPU3(d_global_state* d_g_state){
 		totalKeySize += h_keyval_buff[i].keySize;
 		totalValSize += h_keyval_buff[i].valSize;
 	}//for
-	DoLog("totalKeySize:%d totalValSize:%d\n",totalKeySize,totalValSize);
+	DoLog("totalKeySize:%d totalValSize:%d",totalKeySize,totalValSize);
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_keys_shared_buff,totalKeySize));
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_vals_shared_buff,totalValSize));
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_keyval_pos_arr,sizeof(keyval_pos_t)*total_count));
-	cudaMemcpy(d_g_state->d_intermediate_keyval_pos_arr,h_intermediate_keyvals_pos_arr,sizeof(keyval_pos_t)*total_count,cudaMemcpyHostToDevice);
+	checkCudaErrors(cudaMemcpy(d_g_state->d_intermediate_keyval_pos_arr,h_intermediate_keyvals_pos_arr,sizeof(keyval_pos_t)*total_count,cudaMemcpyHostToDevice));
 	
-	DoLog("copyDataFromDevice2Host3");
+	//DoLog("copyDataFromDevice2Host3");
 	cudaThreadSynchronize();
 	copyDataFromDevice2Host3<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
-	
 	//printData<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
 	cudaThreadSynchronize();
 	
 	d_g_state->h_intermediate_keys_shared_buff = malloc(sizeof(char)*totalKeySize);
 	d_g_state->h_intermediate_vals_shared_buff = malloc(sizeof(char)*totalValSize);
-	cudaMemcpy(d_g_state->h_intermediate_keys_shared_buff,d_g_state->d_intermediate_keys_shared_buff,sizeof(char)*totalKeySize,cudaMemcpyDeviceToHost);
-	cudaMemcpy(d_g_state->h_intermediate_vals_shared_buff,d_g_state->d_intermediate_vals_shared_buff,sizeof(char)*totalValSize,cudaMemcpyDeviceToHost);
+	checkCudaErrors(cudaMemcpy(d_g_state->h_intermediate_keys_shared_buff,d_g_state->d_intermediate_keys_shared_buff,sizeof(char)*totalKeySize,cudaMemcpyDeviceToHost));
+	checkCudaErrors(cudaMemcpy(d_g_state->h_intermediate_vals_shared_buff,d_g_state->d_intermediate_vals_shared_buff,sizeof(char)*totalValSize,cudaMemcpyDeviceToHost));
 	
 	/*	for(int i=0;i<total_count;i++){
 		printf("keySize:%d, valSize:%d  key:%s val:%d\n",h_buff[i].keySize,h_buff[i].valSize,(char *)h_buff[i].key,*(int *)h_buff[i].val);
@@ -1301,7 +1298,7 @@ void sort_CPU3(d_global_state* d_g_state){
 	
 	///////////////////////////////////////////////////////////////////////////////////////////////////
 	//transfer the d_sorted_keyval_pos_arr to h_sorted_keyval_pos_arr
-	DoLog("transfer the d_sorted_keyval_pos_arr to h_sorted_keyval_pos_arr");
+	//DoLog("transfer the d_sorted_keyval_pos_arr to h_sorted_keyval_pos_arr");
 
 	sorted_keyval_pos_t * h_sorted_keyval_pos_arr = NULL;
 
@@ -1353,7 +1350,7 @@ void sort_CPU3(d_global_state* d_g_state){
 
 	keyval_pos_t *tmp_keyval_pos_arr = (keyval_pos_t *)malloc(sizeof(keyval_pos_t)*total_count);
 	
-	printf("sorted_keyval_pos_arr_len:%d\n",sorted_key_arr_len);
+	DoLog("number of different intermediate records:%d",sorted_key_arr_len);
 
 	int *pos_arr_4_pos_arr = (int*)malloc(sizeof(int)*sorted_key_arr_len);
 	memset(pos_arr_4_pos_arr,0,sizeof(int)*sorted_key_arr_len);
@@ -1373,11 +1370,11 @@ void sort_CPU3(d_global_state* d_g_state){
 		pos_arr_4_pos_arr[i] = index;
 	}
 	
-	cudaMemcpy(d_g_state->d_keyval_pos_arr,tmp_keyval_pos_arr,sizeof(keyval_pos_t)*total_count,cudaMemcpyHostToDevice);
+	checkCudaErrors(cudaMemcpy(d_g_state->d_keyval_pos_arr,tmp_keyval_pos_arr,sizeof(keyval_pos_t)*total_count,cudaMemcpyHostToDevice));
 	d_g_state->d_sorted_keyvals_arr_len = sorted_key_arr_len;
 
-	cudaMalloc((void**)&d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,sizeof(int)*sorted_key_arr_len);
-	cudaMemcpy(d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,pos_arr_4_pos_arr,sizeof(int)*sorted_key_arr_len,cudaMemcpyHostToDevice);
+	checkCudaErrors(cudaMalloc((void**)&d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,sizeof(int)*sorted_key_arr_len));
+	checkCudaErrors(cudaMemcpy(d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,pos_arr_4_pos_arr,sizeof(int)*sorted_key_arr_len,cudaMemcpyHostToDevice));
 
 	/*verify the d_sorted_keyval_arr_len results
 	for (int i=0;i<d_g_state->d_sorted_keyvals_arr_len;i++){
