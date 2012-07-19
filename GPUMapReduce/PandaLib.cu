@@ -1,7 +1,7 @@
 /*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
-	Code Name: Panda 0.1
+	Code Name: Panda 0.15
 	File: PandaLib.cu 
 	First Version:	2012-07-01 V0.1
 	Github: https://github.com/cyberaide/biostatistics/tree/master/GPUMapReduce			
@@ -36,14 +36,14 @@ d_global_state *GetDGlobalState(){
 //Initiate map reduce spec
 //--------------------------------------------------------
 
-void InitMapReduce2(d_global_state* d_g_state)
+void InitGPUMapReduce(d_global_state* d_g_state)
 {
 	//init d_g_state
 	//load input records from host memory to device memory. 
-	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_input_keyval_arr,sizeof(keyval_t)*d_g_state->h_num_input_record));
-	keyval_t* h_buff = (keyval_t*)malloc(sizeof(keyval_t)*(d_g_state->h_num_input_record));
+	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_input_keyval_arr,sizeof(keyval_t)*d_g_state->num_input_record));
+	keyval_t* h_buff = (keyval_t*)malloc(sizeof(keyval_t)*(d_g_state->num_input_record));
 
-	for(int i=0;i<d_g_state->h_num_input_record;i++){
+	for(int i=0;i<d_g_state->num_input_record;i++){
 		h_buff[i].keySize = d_g_state->h_input_keyval_arr[i].keySize;
 		h_buff[i].valSize = d_g_state->h_input_keyval_arr[i].valSize;
 		checkCudaErrors(cudaMalloc((void **)&h_buff[i].key,h_buff[i].keySize));
@@ -51,7 +51,7 @@ void InitMapReduce2(d_global_state* d_g_state)
 		checkCudaErrors(cudaMemcpy(h_buff[i].key,d_g_state->h_input_keyval_arr[i].key,h_buff[i].keySize,cudaMemcpyHostToDevice));
 		checkCudaErrors(cudaMemcpy(h_buff[i].val,d_g_state->h_input_keyval_arr[i].val,h_buff[i].valSize,cudaMemcpyHostToDevice));
 	}//for
-	checkCudaErrors(cudaMemcpy(d_g_state->d_input_keyval_arr,h_buff,sizeof(keyval_t)*d_g_state->h_num_input_record,cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_g_state->d_input_keyval_arr,h_buff,sizeof(keyval_t)*d_g_state->num_input_record,cudaMemcpyHostToDevice));
 	cudaThreadSynchronize(); 
 }//void
 
@@ -70,6 +70,33 @@ void InitMapReduce(Spec_t* spec)
 		g_spec->workflow = MAP_ONLY;
 }*/
 
+void InitGPUDevice(thread_info_t*thread_info){
+
+	//------------------------------------------
+	//1, init device
+	//------------------------------------------
+	DoLog( "Init GPU Deivce");
+	//d_global_state *d_g_state = thread_info->d_g_state;
+
+	int tid = thread_info->tid;
+	char *fn = thread_info->file_name;
+	int num_gpus = thread_info->num_gpus;
+	cudaSetDevice(tid % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
+	int gpu_id;
+	cudaGetDevice(&gpu_id);
+		
+	//CUT_DEVICE_INIT();
+	size_t total_mem,avail_mem;
+	checkCudaErrors(cudaMemGetInfo( &avail_mem, &total_mem ));
+	cudaDeviceSetLimit(cudaLimitMallocHeapSize, (int)(total_mem*0.2)); 
+
+	cudaDeviceGetLimit(&avail_mem, cudaLimitMallocHeapSize);
+	DoLog("cudaLimitMallocHeapSize:%d KB",avail_mem/1024);
+	DoLog("tid:%d num_gpus:%d gpu_id:%d device_name:%s\n",tid,num_gpus,gpu_id,thread_info->device_name);
+}
+
+
+
 //--------------------------------------------------
 //Add a map input record
 //--------------------------------------------------
@@ -80,7 +107,7 @@ void AddMapInputRecord2(d_global_state* d_g_state,
 						int		keySize, 
 						int		valSize){
 	
-	int len = d_g_state->h_num_input_record;
+	int len = d_g_state->num_input_record;
 	if (len<0) return;
 	d_g_state->h_input_keyval_arr = (keyval_t *)realloc(d_g_state->h_input_keyval_arr, sizeof(keyval_t)*(len+1));
 	d_g_state->h_input_keyval_arr[len].keySize = keySize;
@@ -89,7 +116,7 @@ void AddMapInputRecord2(d_global_state* d_g_state,
 	d_g_state->h_input_keyval_arr[len].val = malloc(valSize);
 	memcpy(d_g_state->h_input_keyval_arr[len].key,key,keySize);
 	memcpy(d_g_state->h_input_keyval_arr[len].val,val,valSize);
-	d_g_state->h_num_input_record++;
+	d_g_state->num_input_record++;
 
 }
 
@@ -147,22 +174,22 @@ __device__ void EmitIntermediate2(void *key, void *val, int keySize, int valSize
 //called by user defined map function
 //-------------------------------------------------
 
-__global__ void Mapper2(
+__global__ void MapPartitioner(
 		   d_global_state d_g_state)
 {	
 	/*int index = TID;
 	int bid = BLOCK_ID;
 	int tid = THREAD_ID;*/
 	
-	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
+	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 	int thread_start_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
 
-	if(thread_end_idx>d_g_state.h_num_input_record)
-		thread_end_idx = d_g_state.h_num_input_record;
+	if(thread_end_idx>d_g_state.num_input_record)
+		thread_end_idx = d_g_state.num_input_record;
 	//printf("Mapper TID:%d, thread_start_idx:%d  thread_end_idx:%d totalThreads:%d\n",TID, thread_start_idx,thread_end_idx,gridDim.x*blockDim.x);
 	
 	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
@@ -175,11 +202,9 @@ __global__ void Mapper2(
 		///////////////////////////////////////////////////////////
 		map2(key, val, keySize, valSize, &d_g_state, map_task_idx);
 		///////////////////////////////////////////////////////////
-		
 	}//for
 	//__syncthreads();
-	
-}//Mapper2
+}//MapPartitioner
 
 
 //--------------------------------------------------
@@ -247,45 +272,45 @@ __global__ void Mapper(char*	inputKeys,
 	}	
 */	
 }
+ 
 
-
-int startMap2(d_global_state *d_g_state)
+int StartGPUMap(d_global_state *d_g_state)
 {		
 	
 	//-------------------------------------------------------
 	//0, Check status of d_g_state;
 	//-------------------------------------------------------
 	
-	DoLog("check parameters of for map tasks:%d\n",d_g_state->h_num_input_record);
-	if (d_g_state->h_num_input_record<0) { DoLog("Error: no any input keys"); exit(-1);}
+	DoLog("check parameters of for map tasks:%d",d_g_state->num_input_record);
+	if (d_g_state->num_input_record<0) { DoLog("Error: no any input keys"); exit(-1);}
 	if (d_g_state->h_input_keyval_arr == NULL) { DoLog("Error: h_input_keyval_arr == NULL"); exit(-1);}
 		
 	//-------------------------------------------------------
 	//1, upload map input data from host to device memory
 	//-------------------------------------------------------
 	DoLog("upload input data of map tasks from host to device memory");
-	keyval_arr_t *h_keyval_arr_arr = (keyval_arr_t *)malloc(sizeof(keyval_arr_t)*d_g_state->h_num_input_record);
+	keyval_arr_t *h_keyval_arr_arr = (keyval_arr_t *)malloc(sizeof(keyval_arr_t)*d_g_state->num_input_record);
 	
 	keyval_arr_t *d_keyval_arr_arr;
-	checkCudaErrors(cudaMalloc((void**)&(d_keyval_arr_arr),d_g_state->h_num_input_record*sizeof(keyval_arr_t)));
-	for (int i=0; i<d_g_state->h_num_input_record;i++){
+	checkCudaErrors(cudaMalloc((void**)&(d_keyval_arr_arr),d_g_state->num_input_record*sizeof(keyval_arr_t)));
+	for (int i=0; i<d_g_state->num_input_record;i++){
 		h_keyval_arr_arr[i].arr = NULL;
 		h_keyval_arr_arr[i].arr_len = 0;
 	}//for
 	
-	checkCudaErrors(cudaMemcpy(d_keyval_arr_arr, h_keyval_arr_arr, sizeof(keyval_arr_t)*d_g_state->h_num_input_record,cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_keyval_arr_arr, h_keyval_arr_arr, sizeof(keyval_arr_t)*d_g_state->num_input_record,cudaMemcpyHostToDevice));
 	d_g_state->d_intermediate_keyval_arr_arr = d_keyval_arr_arr;
 	
 	int *count = NULL;
-	checkCudaErrors(cudaMalloc((void**)&(count),d_g_state->h_num_input_record*sizeof(int)));
+	checkCudaErrors(cudaMalloc((void**)&(count),d_g_state->num_input_record*sizeof(int)));
 	d_g_state->d_intermediate_keyval_total_count = count;
-	checkCudaErrors(cudaMemset(d_g_state->d_intermediate_keyval_total_count,0,d_g_state->h_num_input_record*sizeof(int)));
+	checkCudaErrors(cudaMemset(d_g_state->d_intermediate_keyval_total_count,0,d_g_state->num_input_record*sizeof(int)));
 	
 	//----------------------------------------------
 	//3, determine the number of threads to run
 	//----------------------------------------------
 	DoLog("determine the number of threads (NUM_BLOCKS, NUM_THREADS) to run");
-	//int num_threads = d_g_state->h_num_input_record;
+	//int num_threads = d_g_state->num_input_record;
 	//calculate NUM_BLOCKS, NUM_THREADS
 
 	//--------------------------------------------------
@@ -295,9 +320,9 @@ int startMap2(d_global_state *d_g_state)
     dim3 h_dimGrid(4,1,1);
 	dim3 h_dimThread(1,1,1);
 	int sizeSmem = 128;*/
-	DoLog("start Mapper2");
+	DoLog("start MapPartitioner");
 	cudaThreadSynchronize();
-	Mapper2<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
+	MapPartitioner<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
 	cudaThreadSynchronize();
 	DoLog("DONE");
 	return 0;
@@ -322,7 +347,7 @@ int startMap2(d_global_state *d_g_state)
 //8, free allocated memory
 //--------------------------------------------------
 
-
+/*
 int startMap(Spec_t* spec, d_global_state *d_g_state)
 {
 	    
@@ -338,16 +363,47 @@ int startMap(Spec_t* spec, d_global_state *d_g_state)
 	//-------------------------------------------------------
 	return 0;
 }//return 0;
+*/
 
+void DestroyDGlobalState(d_global_state * d_g_state){
+	
+}//void 
 
-void startGroup2(d_global_state*state){
+void StartGPUShuffle(d_global_state * state){
 	d_global_state* d_g_state = state;
-	DoLog("start sort_CPU3");
-	sort_CPU3(d_g_state);
+	DoLog("start Shuffle4GPUOutput");
+	Shuffle4GPUOutput(d_g_state);
 	DoLog("DONE");
 }
 
+//Use Pthread to process Panda_Reduce
+void * Panda_Reduce(void *ptr){
 
+	thread_info_t *thread_info = (thread_info_t *)ptr;
+	int tid = thread_info->tid;
+	int num_gpus = thread_info->num_gpus;
+	//cudaSetDevice(tid % num_gpus);        // "% num_gpus" allows more CPU threads than GPU devices
+	int gpu_id;
+    cudaGetDevice(&gpu_id);
+	printf("tid:%d num_gpus:%d gpu_id:%d\n",tid,num_gpus,gpu_id);
+	
+	//configuration for Panda Reduce
+	d_global_state *d_g_state = thread_info->d_g_state;
+	DoLog( "start reduce tasks on GPU:%d totalKeySize:%d totalValSize:%d",gpu_id, d_g_state->totalKeySize,d_g_state->totalValSize);
+	//TimeVal_t reduceTimer;
+	//startTimer(&reduceTimer);
+	StartGPUReduce(d_g_state);
+	//endTimer("Reduce", &reduceTimer);
+
+
+	FinishMapReduce2(d_g_state);
+	//cudaFree(d_filebuf);
+	
+	//handle the buffer different
+	//free(h_filebuf);
+	//handle the buffer different
+	return NULL;
+}
 
 //--------------------------------------------------------
 //get a value from value list of the same key
@@ -373,14 +429,13 @@ __device__ void *GetKey(void *key, int4* interOffsetSizes, int keyIndex, int val
 
 //-------------------------------------------------------
 //Reducer
-//
 //-------------------------------------------------------
 
-__global__ void Reducer2(d_global_state d_g_state)
+__global__ void ReducePartitioner(d_global_state d_g_state)
 {
-
 	int num_records_per_thread = (d_g_state.d_sorted_keyvals_arr_len+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+
 	int thread_start_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
@@ -388,7 +443,8 @@ __global__ void Reducer2(d_global_state d_g_state)
 	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
 	if(thread_end_idx>d_g_state.d_sorted_keyvals_arr_len)
 		thread_end_idx = d_g_state.d_sorted_keyvals_arr_len;
-	//printf("reducer2: TID:%d  start_idx:%d  end_idx:%d d_sorted_keyvals_arr_len:%d\n",TID,thread_start_idx,thread_end_idx,d_g_state.d_sorted_keyvals_arr_len);
+
+	//printf("ReducePartitioner: TID:%d  start_idx:%d  end_idx:%d d_sorted_keyvals_arr_len:%d\n",TID,thread_start_idx,thread_end_idx,d_g_state.d_sorted_keyvals_arr_len);
 
 	int start, end;
 	for(int reduce_task_idx=thread_start_idx; reduce_task_idx < thread_end_idx; reduce_task_idx+=STRIDE){
@@ -397,21 +453,31 @@ __global__ void Reducer2(d_global_state d_g_state)
 		else
 			start = d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[reduce_task_idx-1];
 		end = d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[reduce_task_idx];
-		val_t *val_t_arr = (val_t*)malloc(sizeof(val_t)*(end-start));
+		
+		
 
+		val_t *val_t_arr = (val_t*)malloc(sizeof(val_t)*(end-start));
+		//assert(val_t_arr!=NULL);
 		int keySize = d_g_state.d_keyval_pos_arr[start].keySize;
 		int keyPos = d_g_state.d_keyval_pos_arr[start].keyPos;
-		void *key = (char*)d_g_state.d_intermediate_keys_shared_buff+keyPos;
-		//printf("reduce_task_idx:%d		keyPos:%d,  keySize:%d, key:%s start:%d end:%d\n",reduce_task_idx,keyPos,keySize,key,start,end);
+		
+
+		//TODO
+		void *key = (char*)d_g_state.d_sorted_keys_shared_buff+keyPos;
+		//printf("keySize;%d keyPos:%d key:%s\n",keySize,keyPos,key);
+
+		//printf("reduce_task_idx:%d		keyPos:%d,  keySize:%d, key:% start:%d end:%d\n",reduce_task_idx,keyPos,keySize,start,end);
+		//printf("start:%d end:%d\n",start,end);
+		
 		
 		for (int index = start;index<end;index++){
 			int valSize = d_g_state.d_keyval_pos_arr[index].valSize;
 			int valPos = d_g_state.d_keyval_pos_arr[index].valPos;
 			//printf("reduce_task_idx:%d		valSize:%d  valPos:%d\n",reduce_task_idx,valSize,valPos);
 			val_t_arr[index-start].valSize = valSize;
-			val_t_arr[index-start].val = (char*)d_g_state.d_intermediate_vals_shared_buff + valPos;
-			//printf("reduce_task_idx:%d		key:%s val:%d\n",reduce_task_idx,key, *(int*)val_t_arr[index-start].val);
-		}
+			val_t_arr[index-start].val = (char*)d_g_state.d_sorted_vals_shared_buff + valPos;
+		//	printf("reduce_task_idx:%d		key:%s val:%d\n",reduce_task_idx,key, *(int*)val_t_arr[index-start].val);
+		}   //for
 		reduce2(key, val_t_arr, keySize, end-start, d_g_state);
 	}//for
 }
@@ -440,19 +506,55 @@ __global__ void Reducer2(d_global_state d_g_state)
 //----------------------------------------------
 		
 	
-void startReduce2(d_global_state *d_g_state)
+void StartGPUReduce(d_global_state *d_g_state)
 {	
 	cudaThreadSynchronize(); 
 	d_g_state->d_reduced_keyval_arr_len = d_g_state->d_sorted_keyvals_arr_len;
-		
 	checkCudaErrors(cudaMalloc((void **)&(d_g_state->d_reduced_keyval_arr), sizeof(keyval_t)*d_g_state->d_reduced_keyval_arr_len));
-	DoLog("number of reduce tasks:%d\n",d_g_state->d_sorted_keyvals_arr_len);
+	DoLog("number of reduce tasks:%d",d_g_state->d_sorted_keyvals_arr_len);
+
 	cudaThreadSynchronize(); 
-	Reducer2<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
+	//printData3<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
+	ReducePartitioner<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
 	cudaThreadSynchronize(); 
 	DoLog("DONE\n");
+
 }//void
 
+
+void * Panda_Map(void *ptr){
+	
+	thread_info_t *thread_info = (thread_info_t *)ptr;
+	
+
+	if(thread_info->device_type == GPU_ACC){
+
+		d_global_state *d_g_state = thread_info->d_g_state;
+
+		DoLog("Init GPU Device");
+		InitGPUDevice(thread_info);
+		
+		DoLog("Init MapReduce");
+		InitGPUMapReduce(d_g_state);
+
+		DoLog("Start Map Tasks" );
+		StartGPUMap(d_g_state);
+	
+		DoLog("Start Shuffle Tasks" );
+		StartGPUShuffle(d_g_state);
+
+	}//if
+
+	if(thread_info->device_type == CPU_ACC){
+		DoLog("this is not ready yet!");
+		return NULL;
+	}
+	
+	return NULL;
+
+}//FinishMapReduce2(d_g_state);
+
+/*
 void startReduce(Spec_t* spec)
 {
 
@@ -466,52 +568,18 @@ void startReduce(Spec_t* spec)
 	if (g_spec->interDiffKeyCount == 0) { DoLog( "Error: invalid intermediate diff key count");exit(0);}
 	
 }//void
-
+*/
+/*
 void MapReduce2(d_global_state *state){
-
-	d_global_state* d_g_state = state;
 	
-	//------------------------------------------
-	//1, init device
-	//------------------------------------------
-
-	DoLog( "init GPU");
-	//CUT_DEVICE_INIT();
-	size_t total_mem,avail_mem;
-	checkCudaErrors(cudaMemGetInfo( &avail_mem, &total_mem ));
-	cudaDeviceSetLimit(cudaLimitMallocHeapSize, total_mem*0.2); 
-	//printf("available :%d------------total:%d\n",avail,total);
-	//cudaDeviceSetLimit(cudaLimitMallocHeapSize, 256*1024*1024); 
 	
-	DoLog("init mapreduce");
-	InitMapReduce2(d_g_state);
-
-	//------------------------------------------
-	//2, start map
-	//------------------------------------------
-	DoLog( "start map tasks" );
-	startMap2(d_g_state);
-	
-	//-------------------------------------------
-	//3, start group
-	//-------------------------------------------
-	startGroup2(d_g_state);
-
 	//-------------------------------------------
 	//4, start reduce
 	//-------------------------------------------
-	DoLog( "start reduce tasks");
-	//TimeVal_t reduceTimer;
-	//startTimer(&reduceTimer);
 	
-	startReduce2(d_g_state);
-	//endTimer("Reduce", &reduceTimer);
-
-EXIT_MR:
-	DoLog( "DONE");
-
+	
 }
-
+*/
 
 //----------------------------------------------
 //start main map reduce procedure
@@ -530,10 +598,12 @@ EXIT_MR:
 //2, close log file's file pointer
 //------------------------------------------
 
+
 void FinishMapReduce(Spec_t* spec)
 {
 	DoLog( "=====finish map/reduce=====");
 }//void
+
 
 void FinishMapReduce2(d_global_state* state)
 {
@@ -543,5 +613,5 @@ void FinishMapReduce2(d_global_state* state)
 
 
 
-#endif //__PANDALIB_CU__
 
+#endif //__PANDALIB_CU__

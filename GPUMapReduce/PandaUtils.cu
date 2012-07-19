@@ -30,15 +30,15 @@ __global__ void printData(d_global_state d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	
 
-	int num_records_per_thread = (d_g_state.h_num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
+	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
 	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 	int thread_start_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
 
-	if(thread_end_idx>d_g_state.h_num_input_record)
-		thread_end_idx = d_g_state.h_num_input_record;
+	if(thread_end_idx>d_g_state.num_input_record)
+		thread_end_idx = d_g_state.num_input_record;
 
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
@@ -72,7 +72,7 @@ __global__ void printData(d_global_state d_g_state ){
 
 __global__ void printData2(d_global_state d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
-	if(TID>d_g_state.h_num_input_record)return;
+	if(TID>d_g_state.num_input_record)return;
 	keyval_t * p1 = &(d_g_state.d_input_keyval_arr[TID]);
 	int len = p1->valSize -1;
 	((char *)(p1->val))[len] = '\0';
@@ -80,14 +80,25 @@ __global__ void printData2(d_global_state d_g_state ){
 }//printData
 
 __global__ void printData3(d_global_state d_g_state ){
-	//printf("-----------printData TID:%d\n",TID);
-	if(TID>d_g_state.h_num_input_record)return;
-	keyvals_t * p1 = &(d_g_state.d_sorted_keyvals_arr[TID]);
+	
+	if(TID>=d_g_state.d_sorted_keyvals_arr_len) return;
+	//printf("PrintData TID:%d:\n",TID);
+	
+	int index = (d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[TID]);
+	printf("TID:%d index:%d\n",TID,index);
+	
+	for (int i=0; i<d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[TID]; i++){
+		keyval_pos_t *p = &(d_g_state.d_keyval_pos_arr[i]);
+		char *key  = (char *)(d_g_state.d_sorted_keys_shared_buff) + p->keyPos;
+		printf("PrintData3: keyPos:%d keySize:%d, valPos:%d, valSize:%d val:%s\n",p->keyPos,p->keySize,p->valPos,p->valSize,key);
+	}//for
+	
 	//printf("printData3 TID:%d key:%s",TID, p1->key);
-	for (int i=0;i<p1->val_arr_len;i++)
-		printf("printData3 :TID:%d, i:%d  key:%s, val:%d\n",TID, i,p1->key, *(int*)p1->vals[i].val);
+	//for (int i=0;i<p1->val_arr_len;i++)
+	//	printf("printData3 :TID:%d, i:%d  key:%s, val:%d\n",TID, i,p1->key, *(int*)p1->vals[i].val);
 	//printf("\n");
 	//printf("printData 3 TID:%d i:[%d] keySize:%d key %s val:%d\n",TID,i, p1->keySize, p1->key, *(int*)(p1->vals[i].val));
+	
 }//printData
 
 __global__ void printData4(int index, int j, val_t *p){
@@ -95,7 +106,7 @@ __global__ void printData4(int index, int j, val_t *p){
 		//printf("print4: i:%d, j:%d valSize:%d val:%d \n",index, j, (p[i]->valSize),*(int*)p[i]->val);
 		printf("print4: index:%d, i:%d valSize:%d val:%d \n",index, i, p[i].valSize,*(int*)p[i].val);
 	}//for
-}
+}// 
 
 
 //--------------------------------------------------------

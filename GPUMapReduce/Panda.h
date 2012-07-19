@@ -13,7 +13,6 @@
 #ifdef WIN32 
 #include <windows.h> 
 #endif 
-#include <iostream> 
 #include <pthread.h>
 */
 
@@ -72,13 +71,7 @@ extern "C"
 void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
-typedef struct {
-	char *file_name;
-	int tid;
-	int num_gpus;
-} thread_info_t;
 
-void Start_Pthread(int keySize);
 
 //used for unsorted values
 typedef struct
@@ -117,8 +110,6 @@ typedef struct
 typedef struct
 {
    int arr_len;
-   //int *arr_alloc_len;
-   //int **int_arr;
    keyval_t *arr;
 } keyval_arr_t;
 
@@ -137,23 +128,24 @@ typedef struct
    val_t * vals;
 } keyvals_t;
 
-	
+
+
 typedef struct 
 {	
-  int num_mapper;
+  int num_mappers;
   int num_reducers;
   
   //data for input results
-  int h_num_input_record;
+  int num_input_record;
   keyval_t * h_input_keyval_arr;
   keyval_t * d_input_keyval_arr;
 
   //data for intermediate results
   int *d_intermediate_keyval_total_count;
-  int d_intermediate_keyval_arr_arr_len;
-  keyval_arr_t *d_intermediate_keyval_arr_arr;
-  keyval_arr_t *h_intermediate_keyval_arr_arr;
-  keyval_t* d_intermediate_keyval_arr;
+  int d_intermediate_keyval_arr_arr_len;		//number of elements of d_intermediate_keyval_arr_arr
+  keyval_arr_t *d_intermediate_keyval_arr_arr;  //data structure to store intermediate keyval pairs in device
+  //keyval_arr_t *h_intermediate_keyval_arr_arr;
+  keyval_t* d_intermediate_keyval_arr;			//data structure to store flattened intermediate keyval pairs
 
   void *d_intermediate_keys_shared_buff;
   void *d_intermediate_vals_shared_buff;
@@ -166,11 +158,13 @@ typedef struct
 
   //data for sorted intermediate results
   int d_sorted_keyvals_arr_len;
-  keyvals_t *d_sorted_keyvals_arr;
-  keyvals_t *h_sorted_keyvals_arr;
+  //keyvals_t *d_sorted_keyvals_arr;
+  //keyvals_t *h_sorted_keyvals_arr;
 
   void *h_sorted_keys_shared_buff;
   void *h_sorted_vals_shared_buff;
+  int totalKeySize;
+  int totalValSize;
   sorted_keyval_pos_t *h_sorted_keyval_pos_arr;
 
   void *d_sorted_keys_shared_buff;
@@ -184,6 +178,20 @@ typedef struct
 
 } d_global_state;
 
+typedef struct {
+	char *file_name;
+	char *device_name;
+	int tid;	   //accelerator group id
+	int num_gpus;  //num_processors
+	char device_type;
+	d_global_state* d_g_state;
+
+} thread_info_t;
+
+
+#define GPU_ACC		0x01
+#define CPU_ACC		0x02
+#define CELL_ACC	0x03
 
 //------------------------------------------------------
 //PandaSort.cu
@@ -201,17 +209,47 @@ extern "C"
 void sort_CPU(d_global_state *d_g_state);
 
 extern "C"
-void sort_CPU3(d_global_state *d_g_state);
+void Shuffle4GPUOutput(d_global_state *d_g_state);
 
 extern "C"
-void *GPU_MapReduce(void *ptr);
+void InitGPUMapReduce(d_global_state* d_g_state);
 
 extern "C"
-void saven_initialPrefixSum(unsigned int maxNumElements);
+void InitGPUDevice(thread_info_t* thread_info);
+
+
+extern "C"
+int StartGPUMap(d_global_state *d_g_state);
+
+extern "C"
+int StartCPUMap(d_global_state *d_g_state);
+
+extern "C"
+void StartGPUShuffle(d_global_state *d_g_state);
+
+extern "C"
+void StartGPUReduce(d_global_state *d_g_state);
+
+extern "C"
+void DestroyDGlobalState(d_global_state * d_g_state);
+
+
+extern "C"
+void *Panda_Map(void *ptr);
+
+extern "C"
+void Panda_Shuffle(d_global_state *d_g_state_0, d_global_state *d_g_state_1);
+
+extern "C"
+void *Panda_Reduce(void *ptr);
 
 //------------------------------------------------------
 //PandaScan.cu
 //------------------------------------------------------
+extern "C"
+void saven_initialPrefixSum(unsigned int maxNumElements);
+
+
 extern "C"
 void prescanArray(int *outArray, int *inArray, int numElements);
 
@@ -229,8 +267,6 @@ int prefexSum( int* d_inArr, int* d_outArr, int numRecords );
 #define MAP_ONLY		0x01
 #define MAP_GROUP		0x02
 #define MAP_REDUCE		0x03
-
-
 
 
 typedef struct
@@ -340,8 +376,9 @@ extern "C"
 void endTimer(char *info, TimeVal_t *timer);
 */
 
+
 #ifdef _DEBUG
-#define DoLog(...) do{printf("[PandaLog][%s]\t",__FUNCTION__);printf(__VA_ARGS__);printf("\n");}while(0)
+#define DoLog(...) do{printf("[PandaLog][%s]\t\t",__FUNCTION__);printf(__VA_ARGS__);printf("\n");}while(0)
 #else
 #define DoLog(...) //do{printf(__VA_ARGS__);printf("\n");}while(0)
 #endif
