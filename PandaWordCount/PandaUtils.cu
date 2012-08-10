@@ -47,9 +47,9 @@ __global__ void printData(gpu_context d_g_state ){
 		begin=0;
 		end=0;
 		for (int i=0;i<map_task_idx;i++){
-			begin += (d_g_state.d_intermediate_keyval_arr_arr[i].arr_len);
+		//	begin += (d_g_state.d_intermediate_keyval_arr_arr[i].arr_len);
 		}//for
-		end = begin + (d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr_len);
+		//end = begin + (d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr_len);
 		//printf("copyData:%d begin:%d, end:%d\n",TID,begin,end);
 	
 		for(int i=begin;i<end;i++){
@@ -58,6 +58,7 @@ __global__ void printData(gpu_context d_g_state ){
 			key_pos = d_g_state.d_intermediate_keyval_pos_arr[i].keyPos;
 			val_p = (char*)(d_g_state.d_intermediate_vals_shared_buff)+val_pos;
 			key_p = (char*)(d_g_state.d_intermediate_keys_shared_buff)+key_pos;
+			
 			//keyval_t * p2 = &(d_g_state.d_intermediate_keyval_arr_arr[map_task_idx].arr[i-begin]);
 			//memcpy(key_p,p2->key,p2->keySize);
 			//memcpy(val_p,p2->val,p2->valSize);
@@ -72,7 +73,7 @@ __global__ void printData(gpu_context d_g_state ){
 __global__ void printData2(gpu_context d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	if(TID>=d_g_state.num_input_record)return;
-	printf("printData2------------------------------%d\n",d_g_state.d_intermediate_keyval_arr_arr[TID].arr_len);
+	//printf("printData2------------------------------%d\n",d_g_state.d_intermediate_keyval_arr_arr[TID].arr_len);
 	//keyval_t * p1 = &(d_g_state.d_input_keyval_arr[TID]);
 	//int len = p1->valSize -1;
 	//((char *)(p1->val))[len] = '\0';

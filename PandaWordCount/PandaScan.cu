@@ -279,7 +279,7 @@ unsigned int g_numLevelsAllocated = 0;
 
 void preallocBlockSums(unsigned int maxNumElements)
 {
-//    assert(g_numEltsAllocated == 0); // shouldn't be called 
+	//assert(g_numEltsAllocated == 0); // shouldn't be called 
 
     g_numEltsAllocated = maxNumElements;
 

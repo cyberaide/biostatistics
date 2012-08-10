@@ -27,6 +27,35 @@ __device__ int hash_func(char* str, int len)
 }
 */
 
+void cpu_map(void *KEY, void*VAL, int keySize, int valSize, cpu_context *d_g_state, int map_task_idx){
+		
+		int wsize = 0;
+		char *start;
+		char *p = (char *)VAL;
+		while(1)
+		{
+			start = p;
+			for(;*p>='A' && *p<='Z';p++);
+			*p='\0';
+			++p;
+			wsize=(int)(p-start);
+			if (wsize>6){
+				char *wkey = (char *) malloc (wsize);
+				memcpy(wkey,start,wsize);
+				
+				int *wc = (int *) malloc (sizeof(int));
+				*wc=1;
+				CPUEmitIntermediate(wkey, wc, wsize, sizeof(int), d_g_state, map_task_idx);
+				//printf("\t\tcpu_map: map_id:%d, key:%s\n", map_task_idx, wkey);
+			}//if
+			valSize = valSize - wsize;
+			if(valSize<=0)
+				break;
+		}//while
+		
+}//map2
+
+
 
 __device__ void map2(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
 		//printf("map2 TID:%d, key:%d, val:%s \n",TID,*(int*)KEY,(char *)VAL);

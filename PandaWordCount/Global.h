@@ -15,13 +15,28 @@
 
 typedef struct
 {
-	char* file; 
-} WC_KEY_T;
+        int point_id;
+        int dim;
+        int K;
+        int* ptrClusterId;
+        int start;
+        int end;
+        int i;
 
-typedef __align__(16) struct
+} KM_KEY_T;
+
+typedef struct
 {
-	int line_offset;
-	int line_size;
-} WC_VAL_T;
+        int* ptrPoints;
+        int* ptrClusters;
+        int* ptrChange;
+
+        float *d_tempClusters;
+        float *d_tempDenominators;
+        float *d_Clusters;
+        float *d_Points;
+
+} KM_VAL_T;
+
 
 #endif
