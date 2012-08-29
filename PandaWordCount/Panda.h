@@ -42,6 +42,7 @@
 //#include <shrQATest.h>  
 
 
+
 #define _DEBUG 0x01
 #define CEIL(n,m) (n/m + (int)(n%m !=0))
 #define THREAD_CONF(grid, block, gridBound, blockBound) do {\
@@ -60,15 +61,20 @@
 //#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
 
 //NOTE NUM_THREADS*NUM_BLOCKS > STRIDE !
-#define NUM_THREADS	128
+#define NUM_THREADS	16
 #define NUM_BLOCKS	4
 #define STRIDE	32
 
+extern "C"
+double PandaTimer();
 
 #define checkCudaErrors(err)  __checkCudaErrors (err, __FILE__, __LINE__)
 
 extern "C"
 void __checkCudaErrors(cudaError err, const char *file, const int line );
+
+
+
 
 
 //used for unsorted values
@@ -139,39 +145,46 @@ typedef struct
 		
 typedef struct 
 {		
+	bool auto_tuning;
 	int num_input_record;
 	keyval_t * input_keyval_arr;
 	int num_mappers;
 	int num_reducers;
 	int num_gpus;
-	int num_cpus;
+	int num_cpus_cores;
 	int num_cpus_groups;
+	int auto_tuning_sample_rate;
+	double ratio;
+
+	int matrix_size;
 		
 }job_configuration;
 		
 typedef struct {
 	
 	int tid;		//accelerator group id
-	int num_cpus;   //num of processors
+	int num_cpus_cores;   //num of processors
 	char device_type;
 	void *d_g_state;//gpu_context  cpu_context
+	void *cpu_job_conf;
 	
 	int start_idx;
 	int end_idx;
 
 } panda_cpu_task_info_t;
 
+
 typedef struct
 {		
 	bool configured;		
 	int cpu_group_id;		
 	int num_input_record;	
-	int num_cpus;			
+	int num_cpus_cores;			
 							
-	keyval_t * input_keyval_arr;
+	keyval_t *input_keyval_arr;
 	keyval_arr_t *intermediate_keyval_arr_arr_p;
-	keyvals_t * sorted_intermediate_keyvals_arr;
-	int sorted_key_arr_len;
+	keyvals_t *sorted_intermediate_keyvals_arr;
+	int sorted_keyvals_arr_len;
 							
 	pthread_t  *panda_cpu_task;
 	panda_cpu_task_info_t *panda_cpu_task_info;
@@ -181,7 +194,9 @@ typedef struct
 typedef struct 
 {	
   bool configured;
+
   int gpu_id;
+  int num_gpus;
 
   int num_mappers;
   int num_reducers;
@@ -230,24 +245,40 @@ typedef struct
 
   keyval_t* d_reduced_keyval_arr;
 
+  
+
 } gpu_context;
 
 typedef struct {
-	char *file_name;
+
+	keyval_t * input_keyval_arr;
+	keyval_arr_t *intermediate_keyval_arr_arr_p;
+	keyvals_t * sorted_intermediate_keyvals_arr;
+	int sorted_keyvals_arr_len;
+
+	gpu_context *gpu_context;
+	int num_cpus_groups;
+	int num_gpus;
+	cpu_context *cpu_context;
+
+} panda_context;
+
+
+typedef struct {
+
+	//char *file_name;
 	char *device_name;
-	int tid;		//accelerator group id
-	int num_gpus;	//
-	int num_cpus;   //num of processors
+	int tid;			//accelerator group id
+	//int num_gpus;		//
+	//int num_cpus;		//num of processors
 	char device_type;
-	void *d_g_state;//gpu_context  cpu_context
+	void *d_g_state;	//device context
+	void *job_conf;		//job configuration
 	
 	int start_idx;
 	int end_idx;
 
 } thread_info_t;
-
-
-
 
 
 #define GPU_ACC		0x01
@@ -259,7 +290,6 @@ typedef int4 cmp_type_t;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PandaLib.cu API
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 extern "C"
 void sort_CPU(gpu_context *d_g_state);
@@ -280,16 +310,25 @@ extern "C"
 void Start_Panda_Job(job_configuration*job_conf);
 
 extern "C"
+void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_groups);
+
+extern "C"
 int StartGPUMap(gpu_context *d_g_state);
 
 extern "C"
 int StartCPUMap(gpu_context *d_g_state);
 
 extern "C"
+int StartCPUMap2(thread_info_t* thread_info);
+
+extern "C"
 void StartGPUShuffle(gpu_context *d_g_state);
 
 extern "C"
 void StartCPUShuffle(cpu_context *d_g_state);
+
+extern "C"
+void StartCPUShuffle2(thread_info_t* thread_info);
 
 extern "C"
 void StartGPUReduce(gpu_context *d_g_state);
@@ -306,11 +345,29 @@ void *RunPandaCPUMapThread(void *ptr);
 extern "C"
 void CPUEmitIntermediate(void *key, void *val, int keySize, int valSize, cpu_context *d_g_state, int map_task_idx);
 
+extern "C"
+void DoDiskLog(const char *str);
+
+extern "C"
+int getCPUCoresNum();
+
+extern "C"
+int getGPUCoresNum();
+
+
 //extern "C"
 //void *Panda_CPU_Map(void *ptr);
 
+//reserve for future usage
 extern "C"
 void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1);
+
+extern "C"
+void Panda_Shuffle_Merge_GPU(panda_context *d_g_state_1, gpu_context *d_g_state_0);
+
+extern "C"
+void Panda_Shuffle_Merge_CPU(panda_context *d_g_state_1, cpu_context *d_g_state_0);
+
 
 extern "C"
 void *Panda_Reduce(void *ptr);
@@ -329,6 +386,10 @@ extern "C"
 cpu_context *GetCPUContext();
 
 extern "C"
+job_configuration *GetJobConf();
+
+
+extern "C"
 void AddMapInputRecord2(gpu_context*		spec, 
 		   void*		key, 
 		   void*		val, 
@@ -337,11 +398,20 @@ void AddMapInputRecord2(gpu_context*		spec,
 
 extern "C"
 void AddMapInputRecordGPU(gpu_context* d_g_state,
-						keyval_t *kv_p);
+						keyval_t *kv_p, int start_id, int end_id);
+
+extern "C"
+void AddReduceInputRecordGPU(gpu_context* d_g_state, 
+							 keyvals_t * sorted_intermediate_keyvals_arr, int starti, int endi);
 
 extern "C"
 void AddMapInputRecordCPU(cpu_context* d_g_state,
-						keyval_t *kv_p);
+						keyval_t *kv_p, int start, int end);
+
+extern "C"
+void AddReduceInputRecordCPU(cpu_context* d_g_state,
+						keyvals_t * kv_p, int starti, int endj);
+
 
 extern "C"
 void MapReduce2(gpu_context *d_g_state);
@@ -438,8 +508,8 @@ extern __shared__ char sbuf[];
 
 __global__ void printData(gpu_context d_g_state );
 __global__ void printData2(gpu_context d_g_state );
-__global__ void printData3(gpu_context d_g_state );
-__global__ void printData4(int index, int j, val_t *p);
+__global__ void printData3(float *C);
+
 
 #ifdef _DEBUG
 #define DoLog(...) do{printf("[PandaLog][%s]\t\t",__FUNCTION__);printf(__VA_ARGS__);printf("\n");}while(0)

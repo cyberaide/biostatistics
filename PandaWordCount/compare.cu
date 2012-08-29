@@ -32,7 +32,7 @@ __device__ int compare(const void *d_a, int len_a, const void *d_b, int len_b)
 }
 
 
-int compare_host(const void *d_a, int len_a, const void *d_b, int len_b)
+int cpu_compare(const void *d_a, int len_a, const void *d_b, int len_b)
 {
 	char* word1 = (char*)d_a;
 	char* word2 = (char*)d_b;
@@ -43,6 +43,7 @@ int compare_host(const void *d_a, int len_a, const void *d_b, int len_b)
 
 	return 0;
 }
+
 
 
 #endif //__COMPARE_CU__

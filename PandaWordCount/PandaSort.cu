@@ -371,19 +371,14 @@ __global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenIn
 		bs_pStart=d_bound[(bid+startBlock)<<1];
 		bs_pEnd=d_bound[((bid+startBlock)<<1)+1];
 		bs_numElement=bs_pEnd-bs_pStart;
-		//if(bid==82&& bs_pStart==6339)
-		//	printf("%d, %d, %d\n", bs_pStart, bs_pEnd, bs_numElement);
-		
+			
 	}
 	__syncthreads();
     // Copy input to shared mem.
 	if(tid<bs_numElement)
 	{
 		bs_shared[tid] = d_values[tid+bs_pStart];
-		//if(bid==82 && bs_pStart==6339)
-		//	printf("tid %d, pos, %d, %d, %d, %d\n", tid,tid+bs_pStart, bs_pStart,bs_pEnd, d_values[tid+bs_pStart].x);
-		//if(6342==tid+bs_pStart)
-		//	printf(")))tid %d, pos, %d, %d, %d, %d\n", tid,tid+bs_pStart, bs_pStart,bs_pEnd, d_values[tid+bs_pStart].x);
+		
 	}
 	else
 	{
@@ -442,45 +437,12 @@ __global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenIn
 
 __global__ void initialize_kernel(cmp_type_t* d_data, int startPos, int rLen, cmp_type_t value)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	d_data[pos]=value;
+
 }
 
 void bitonicSortMultipleBlocks(void* d_rawData, int totalLenInBytes, cmp_type_t * d_values, int* d_bound, int numBlock, cmp_type_t * d_output)
 {
-	int numThreadsPerBlock_x=SHARED_MEM_INT2;
-	int numThreadsPerBlock_y=1;
-	int numBlock_x=NUM_BLOCK_PER_CHUNK_BITONIC_SORT;
-	int numBlock_y=1;
-	int numChunk=numBlock/numBlock_x;
-	if(numBlock%numBlock_x!=0)
-		numChunk++;
-
-	dim3  thread( numThreadsPerBlock_x, numThreadsPerBlock_y, 1);
-	dim3  grid( numBlock_x, numBlock_y , 1);
-	int i=0;
-	int start=0;
-	int end=0;
-	for(i=0;i<numChunk;i++)
-	{
-		start=i*numBlock_x;
-		end=start+numBlock_x;
-		if(end>numBlock)
-			end=numBlock;
-		//printf("bitonicSortMultipleBlocks_kernel: %d, range, %d, %d\n", i, start, end);
-		bitonicSortMultipleBlocks_kernel<<<grid,thread>>>(d_rawData, totalLenInBytes, d_values, d_bound, start, end-start, d_output);
-		cudaThreadSynchronize();
-	}
-//	cudaThreadSynchronize();
+	
 }
 
 
@@ -632,154 +594,39 @@ void bitonicSortGPU(void* d_rawData, int totalLenInBytes, cmp_type_t* d_Rin, int
 
 __global__ void getIntYArray_kernel(int2* d_input, int startPos, int rLen, int* d_output)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	{
-		int2 value=d_input[pos];
-		d_output[pos]=value.y;
-	}
+
 }
 
 
 __global__ void getXYArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_output)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	{
-		cmp_type_t value=d_input[pos];
-		d_output[pos].x=value.x;
-		d_output[pos].y=value.y;
-	}
+
 }
 
 __global__ void getZWArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_output)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	{
-		cmp_type_t value=d_input[pos];
-		d_output[pos].x=value.z;
-		d_output[pos].y=value.w;
-	}
+
 }
 
 
 __global__ void setXYArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_value)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	{
-		cmp_type_t value=d_input[pos];
-		value.x=d_value[pos].x;
-		value.y=d_value[pos].y;
-		d_input[pos]=value;
-	}
+
 }
 
 __global__ void setZWArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_value)
 {
-    const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	if(pos<rLen)
-	{
-		cmp_type_t value=d_input[pos];
-		value.z=d_value[pos].x;
-		value.w=d_value[pos].y;
-		d_input[pos]=value;
-	}
+
 }
 
 void getIntYArray(int2 *d_data, int rLen, int* d_output)
 {
-	int numThreadsPerBlock_x=512;
-	int numThreadsPerBlock_y=1;
-	int numBlock_x=512;
-	int numBlock_y=1;
-	int chunkSize=numBlock_x*numThreadsPerBlock_x;
-	int numChunk=rLen/chunkSize;
-	if(rLen%chunkSize!=0)
-		numChunk++;
 
-	dim3  thread( numThreadsPerBlock_x, numThreadsPerBlock_y, 1);
-	dim3  grid( numBlock_x, numBlock_y , 1);
-	int i=0;
-	int start=0;
-	int end=0;
-	for(i=0;i<numChunk;i++)
-	{
-		start=i*chunkSize;
-		end=start+chunkSize;
-		if(end>rLen)
-			end=rLen;
-		getIntYArray_kernel<<<grid,thread>>>(d_data, start, rLen, d_output);
-	} 
-	cudaThreadSynchronize();
 }
 
 void getXYArray(cmp_type_t *d_data, int rLen, int2* d_output)
 {
-	int numThreadsPerBlock_x=512;
-	int numThreadsPerBlock_y=1;
-	int numBlock_x=512;
-	int numBlock_y=1;
-	int chunkSize=numBlock_x*numThreadsPerBlock_x;
-	int numChunk=rLen/chunkSize;
-	if(rLen%chunkSize!=0)
-		numChunk++;
 
-	dim3  thread( numThreadsPerBlock_x, numThreadsPerBlock_y, 1);
-	dim3  grid( numBlock_x, numBlock_y , 1);
-	int i=0;
-	int start=0;
-	int end=0;
-	for(i=0;i<numChunk;i++)
-	{
-		start=i*chunkSize;
-		end=start+chunkSize;
-		if(end>rLen)
-			end=rLen;
-		getXYArray_kernel<<<grid,thread>>>(d_data, start, rLen, d_output);
-	} 
-	cudaThreadSynchronize();
 }
 
 void getZWArray(cmp_type_t *d_data, int rLen, int2* d_output)
@@ -800,112 +647,25 @@ void setZWArray(cmp_type_t *d_data, int rLen, int2* d_value)
 }
 __global__ void copyChunks_kernel(void *d_source, int startPos, int2* d_Rin, int rLen, int *d_sum, void *d_dest)
 {
-	const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	
-	if(pos<rLen)
-	{
-		int2 value=d_Rin[pos];
-		int offset=value.x;
-		int size=value.y;
-		int startWritePos=d_sum[pos];
-		int i=0;
-		char *source=(char*)d_source;
-		char *dest=(char*)d_dest;
-		for(i=0;i<size;i++)
-		{
-			dest[i+startWritePos]=source[i+offset];
-		}
-		value.x=startWritePos;
-		d_Rin[pos]=value;
-	}
+
 }
 
 __global__ void getChunkBoundary_kernel(void* d_rawData, int startPos, cmp_type_t *d_Rin, 
 										int rLen, int* d_startArray)
 {
-	const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	
-	if(pos<rLen)
-	{
-		int result=0;
-		if(pos==0)//the start position
-		{
-			result=1;
-		}
-		else
-		{
-			cmp_type_t cur=d_Rin[pos];
-			cmp_type_t left=d_Rin[pos-1];
-			if(getCompareValue(d_rawData, cur, left)!=0)
-			{
-				result=1;
-			}
-		}
-		d_startArray[pos]=result;	
-	}
+
 }
 
 __global__ void setBoundaryInt2_kernel(int* d_boundary, int startPos, int numKey, int rLen,
 										  int2* d_boundaryRange)
 {
-	const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	
-	if(pos<numKey)
-	{
-		int2 flag;
-		flag.x=d_boundary[pos];
-		if((pos+1)!=numKey)
-			flag.y=d_boundary[pos+1];
-		else
-			flag.y=rLen;
-		d_boundaryRange[pos]=flag;
-	}
+
 }
 
 __global__ void writeBoundary_kernel(int startPos, int rLen, int* d_startArray,
 									int* d_startSumArray, int* d_bounary)
 {
-	const int by = blockIdx.y;
-	const int bx = blockIdx.x;
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;	
-	const int tid=tx+ty*blockDim.x;
-	const int bid=bx+by*gridDim.x;
-	const int numThread=blockDim.x;
-	const int resultID=(bid)*numThread+tid;
-	int pos=startPos+resultID;
-	
-	if(pos<rLen)
-	{
-		int flag=d_startArray[pos];
-		int writePos=d_startSumArray[pos];
-		if(flag==1)
-			d_bounary[writePos]=pos;
-	}
+
 }
 
 void copyChunks(void *d_source, int2* d_Rin, int rLen, void *d_dest)
@@ -1056,13 +816,22 @@ __global__ void copyDataFromDevice2Host2(gpu_context d_g_state)
 }//__global__	
 #endif
 
-void StartCPUShuffle(cpu_context *d_g_state){
+void StartCPUShuffle2(thread_info_t *thread_info){
 	
+	cpu_context *d_g_state = (cpu_context*)(thread_info->d_g_state);
+	job_configuration *cpu_job_conf = (job_configuration*)(thread_info->job_conf);
+
+	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
+	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[1].arr_len);
+	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[2].arr_len);
+	DoLog("NUM INPUT Records:%d",d_g_state->num_input_record);
+
+	//TODO put all jobs related object to job_conf
 	bool configured;	
 	int cpu_group_id;	
 	int num_input_record;
 	int num_cpus;	
-							
+								
 	keyval_t * input_keyval_arr;
 	keyval_arr_t *intermediate_keyval_arr_arr_p = d_g_state->intermediate_keyval_arr_arr_p;
 					
@@ -1084,8 +853,7 @@ void StartCPUShuffle(cpu_context *d_g_state){
 					
 			char *key_i = (char *)(intermediate_keyval_arr_arr_p[i].arr[j].key);
 			int keySize_i = (intermediate_keyval_arr_arr_p[i].arr[j].keySize);
-			
-					
+								
 			char *val_i = (char *)(intermediate_keyval_arr_arr_p[i].arr[j].val);
 			int valSize_i = (intermediate_keyval_arr_arr_p[i].arr[j].valSize);
 			
@@ -1094,7 +862,7 @@ void StartCPUShuffle(cpu_context *d_g_state){
 				char *key_k = (char *)(sorted_intermediate_keyvals_arr[k].key);
 				int keySize_k = sorted_intermediate_keyvals_arr[k].keySize;
 					 
-				if ( compare_host(key_i, keySize_i, key_k, keySize_k) != 0 )
+				if ( cpu_compare(key_i, keySize_i, key_k, keySize_k) != 0 )
 				continue;
 				
 				//found the match
@@ -1135,10 +903,97 @@ void StartCPUShuffle(cpu_context *d_g_state){
 		}//for j;
 	}//for i;
 	d_g_state->sorted_intermediate_keyvals_arr = sorted_intermediate_keyvals_arr;
-	d_g_state->sorted_key_arr_len = sorted_key_arr_len;
+	d_g_state->sorted_keyvals_arr_len = sorted_key_arr_len;
+
+	DoLog("total number of different intermediate records:%d",sorted_key_arr_len);
+
+
+}
+
+
+void StartCPUShuffle(cpu_context *d_g_state){
+#ifdef ABC
+	bool configured;	
+	int cpu_group_id;	
+	int num_input_record;
+	int num_cpus;	
+							
+	keyval_t * input_keyval_arr;
+	keyval_arr_t *intermediate_keyval_arr_arr_p = d_g_state->intermediate_keyval_arr_arr_p;
+					
+	long total_count = 0;
+	int index = 0;
+	for(int i=0;i<d_g_state->num_input_record;i++){
+		total_count += intermediate_keyval_arr_arr_p[i].arr_len;
+	}//for
+
+	DoLog("total intermediate record count:%d\n",total_count);
+	
+	d_g_state->sorted_intermediate_keyvals_arr = NULL;
+	keyvals_t * sorted_intermediate_keyvals_arr = d_g_state->sorted_intermediate_keyvals_arr;
+
+	int sorted_key_arr_len = 0;
+	for(int i=0;i<d_g_state->num_input_record;i++){
+		int len = intermediate_keyval_arr_arr_p[i].arr_len;
+		for (int j=0;j<len;j++){
+					
+			char *key_i = (char *)(intermediate_keyval_arr_arr_p[i].arr[j].key);
+			int keySize_i = (intermediate_keyval_arr_arr_p[i].arr[j].keySize);
+			
+					
+			char *val_i = (char *)(intermediate_keyval_arr_arr_p[i].arr[j].val);
+			int valSize_i = (intermediate_keyval_arr_arr_p[i].arr[j].valSize);
+			
+			int k = 0;
+			for (; k<sorted_key_arr_len; k++){
+				char *key_k = (char *)(sorted_intermediate_keyvals_arr[k].key);
+				int keySize_k = sorted_intermediate_keyvals_arr[k].keySize;
+					 
+				if ( cpu_compare(key_i, keySize_i, key_k, keySize_k) != 0 )
+				continue;
+				
+				//found the match
+				val_t *vals = sorted_intermediate_keyvals_arr[k].vals;
+				sorted_intermediate_keyvals_arr[k].val_arr_len++;
+				sorted_intermediate_keyvals_arr[k].vals = (val_t*)realloc(vals, sizeof(val_t)*(sorted_intermediate_keyvals_arr[k].val_arr_len));
+				
+				int index = sorted_intermediate_keyvals_arr[k].val_arr_len - 1;
+				sorted_intermediate_keyvals_arr[k].vals[index].valSize = valSize_i;
+				sorted_intermediate_keyvals_arr[k].vals[index].val = (char *)malloc(sizeof(char)*valSize_i);
+				memcpy(sorted_intermediate_keyvals_arr[k].vals[index].val,val_i,valSize_i);
+				break;
+
+			}//for
+
+			if (k == sorted_key_arr_len){
+				
+				if (sorted_key_arr_len == 0)
+					sorted_intermediate_keyvals_arr = NULL;
+
+				sorted_key_arr_len++;
+				sorted_intermediate_keyvals_arr = (keyvals_t *)realloc(sorted_intermediate_keyvals_arr, sizeof(keyvals_t)*sorted_key_arr_len);
+				int index = sorted_key_arr_len-1;
+				keyvals_t* kvals_p = (keyvals_t *)&(sorted_intermediate_keyvals_arr[index]);
+				
+				kvals_p->keySize = keySize_i;
+				kvals_p->key = malloc(sizeof(char)*keySize_i);
+				memcpy(kvals_p->key, key_i, keySize_i);
+				
+				kvals_p->vals = (val_t *)malloc(sizeof(val_t));
+				kvals_p->val_arr_len = 1;
+
+				kvals_p->vals[0].valSize = valSize_i;
+				kvals_p->vals[0].val = (char *)malloc(sizeof(char)*valSize_i);
+				memcpy(kvals_p->vals[0].val,val_i, valSize_i);
+
+			}//if
+		}//for j;
+	}//for i;
+	d_g_state->sorted_intermediate_keyvals_arr = sorted_intermediate_keyvals_arr;
+	d_g_state->sorted_keyvals_arr_len = sorted_key_arr_len;
 	DoLog("total number of different intermediate records:%d",sorted_key_arr_len);
 	
-
+#endif
 }
 
 
@@ -1146,7 +1001,6 @@ void StartCPUShuffle(cpu_context *d_g_state){
 void Shuffle4GPUOutput(gpu_context* d_g_state){
 	
 	cudaThreadSynchronize();
-
 	int *count_arr = (int *)malloc(sizeof(int) * d_g_state->num_input_record);
 	//DoLog("begin to copy data from device to host memory  num_input_record:%d",d_g_state->num_input_record);
 	//DoLog("allocate memory for d_intermediate_keyval_total_count size:%d\n",sizeof(int)*d_g_state->num_input_record);
@@ -1160,13 +1014,15 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 		index++;
 	}//for
 	free(count_arr);
-	
 
-	DoLog("total number of intermediate records:%lu  num_input_records:%d on GPU:%d", total_count, d_g_state->num_input_record, d_g_state->gpu_id);
+	DoLog("GPU_ID:[%d] total number of intermediate records:%lu  num_input_records:%d", d_g_state->gpu_id, total_count, d_g_state->num_input_record);
 	checkCudaErrors(cudaMalloc((void **)&(d_g_state->d_intermediate_keyval_arr),sizeof(keyval_t)*total_count));
-	copyDataFromDevice2Host1<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
-	cudaThreadSynchronize();
 	
+	int num_blocks = (d_g_state->num_mappers + (NUM_THREADS)-1)/(NUM_THREADS);
+	copyDataFromDevice2Host1<<<num_blocks,NUM_THREADS>>>(*d_g_state);
+
+	//copyDataFromDevice2Host1<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
+	cudaThreadSynchronize();
 
 	keyval_t * h_keyval_buff = (keyval_t *)malloc(sizeof(keyval_t)*total_count);
 	checkCudaErrors(cudaMemcpy(h_keyval_buff, d_g_state->d_intermediate_keyval_arr, sizeof(keyval_t)*total_count, cudaMemcpyDeviceToHost));
@@ -1188,7 +1044,7 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 	d_g_state->totalValSize = totalValSize;
 	d_g_state->totalKeySize = totalKeySize;
 		
-	DoLog("totalKeySize:%d totalValSize:%d ",totalKeySize,totalValSize);
+	//DoLog("totalKeySize:%d totalValSize:%d ",totalKeySize,totalValSize);
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_keys_shared_buff,totalKeySize));
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_vals_shared_buff,totalValSize));
 	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_keyval_pos_arr,sizeof(keyval_pos_t)*total_count));
@@ -1197,7 +1053,7 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 																								
 	//DoLog("copyDataFromDevice2Host3");
 	cudaThreadSynchronize();
-	copyDataFromDevice2Host3<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
+	copyDataFromDevice2Host3<<<num_blocks,NUM_THREADS>>>(*d_g_state);
 	//printData<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
 
 	cudaThreadSynchronize();
@@ -1251,10 +1107,8 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 			char *key_i = (char *)(intermediate_key_shared_buff + h_intermediate_keyvals_pos_arr[i].keyPos);
 			char *key_j = (char *)(sorted_keys_shared_buff + h_sorted_keyval_pos_arr[j].keyPos);
 
-			if (compare_host(key_i,iKeySize,key_j,jKeySize)!=0)
+			if (cpu_compare(key_i,iKeySize,key_j,jKeySize)!=0)
 				continue;
-
-
 			
 
 			//found the match
@@ -1287,7 +1141,9 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 	
 	keyval_pos_t *tmp_keyval_pos_arr = (keyval_pos_t *)malloc(sizeof(keyval_pos_t)*total_count);
 	
-	DoLog("total number of different intermediate records:%d",sorted_key_arr_len);
+	
+	DoLog("GPU_ID:[%d] total number of different intermediate records:%d totalKeySize:%d totalValSize:%d",
+		d_g_state->gpu_id, sorted_key_arr_len,totalKeySize,totalValSize);
 
 	int *pos_arr_4_pos_arr = (int*)malloc(sizeof(int)*sorted_key_arr_len);
 	memset(pos_arr_4_pos_arr,0,sizeof(int)*sorted_key_arr_len);
@@ -1337,193 +1193,7 @@ void sort_CPU(gpu_context* d_g_state){
 
 #ifdef REMOVE
 
-	cudaThreadSynchronize();
-	DoLog("sort CPU start begin to copy data from device to host memory len:%d",d_g_state->num_input_record);
-
-	int *count_arr = (int *)malloc(sizeof(int)*d_g_state->num_input_record);
-	DoLog("allocate memory for d_intermediate_keyval_total_count size:%d\n",sizeof(int)*d_g_state->num_input_record);
-	//checkCudaErrors(cudaMalloc((void**)&(d_g_state->d_intermediate_keyval_total_count),sizeof(int)*d_g_state->num_input_record));
-	checkCudaErrors(cudaMemcpy(count_arr, d_g_state->d_intermediate_keyval_total_count, sizeof(int)*d_g_state->num_input_record, cudaMemcpyDeviceToHost));
-	long total_count = 0;
-
-	int index = 0;
-	for(int i=0;i<d_g_state->num_input_record;i++){
-		printf("arr_len[%d]=:%d\n",i,count_arr[i]);
-		total_count += count_arr[i];
-		index++;
-		//if (index>1500&&index<1550)
-		//	printf("index:%d  \ttotal_count1:%lu\n",index, total_count);
-	}//for
 	
-	//int input_record_count = d_g_state->num_input_record;
-	//keyval_arr_t *h_keyval_arr_arr = d_g_state->d_intermediate_keyval_arr_arr;
-	//keyval_arr_t *d_keyval_arr_arr = d_g_state->d_intermediate_keyval_arr_arr;
-	//DoLog("sort CPU 1 total_count:%d  num_input_record:%d",total_count,d_g_state->num_input_record);
-	printf("total_count2:%lu  num_input_records:%d\n", total_count, d_g_state->num_input_record);
-	
-	checkCudaErrors(cudaMalloc((void **)&(d_g_state->d_intermediate_keyval_arr),sizeof(keyval_t)*total_count));
-	//copyDataFromDevice2Host1<<<1,d_g_state->num_input_record>>>(*d_g_state);
-	copyDataFromDevice2Host1<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
-	cudaThreadSynchronize();
-	
-	//printData<<<1,d_g_state->num_input_record>>>( *d_g_state);
-
-	keyval_t * h_buff = (keyval_t *)malloc(sizeof(keyval_t)*total_count);
-	checkCudaErrors(cudaMemcpy(h_buff, d_g_state->d_intermediate_keyval_arr, sizeof(keyval_t)*total_count, cudaMemcpyDeviceToHost));
-	
-	//void *pkey= (void*)malloc(sizeof(char));
-	//void *pval= (void*)malloc(sizeof(char));
-	
-	
-	int totalKeySize = 0;
-	int totalValSize = 0;
-
-	for (int i=0;i<total_count;i++){
-		h_buff[i].valPos = totalValSize;
-		h_buff[i].keyPos = totalKeySize;
-		totalKeySize += h_buff[i].keySize;
-		totalValSize += h_buff[i].valSize;
-	}//for
-	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_keys_shared_buff,totalKeySize));
-	checkCudaErrors(cudaMalloc((void **)&d_g_state->d_intermediate_vals_shared_buff,totalValSize));
-	
-	
-	for (int i=0;i<total_count;i++){
-		//printf("sort_CPU cudaMalloc keySize:%d, valSize:%d		i:%d\n",h_buff[i].keySize,h_buff[i].valSize,i);
-		checkCudaErrors(cudaMalloc((void **)&(h_buff[i].key),h_buff[i].keySize));
-		checkCudaErrors(cudaMalloc((void **)&(h_buff[i].val),h_buff[i].valSize));
-		//cudaMemset((h_buff[i].key), 0, h_buff[i].keySize);
-		//cudaMemset((h_buff[i].val), 0, h_buff[i].valSize);
-		//(d_g_state.d_intermediate_keyval_arr[i]);
-	}//for
-
-	
-	//NOTE:copy h_buff[i].key and h_buff[i].key address to d_intermediate_keyval_arr
-	cudaMemcpy(d_g_state->d_intermediate_keyval_arr,h_buff,sizeof(keyval_t)*total_count,cudaMemcpyHostToDevice);
-	//cudaThreadSynchronize();
-
-	DoLog("sort CPU 2 total_count");
-	//printData<<<1,d_g_state->num_input_record>>>(*d_g_state);
-	cudaThreadSynchronize();
-	copyDataFromDevice2Host2<<<NUM_BLOCKS,NUM_THREADS>>>(*d_g_state);
-
-	cudaThreadSynchronize();
-	//printData<<<1,d_g_state->num_input_record>>>(*d_g_state);
-	cudaThreadSynchronize();
-	
-	for(int i=0;i<total_count;i++){
-		void *p1=h_buff[i].key;
-		void *p2=h_buff[i].val;
-		
-		h_buff[i].key = (void *)malloc(h_buff[i].keySize);
-		h_buff[i].val = (void *)malloc(h_buff[i].valSize);
-		(cudaMemcpy(h_buff[i].key, p1, h_buff[i].keySize, cudaMemcpyDeviceToHost));
-		(cudaMemcpy(h_buff[i].val, p2, h_buff[i].valSize, cudaMemcpyDeviceToHost));
-		//printf("key:%s, val:%s\n",h_buff[i].key,h_buff[i].val);
-
-	}//for
-
-	/*
-	for(int i=0;i<total_count;i++){
-		printf("keySize:%d, valSize:%d  key:%s val:%d\n",h_buff[i].keySize,h_buff[i].valSize,(char *)h_buff[i].key,*(int *)h_buff[i].val);
-	}//for
-	*/
-
-	//d_g_state->d_sorted_keyvals_arr_alloc_len = d_g_state->num_input_record;
-	d_g_state->d_sorted_keyvals_arr_len = 0;
-	//d_g_state->h_sorted_keyvals_arr = NULL;//(keyvals_t *)malloc(sizeof(keyvals_t)*d_g_state->d_sorted_keyvals_arr_alloc_len);
-
-	for (int i=0;i<total_count;i++){
-		int iKeySize = h_buff[i].keySize;
-		int j = 0;
-		for (;j<d_g_state->d_sorted_keyvals_arr_len;j++){
-			int jKeySize = d_g_state->h_sorted_keyvals_arr[j].keySize;
-			if (iKeySize!=jKeySize)
-				continue;
-			bool equal = true;
-			for (int k=0;k<iKeySize;k++){
-				char *p1 = (char *)h_buff[i].key;
-				char *p2 = (char *)(d_g_state->h_sorted_keyvals_arr[j].key);
-				if (p1[k]!=p2[k])
-					equal = false;
-			}//for
-			if (!equal)
-				continue;
-			
-			keyvals_t *p = &(d_g_state->h_sorted_keyvals_arr[j]);
-			p->val_arr_len = p->val_arr_len+1;
-			p->vals = (val_t*)realloc(p->vals,sizeof(val_t)*p->val_arr_len);
-			val_t *p1 = &(p->vals[p->val_arr_len-1]);
-			//val_t *p1 = (val_t*)malloc(sizeof(val_t));
-			p1->valSize = h_buff[i].valSize;
-			p1->val = (void *)malloc(sizeof(p1->valSize));
-			memcpy(p1->val,h_buff[i].val,h_buff[i].valSize);
-			//printf("find same key:%s val:%d\n",h_buff[i].key,*(int*)p1->val);
-			break;//found the match
-		}//for
-
-		if(j==d_g_state->d_sorted_keyvals_arr_len){
-			d_g_state->d_sorted_keyvals_arr_len++;
-			d_g_state->h_sorted_keyvals_arr = (keyvals_t*)realloc(d_g_state->h_sorted_keyvals_arr,d_g_state->d_sorted_keyvals_arr_len*sizeof(keyvals_t));
-			keyvals_t *p = &(d_g_state->h_sorted_keyvals_arr[d_g_state->d_sorted_keyvals_arr_len-1]);
-			p->keySize = iKeySize;
-			p->key = (void *)malloc(iKeySize);
-			memcpy(p->key,h_buff[i].key,iKeySize);
-			p->val_arr_len = 1;
-			p->vals = (val_t*)malloc(sizeof(val_t));
-			p->vals[0].valSize = h_buff[i].valSize;
-			p->vals[0].val = (void *)malloc(p->vals[0].valSize);
-			memcpy(p->vals[0].val,h_buff[i].val,h_buff[i].valSize);
-		}//if
-	}
-
-	/*verify the d_sorted_keyval_arr_len results
-	for (int i=0;i<d_g_state->d_sorted_keyvals_arr_len;i++){
-		keyvals_t *p = &(d_g_state->h_sorted_keyvals_arr[i]);
-		printf("sort CPU 3 key:%s len:%d",p->key,p->val_arr_len);
-		for (int j=0;j<p->val_arr_len;j++)
-			printf("\t%d",*(int*)p->vals[j].val);
-		printf("\n");
-	}//for */
-
-	//Hui 7/7/2012
-	DoLog("-------------------------sort CPU 3 copy sorted data from host to device");
-	DoLog("			d_sorted_keyvals_arr_len:%d\n",d_g_state->d_sorted_keyvals_arr_len);
-	//copy h_sorted_keyvals_arr to d_sorted_keyvals_arr for reduce computation
-	cudaMalloc((void **)&d_g_state->d_sorted_keyvals_arr,sizeof(keyvals_t)*d_g_state->d_sorted_keyvals_arr_len);
-	keyvals_t* keyvals_buff = (keyvals_t*)malloc(sizeof(keyvals_t)*d_g_state->d_sorted_keyvals_arr_len);
-
-	for (int i=0;i<d_g_state->d_sorted_keyvals_arr_len;i++){
-		keyvals_t *p = &(d_g_state->h_sorted_keyvals_arr[i]);
-		keyvals_buff[i].keySize = p->keySize;
-		keyvals_buff[i].val_arr_len = p->val_arr_len;
-		checkCudaErrors(cudaMalloc((void**)&(keyvals_buff[i].key),p->keySize));
-		checkCudaErrors(cudaMemcpy(keyvals_buff[i].key,p->key,p->keySize,cudaMemcpyHostToDevice));
-		
-		val_t* d_val_buff_p = (val_t*)malloc(sizeof(val_t)*p->val_arr_len);
-		for (int j=0;j<p->val_arr_len;j++){
-			//val_t * val_t_p = (val_t*)malloc(sizeof(val_t));
-			
-			val_t *p2;
-			checkCudaErrors(cudaMalloc((void**)&p2,p->vals[j].valSize));
-			checkCudaErrors(cudaMemcpy(p2,p->vals[j].val,p->vals[j].valSize,cudaMemcpyHostToDevice));
-			
-			d_val_buff_p[j].val = p2;
-			d_val_buff_p[j].valSize = p->vals[j].valSize;
-			
-			//printf("sort cpu check value: i:%d, j:%d, val:%d valSize:%d\n",i,j,*(int *)p->vals[j].val,p->vals[j].valSize);
-			//printData4<<<1,1>>>(i,j,val_buff[i].val);
-		}//for
-		
-		checkCudaErrors(cudaMalloc((void**)&(keyvals_buff[i].vals),sizeof(val_t)*p->val_arr_len));
-		checkCudaErrors(cudaMemcpy(keyvals_buff[i].vals,d_val_buff_p,sizeof(val_t)*p->val_arr_len, cudaMemcpyHostToDevice));
-		//printData4<<<1,1>>>(i,keyvals_buff[i].val_arr_len, keyvals_buff[i].vals);
-		//printData4<<<1,1>>>(i,val_buff,p->val_arr_len);
-		//cudaMemcpy(&(d_g_state->d_sorted_keyvals_arr[i]),p,sizeof(keyvals_t));
-	}//for
-	checkCudaErrors(cudaMemcpy(d_g_state->d_sorted_keyvals_arr,keyvals_buff,sizeof(keyvals_t)*d_g_state->d_sorted_keyvals_arr_len,cudaMemcpyHostToDevice));
-
-	//printData3<<<1,d_g_state->d_sorted_keyvals_arr_len>>>(*d_g_state);
 	
 	//start sorting
 	//partition
@@ -1531,48 +1201,97 @@ void sort_CPU(gpu_context* d_g_state){
 
 }
 
-#ifdef REMOVE
 
-int sort_GPU (void * d_inputKeyArray, int totalKeySize, void * d_inputValArray, int totalValueSize, 
-		  cmp_type_t * d_inputPointerArray, int rLen, 
-		  void * d_outputKeyArray, void * d_outputValArray, 
-		  cmp_type_t * d_outputPointerArray, int2 ** h_outputKeyListRange
-		  )
-{
-	//array_startTime(1);
-	int numDistinctKey=0;
-	int totalLenInBytes=-1;
-	bitonicSortGPU(d_inputKeyArray, totalLenInBytes, d_inputPointerArray, rLen, d_outputPointerArray);
-	//array_endTime("sort", 1);
-	//!we first scatter the values and then the keys. so that we can reuse d_PA. 
-	int2 *d_PA;
-	( cudaMalloc( (void**) (&d_PA), sizeof(int2)*rLen) );	
-	//scatter the values.
-	if(d_inputValArray!=NULL)
-	{
-		getZWArray(d_outputPointerArray, rLen, d_PA);
-		copyChunks(d_inputValArray, d_PA, rLen, d_outputValArray);
-		setZWArray(d_outputPointerArray, rLen, d_PA);
-	}
+
+void Panda_Shuffle_Merge_CPU(panda_context *d_g_state_0, cpu_context *d_g_state_1){
+	DoLog("Panda_Shuffle_Merge_CPU CPU_GROUP_ID:[%d]", d_g_state_1->cpu_group_id);
 	
-	//scatter the keys.
-	if(d_inputKeyArray!=NULL)
-	{
-		getXYArray(d_outputPointerArray, rLen, d_PA);
-		copyChunks(d_inputKeyArray, d_PA, rLen, d_outputKeyArray);	
-		setXYArray(d_outputPointerArray, rLen, d_PA);
-	}
-	//find the boudary for each key.
+	keyvals_t * panda_sorted_intermediate_keyvals_arr = d_g_state_0->sorted_intermediate_keyvals_arr;
 
-	numDistinctKey=getChunkBoundary(d_outputKeyArray, d_outputPointerArray, rLen, h_outputKeyListRange);
+	keyvals_t * cpu_sorted_intermediate_keyvals_arr = d_g_state_1->sorted_intermediate_keyvals_arr;
 
-	return numDistinctKey;
+	void *key_0, *key_1;
+	int keySize_0, keySize_1;
+	bool equal;	
+
+	for (int i=0; i<d_g_state_1->sorted_keyvals_arr_len; i++){
+		key_1 = cpu_sorted_intermediate_keyvals_arr[i].key;
+		keySize_1 = cpu_sorted_intermediate_keyvals_arr[i].keySize;
+			
+		int j;
+		for (j=0; j<d_g_state_0->sorted_keyvals_arr_len; j++){
+			key_0 = panda_sorted_intermediate_keyvals_arr[j].key;
+			keySize_0 = panda_sorted_intermediate_keyvals_arr[j].keySize;
+			
+			if(cpu_compare(key_0,keySize_0,key_1,keySize_1)!=0)
+				continue;
+			
+		
+			//copy values from cpu_contex to panda context
+			int val_arr_len_1 = cpu_sorted_intermediate_keyvals_arr[i].val_arr_len;
+			int index = panda_sorted_intermediate_keyvals_arr[j].val_arr_len;
+			if (panda_sorted_intermediate_keyvals_arr[j].val_arr_len ==0)
+				panda_sorted_intermediate_keyvals_arr[j].vals = NULL;
+			panda_sorted_intermediate_keyvals_arr[j].val_arr_len += val_arr_len_1;
+			
+			val_t *vals = panda_sorted_intermediate_keyvals_arr[j].vals;
+			panda_sorted_intermediate_keyvals_arr[j].vals = (val_t*)realloc(vals, sizeof(val_t)*(panda_sorted_intermediate_keyvals_arr[j].val_arr_len));
+
+			for (int k=0;k<val_arr_len_1;k++){
+				char *val_0 = (char *)(cpu_sorted_intermediate_keyvals_arr[i].vals[k].val);
+				int valSize_0 = cpu_sorted_intermediate_keyvals_arr[i].vals[k].valSize;
+
+				panda_sorted_intermediate_keyvals_arr[j].vals[index+k].val = malloc(sizeof(char)*valSize_0);
+				panda_sorted_intermediate_keyvals_arr[j].vals[index+k].valSize = valSize_0;
+				memcpy(panda_sorted_intermediate_keyvals_arr[j].vals[index+k].val, val_0, valSize_0);
+
+			}//for
+			break;
+		}//for
+		
+		if (j == d_g_state_0->sorted_keyvals_arr_len){
+
+			if (d_g_state_0->sorted_keyvals_arr_len == 0) panda_sorted_intermediate_keyvals_arr = NULL;
+
+			val_t *vals = cpu_sorted_intermediate_keyvals_arr[i].vals;
+			int val_arr_len = cpu_sorted_intermediate_keyvals_arr[i].val_arr_len;
+
+			d_g_state_0->sorted_keyvals_arr_len++;
+			panda_sorted_intermediate_keyvals_arr = (keyvals_t *)realloc(panda_sorted_intermediate_keyvals_arr, 
+				sizeof(keyvals_t)*(d_g_state_0->sorted_keyvals_arr_len));
+
+			int index = d_g_state_0->sorted_keyvals_arr_len-1;
+			keyvals_t* kvals_p = (keyvals_t *)&(panda_sorted_intermediate_keyvals_arr[index]);
+				
+			kvals_p->keySize = keySize_1;
+			kvals_p->key = malloc(sizeof(char)*keySize_1);
+			memcpy(kvals_p->key, key_1, keySize_1);
+				
+			kvals_p->vals = (val_t *)malloc(sizeof(val_t)*val_arr_len);
+			kvals_p->val_arr_len = val_arr_len;
+
+			for (int k=0; k < val_arr_len; k++){
+				char *val_0 = (char *)(cpu_sorted_intermediate_keyvals_arr[i].vals[k].val);
+				int valSize_0 = cpu_sorted_intermediate_keyvals_arr[i].vals[k].valSize;
+
+				kvals_p->vals[k].valSize = valSize_0;
+				kvals_p->vals[k].val = (char *)malloc(sizeof(char)*valSize_0);
+
+				memcpy(kvals_p->vals[k].val,val_0, valSize_0);
+
+			}//for
+		}//if (j == sorted_key_arr_len){
+	}//if
+	d_g_state_0->sorted_intermediate_keyvals_arr = cpu_sorted_intermediate_keyvals_arr;
+	DoLog("CPU_GROUP_ID:[%d] DONE.",d_g_state_1->cpu_group_id);
 
 }
-#endif
-			
-void Panda_Shuffle_Merge2(gpu_context *d_g_state_0, cpu_context *d_g_state_1){
 
+
+void Panda_Shuffle_Merge_GPU(panda_context *d_g_state_1, gpu_context *d_g_state_0){
+	
+	DoLog("Panda_Shuffle_Merge_GPU GPU_ID:[%d]",d_g_state_0->gpu_id);
+	
 	char *sorted_keys_shared_buff_0 = (char *)d_g_state_0->h_sorted_keys_shared_buff;
 	char *sorted_vals_shared_buff_0 = (char *)d_g_state_0->h_sorted_vals_shared_buff;
 
@@ -1583,18 +1302,22 @@ void Panda_Shuffle_Merge2(gpu_context *d_g_state_0, cpu_context *d_g_state_1){
 	int keySize_0, keySize_1;
 	bool equal;	
 	
+
 	for (int i=0;i<d_g_state_0->d_sorted_keyvals_arr_len;i++){
+		//DoLog("keyPos:%d",keyval_pos_arr_0[i].keyPos);
 		key_0 = sorted_keys_shared_buff_0 + keyval_pos_arr_0[i].keyPos;
 		keySize_0 = keyval_pos_arr_0[i].keySize;
 			
-		int j;
-		for (j=0; j<d_g_state_1->sorted_key_arr_len; j++){
+		int j = 0;
+		for (; j<d_g_state_1->sorted_keyvals_arr_len; j++){
+			
 			key_1 = sorted_intermediate_keyvals_arr[j].key;
+			
 			keySize_1 = sorted_intermediate_keyvals_arr[j].keySize;
 			
-			if(compare_host(key_0,keySize_0,key_1,keySize_1)!=0)
+			if(cpu_compare(key_0,keySize_0,key_1,keySize_1)!=0)
 				continue;
-
+			
 			val_t *vals = sorted_intermediate_keyvals_arr[j].vals;
 			//copy values from gpu to cpu context
 			int val_arr_len_0 =keyval_pos_arr_0[i].val_arr_len;
@@ -1603,29 +1326,34 @@ void Panda_Shuffle_Merge2(gpu_context *d_g_state_0, cpu_context *d_g_state_1){
 			int index = sorted_intermediate_keyvals_arr[j].val_arr_len;
 			sorted_intermediate_keyvals_arr[j].val_arr_len += val_arr_len_0;
 			sorted_intermediate_keyvals_arr[j].vals = (val_t*)realloc(vals, sizeof(val_t)*(sorted_intermediate_keyvals_arr[j].val_arr_len));
-
+			
 			for (int k=0;k<val_arr_len_0;k++){
+				
 				char *val_0 = sorted_vals_shared_buff_0 + val_pos_arr[k].valPos;
 				int valSize_0 = val_pos_arr[k].valSize;
-				sorted_intermediate_keyvals_arr[k].vals[index+k].val = malloc(sizeof(char)*valSize_0);
-				sorted_intermediate_keyvals_arr[k].vals[index+k].valSize = valSize_0;
-				memcpy(sorted_intermediate_keyvals_arr[k].vals[index+k].val, val_0, valSize_0);
+			
+				sorted_intermediate_keyvals_arr[j].vals[index+k].val = malloc(sizeof(char)*valSize_0);
+				sorted_intermediate_keyvals_arr[j].vals[index+k].valSize = valSize_0;
+				memcpy(sorted_intermediate_keyvals_arr[j].vals[index+k].val, val_0, valSize_0);
 			}//for
 			break;
 		}//for
 	
-		if (j == d_g_state_1->sorted_key_arr_len){
+		if (j == d_g_state_1->sorted_keyvals_arr_len){
 				
-			if (d_g_state_1->sorted_key_arr_len == 0) sorted_intermediate_keyvals_arr = NULL;
+			if (d_g_state_1->sorted_keyvals_arr_len == 0) sorted_intermediate_keyvals_arr = NULL;
 
-			val_t *vals = sorted_intermediate_keyvals_arr[j].vals;
+			//val_t *vals = sorted_intermediate_keyvals_arr[j].vals;
+			//DoLog("hi there");
+
 			int val_arr_len =keyval_pos_arr_0[i].val_arr_len;
+			
 			val_pos_t * val_pos_arr =keyval_pos_arr_0[i].val_pos_arr;
 			
-			d_g_state_1->sorted_key_arr_len++;
-			sorted_intermediate_keyvals_arr = (keyvals_t *)realloc(sorted_intermediate_keyvals_arr, sizeof(keyvals_t)*(d_g_state_1->sorted_key_arr_len));
-
-			int index = d_g_state_1->sorted_key_arr_len-1;
+			d_g_state_1->sorted_keyvals_arr_len++;
+			sorted_intermediate_keyvals_arr = (keyvals_t *)realloc(sorted_intermediate_keyvals_arr, sizeof(keyvals_t)*(d_g_state_1->sorted_keyvals_arr_len));
+			
+			int index = d_g_state_1->sorted_keyvals_arr_len-1;
 			keyvals_t* kvals_p = (keyvals_t *)&(sorted_intermediate_keyvals_arr[index]);
 				
 			kvals_p->keySize = keySize_0;
@@ -1640,14 +1368,14 @@ void Panda_Shuffle_Merge2(gpu_context *d_g_state_0, cpu_context *d_g_state_1){
 				int valSize_0 = val_pos_arr[k].valSize;
 
 				kvals_p->vals[k].valSize = valSize_0;
-				kvals_p->vals[0].val = (char *)malloc(sizeof(char)*valSize_0);
-				memcpy(kvals_p->vals[0].val,val_0, valSize_0);
+				kvals_p->vals[k].val = (char *)malloc(sizeof(char)*valSize_0);
+				memcpy(kvals_p->vals[k].val,val_0, valSize_0);
 			}//for
 		}//if (j == sorted_key_arr_len){
 	}//if
 
 	d_g_state_1->sorted_intermediate_keyvals_arr = sorted_intermediate_keyvals_arr;
-
+	DoLog("GPU_ID:[%d] DONE",d_g_state_0->gpu_id);
 }
 			
 void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1){
@@ -1678,7 +1406,7 @@ void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1){
 			key_1 = sorted_keys_shared_buff_1 + keyval_pos_arr_1[j].keyPos;
 			keySize_1 = keyval_pos_arr_1[j].keySize;
 			
-			if(compare_host(key_0,keySize_0,key_1,keySize_1)!=0)
+			if(cpu_compare(key_0,keySize_0,key_1,keySize_1)!=0)
 				continue;
 			
 			//copy all vals in d_g_state_0->h_sorted_keyval_pos_arr[i] to d_g_state_1->h_sorted_keyval_pos_arr[j];
