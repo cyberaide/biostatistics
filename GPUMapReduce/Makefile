@@ -8,28 +8,30 @@ all:panda_application
 CC	= g++
 NVCC	= nvcc
 
-NVCCFLAGS += --ptxas-options=-v
-NVCCFLAGS += -Xcompiler -fopenmp
-INCLUDE   = -I. -I/opt/cuda/include/ -I/opt/NVIDIA_GPU_Computing_SDK/C/common/inc/
-LIBPATH =  -L./ -L/opt/cuda/lib64/ -L/opt/NVIDIA_GPU_Computing_SDK/C/lib/
+#NVCCFLAGS += --ptxas-options=-v
+NVCCFLAGS += -Xcompiler -O
+
+INCLUDE   = -I. -I/sw/keeneland/cuda/4.1/linux_binary/include/ -I/opt/NVIDIA_GPU_Computing_SDK/4.1.28/C/common/inc/
+LIBPATH =  -L./ -L/sw/keeneland/cuda/4.1/linux_binary/lib64/ -L/opt/NVIDIA_GPU_Computing_SDK/4.1.28/C/lib/
 
 .c.o:
 	$(CC) -c $<
 
-OBJ		= main.o PandaLib.o PandaUtils.o PandaScan.o PandaSort.o
+OBJ		= main.o PandaLib.o PandaUtils.o PandaScan.o PandaSort.o matrixutil.o
 
 PandaLib.o: PandaLib.cu
-	$(NVCC) -arch=sm_20 -c PandaLib.cu $(INCLUDE) -lcudart
+	$(NVCC) -O -arch=sm_20 -c PandaLib.cu $(INCLUDE) -lcudart
 PandaUtils.o: PandaUtils.cu
-	$(NVCC) -arch=sm_20 -c PandaUtils.cu $(INCLUDE) -lcudart 
+	$(NVCC) -O -arch=sm_20 -c PandaUtils.cu $(INCLUDE) -lcudart 
 PandaScan.o: PandaScan.cu
 	nvcc -arch=sm_20 -c PandaScan.cu -o PandaScan.o $(INCLUDE) -lcudart
 PandaSort.o: PandaSort.cu
 	nvcc -arch=sm_20 -c PandaSort.cu -o PandaSort.o $(INCLUDE) -lcudart 
-
+matrixutil.o: matrixutil.cpp
+	g++ -O -o matrixutil.o -c matrixutil.cpp
 main.o: main.cu
-	nvcc -arch=sm_20 -c main.cu -o main.o $(INCLUDE) -lcudart
+	nvcc -O -arch=sm_20 -c main.cu -o main.o $(INCLUDE) -lcudart
 panda_application: $(OBJ)
-	nvcc -arch=sm_20 -o panda_wc $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart -lcutil_x86_64
+	nvcc -O -arch=sm_20 -o panda_matrixMul_1d $(OBJ) $(INCLUDE) $(LIBPATH) -lcudart 
 clean:
-	rm *.o panda_wc
+	rm *.o panda_matrixMul

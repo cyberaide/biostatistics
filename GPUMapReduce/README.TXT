@@ -16,6 +16,7 @@ Build notes for VS:
 BUG:
 
 
+
 NOTES:
 1)	do not include map.cu and reduce.cu when building source files, as they are already included in PandaLib.cu
 2)	Visual Studio Intellisense does not autolist all the members: 
@@ -33,7 +34,3 @@ TODO List:
 6)Shared memory for intermediate data	DONE
 7)Shared memory for reduce data
 
-Performance tests:
-	7/9/2012 WordCount input3: V0.12  105 seconds   on GT430
-	7/10/2012 WordCount input3: V0.12  10  seconds   on GT430
-	7/13/2012 WordCount input3: V0.13 2.9 seconds on T2750

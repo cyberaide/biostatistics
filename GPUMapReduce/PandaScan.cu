@@ -279,7 +279,7 @@ unsigned int g_numLevelsAllocated = 0;
 
 void preallocBlockSums(unsigned int maxNumElements)
 {
-//    assert(g_numEltsAllocated == 0); // shouldn't be called 
+	//assert(g_numEltsAllocated == 0); // shouldn't be called 
 
     g_numEltsAllocated = maxNumElements;
 
@@ -405,7 +405,7 @@ void prescanArrayRecursive(int *outArray,
     dim3  grid(max(1, numBlocks - np2LastBlock), 1, 1); 
     dim3  threads(numThreads, 1, 1);
 
-    // make sure there are no CUDA errors before we start
+    // make sure there are no CUDA errors before we start_row_id
 //    CUT_CHECK_ERROR("prescanArrayRecursive before kernels");
 
     // execute the scan
