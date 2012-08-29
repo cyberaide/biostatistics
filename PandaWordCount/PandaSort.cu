@@ -341,14 +341,14 @@ __global__ void bitonicSortSingleBlock_kernel(void* d_rawData, int totalLenInByt
 	{
 		d_output[tid] = bs_cmpbuf[tid+SHARED_MEM_INT2-rLen];
 	}*/
-	int startCopy=SHARED_MEM_INT2-rLen;
-	if(tid>=startCopy)
+	int start_row_idCopy=SHARED_MEM_INT2-rLen;
+	if(tid>=start_row_idCopy)
 	{
-		d_output[tid-startCopy]=bs_cmpbuf[tid];
+		d_output[tid-start_row_idCopy]=bs_cmpbuf[tid];
 	}
 }
 
-__global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenInBytes, cmp_type_t * d_values, int* d_bound, int startBlock, int numBlock, cmp_type_t *d_output)
+__global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenInBytes, cmp_type_t * d_values, int* d_bound, int start_row_idBlock, int numBlock, cmp_type_t *d_output)
 {
 	__shared__ int bs_pStart;
 	__shared__ int bs_pEnd;
@@ -368,8 +368,8 @@ __global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenIn
 
 	if(tid==0)
 	{
-		bs_pStart=d_bound[(bid+startBlock)<<1];
-		bs_pEnd=d_bound[((bid+startBlock)<<1)+1];
+		bs_pStart=d_bound[(bid+start_row_idBlock)<<1];
+		bs_pEnd=d_bound[((bid+start_row_idBlock)<<1)+1];
 		bs_numElement=bs_pEnd-bs_pStart;
 			
 	}
@@ -427,7 +427,7 @@ __global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenIn
 	//{
 	//	d_output[tid+bs_pStart] = bs_shared[tid+SHARED_MEM_INT2-bs_numElement];
 	//}
-	//int startCopy=SHARED_MEM_INT2-bs_numElement;
+	//int start_row_idCopy=SHARED_MEM_INT2-bs_numElement;
 	if(tid>=bs_numElement)
 	{
 		d_output[tid-bs_numElement]=bs_shared[tid];
@@ -435,7 +435,7 @@ __global__ void bitonicSortMultipleBlocks_kernel(void* d_rawData, int totalLenIn
 }
 
 
-__global__ void initialize_kernel(cmp_type_t* d_data, int startPos, int rLen, cmp_type_t value)
+__global__ void initialize_kernel(cmp_type_t* d_data, int start_row_idPos, int rLen, cmp_type_t value)
 {
 
 }
@@ -475,15 +475,15 @@ void initialize(cmp_type_t *d_data, int rLen, cmp_type_t value)
 	dim3  thread( numThreadsPerBlock_x, numThreadsPerBlock_y, 1);
 	dim3  grid( numBlock_x, numBlock_y , 1);
 	int i=0;
-	int start=0;
+	int start_row_id=0;
 	int end=0;
 	for(i=0;i<numChunk;i++)
 	{
-		start=i*chunkSize;
-		end=start+chunkSize;
+		start_row_id=i*chunkSize;
+		end=start_row_id+chunkSize;
 		if(end>rLen)
 			end=rLen;
-		initialize_kernel<<<grid,thread>>>(d_data, start, rLen, value);
+		initialize_kernel<<<grid,thread>>>(d_data, start_row_id, rLen, value);
 	} 
 	cudaThreadSynchronize();
 }
@@ -592,29 +592,29 @@ void bitonicSortGPU(void* d_rawData, int totalLenInBytes, cmp_type_t* d_Rin, int
 	}
 }
 
-__global__ void getIntYArray_kernel(int2* d_input, int startPos, int rLen, int* d_output)
+__global__ void getIntYArray_kernel(int2* d_input, int start_row_idPos, int rLen, int* d_output)
 {
 
 }
 
 
-__global__ void getXYArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_output)
+__global__ void getXYArray_kernel(cmp_type_t* d_input, int start_row_idPos, int rLen, int2* d_output)
 {
 
 }
 
-__global__ void getZWArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_output)
+__global__ void getZWArray_kernel(cmp_type_t* d_input, int start_row_idPos, int rLen, int2* d_output)
 {
 
 }
 
 
-__global__ void setXYArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_value)
+__global__ void setXYArray_kernel(cmp_type_t* d_input, int start_row_idPos, int rLen, int2* d_value)
 {
 
 }
 
-__global__ void setZWArray_kernel(cmp_type_t* d_input, int startPos, int rLen, int2* d_value)
+__global__ void setZWArray_kernel(cmp_type_t* d_input, int start_row_idPos, int rLen, int2* d_value)
 {
 
 }
@@ -645,25 +645,25 @@ void setZWArray(cmp_type_t *d_data, int rLen, int2* d_value)
 {
 	cudaThreadSynchronize();
 }
-__global__ void copyChunks_kernel(void *d_source, int startPos, int2* d_Rin, int rLen, int *d_sum, void *d_dest)
+__global__ void copyChunks_kernel(void *d_source, int start_row_idPos, int2* d_Rin, int rLen, int *d_sum, void *d_dest)
 {
 
 }
 
-__global__ void getChunkBoundary_kernel(void* d_rawData, int startPos, cmp_type_t *d_Rin, 
-										int rLen, int* d_startArray)
+__global__ void getChunkBoundary_kernel(void* d_rawData, int start_row_idPos, cmp_type_t *d_Rin, 
+										int rLen, int* d_start_row_idArray)
 {
 
 }
 
-__global__ void setBoundaryInt2_kernel(int* d_boundary, int startPos, int numKey, int rLen,
+__global__ void setBoundaryInt2_kernel(int* d_boundary, int start_row_idPos, int numKey, int rLen,
 										  int2* d_boundaryRange)
 {
 
 }
 
-__global__ void writeBoundary_kernel(int startPos, int rLen, int* d_startArray,
-									int* d_startSumArray, int* d_bounary)
+__global__ void writeBoundary_kernel(int start_row_idPos, int rLen, int* d_start_row_idArray,
+									int* d_start_row_idSumArray, int* d_bounary)
 {
 
 }
@@ -682,17 +682,17 @@ __global__ void copyDataFromDevice2Host1(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_idx = block_start_idx 
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 	
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
 	
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		int begin=0;
 		int end=0;
@@ -718,11 +718,11 @@ __global__ void copyDataFromDevice2Host3(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_idx = block_start_idx 
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 	
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
@@ -731,7 +731,7 @@ __global__ void copyDataFromDevice2Host3(gpu_context d_g_state)
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
 	
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 		
 		begin=0;
 		end=0;
@@ -784,17 +784,17 @@ __global__ void copyDataFromDevice2Host2(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_idx = block_start_idx 
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
 
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		int begin=0;
 		int end=0;
@@ -821,10 +821,6 @@ void StartCPUShuffle2(thread_info_t *thread_info){
 	cpu_context *d_g_state = (cpu_context*)(thread_info->d_g_state);
 	job_configuration *cpu_job_conf = (job_configuration*)(thread_info->job_conf);
 
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[1].arr_len);
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[2].arr_len);
-	DoLog("NUM INPUT Records:%d",d_g_state->num_input_record);
 
 	//TODO put all jobs related object to job_conf
 	bool configured;	
@@ -912,7 +908,7 @@ void StartCPUShuffle2(thread_info_t *thread_info){
 
 
 void StartCPUShuffle(cpu_context *d_g_state){
-#ifdef ABC
+#ifdef DEV_MODE
 	bool configured;	
 	int cpu_group_id;	
 	int num_input_record;
@@ -1178,7 +1174,7 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 		printf("\n");
 	}//for */
 		
-	//start sorting
+	//start_row_id sorting
 	//partition
 }
 
@@ -1195,7 +1191,7 @@ void sort_CPU(gpu_context* d_g_state){
 
 	
 	
-	//start sorting
+	//start_row_id sorting
 	//partition
 #endif
 

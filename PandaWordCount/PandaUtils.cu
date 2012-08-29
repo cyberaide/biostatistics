@@ -120,11 +120,11 @@ void __checkCudaErrors(cudaError err, const char *file, const int line )
 __global__ void printData(gpu_context d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_idx = block_start_idx 
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
@@ -132,7 +132,7 @@ __global__ void printData(gpu_context d_g_state ){
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
 
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		begin=0;
 		end=0;
@@ -159,7 +159,7 @@ __global__ void printData(gpu_context d_g_state ){
 
 }//printData
 
-#ifdef ABC
+#ifdef DEV_MODE
 __global__ void printData2(gpu_context d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	//if(TID>=d_g_state.num_input_record)return;
@@ -217,15 +217,15 @@ __global__ void printData3(float *C ){
 
 
 //--------------------------------------------------------
-//start a timer
+//start_row_id a timer
 //
-//param	: start_tv
+//param	: start_row_id_tv
 //--------------------------------------------------------
 
 /*
-void startTimer(TimeVal_t *start_tv)
+void start_row_idTimer(TimeVal_t *start_row_id_tv)
 {
-   //gettimeofday((struct timeval*)start_tv, NULL);
+   //gettimeofday((struct timeval*)start_row_id_tv, NULL);
 }
 */
 
@@ -233,18 +233,18 @@ void startTimer(TimeVal_t *start_tv)
 //end a timer, and print out a message
 //
 //param	: msg message to print out
-//param	: start_tv
+//param	: start_row_id_tv
 //--------------------------------------------------------
 /*
-void endTimer(char *msg, TimeVal_t *start_tv)
+void endTimer(char *msg, TimeVal_t *start_row_id_tv)
 {
    cudaThreadSynchronize();
    struct timeval end_tv;
 
    gettimeofday(&end_tv, NULL);
 
-   time_t sec = end_tv.tv_sec - start_tv->tv_sec;
-   time_t ms = end_tv.tv_usec - start_tv->tv_usec;
+   time_t sec = end_tv.tv_sec - start_row_id_tv->tv_sec;
+   time_t ms = end_tv.tv_usec - start_row_id_tv->tv_usec;
 
    time_t diff = sec * 1000000 + ms;
 

@@ -2,11 +2,12 @@
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
 	
-	Code Name: Panda 0.20
+	Code Name: Panda 
 	
 	File: PandaLib.cu 
 	First Version:	2012-07-01 V0.1
-	Github: https://github.com/cyberaide/biostatistics/tree/master/GPUMapReduce			
+	Current Version: V0.3	
+	Last Updates:   2012-8-29
 
 	Developer: Hui Li (lihui@indiana.edu)
 
@@ -71,8 +72,6 @@ panda_context *GetPandaContext(){
 	
 	panda_context *d_g_state = (panda_context*)malloc(sizeof(panda_context));
 	if (d_g_state == NULL) exit(-1);
-	//memset(d_g_state, 0, sizeof(gpu_context));
-	//d_g_state->configured = false;
 	
 	d_g_state->input_keyval_arr = NULL;
 	d_g_state->intermediate_keyval_arr_arr_p = NULL;
@@ -82,6 +81,7 @@ panda_context *GetPandaContext(){
 	d_g_state->gpu_context = NULL;
 	d_g_state->num_cpus_groups = 0;
 	d_g_state->cpu_context = NULL;
+
 	return d_g_state;
 
 }//gpu_context
@@ -109,7 +109,8 @@ void InitCPUMapReduce2(thread_info_t * thread_info){
 		totalValSize += job_conf->input_keyval_arr[i].valSize;
 	}//for
 
-	DoLog("d_g_state->num_input_record:%d, totalKeySize:%d totalValSize:%d num_cpus:%d", job_conf->num_input_record, totalKeySize, totalValSize, d_g_state->num_cpus_cores);
+	DoLog("CPU_GROUP_ID:[%d] num_input_record:%d, totalKeySize:%d totalValSize:%d num_cpus:%d", 
+		d_g_state->cpu_group_id, job_conf->num_input_record, totalKeySize, totalValSize, d_g_state->num_cpus_cores);
 
 	//TODO determin num_cpus
 	//d_g_state->num_cpus = 12;
@@ -126,7 +127,7 @@ void InitCPUMapReduce2(thread_info_t * thread_info){
 		d_g_state->panda_cpu_task_info[i].d_g_state = d_g_state;
 		d_g_state->panda_cpu_task_info[i].cpu_job_conf = job_conf;
 		d_g_state->panda_cpu_task_info[i].num_cpus_cores = num_cpus_cores;
-		d_g_state->panda_cpu_task_info[i].start_idx = 0;
+		d_g_state->panda_cpu_task_info[i].start_row_id_idx = 0;
 		d_g_state->panda_cpu_task_info[i].end_idx = 0;
 	}//for
 	d_g_state->configured = true;
@@ -138,7 +139,7 @@ void InitCPUMapReduce2(thread_info_t * thread_info){
 //For Version 0.2 depressed
 void InitCPUMapReduce(cpu_context* d_g_state)
 {	
-#ifdef ABC
+#ifdef DEV_MODE
 	if (d_g_state->num_input_record<=0) { DoLog("Error: no any input keys"); exit(-1);}
 	if (d_g_state->input_keyval_arr == NULL) { DoLog("Error: input_keyval_arr == NULL"); exit(-1);}
 	if (d_g_state->num_cpus_cores <= 0) {	DoLog("Error: d_g_state->num_cpus == 0"); exit(-1);}
@@ -156,11 +157,7 @@ void InitCPUMapReduce(cpu_context* d_g_state)
 		totalValSize += d_g_state->input_keyval_arr[i].valSize;
 	}//for
 	DoLog("totalKeySize:%d totalValSize:%d num_cpus:%d", totalKeySize, totalValSize, d_g_state->num_cpus_cores);
-		
-	//TODO determin num_cpus
 	
-	//d_g_state->num_cpus = 12;
-
 	int num_cpus_cores = d_g_state->num_cpus_cores;
 	d_g_state->panda_cpu_task = (pthread_t *)malloc(sizeof(pthread_t)*(num_cpus_cores));
 	d_g_state->panda_cpu_task_info = (panda_cpu_task_info_t *)malloc(sizeof(panda_cpu_task_info_t)*(num_cpus_cores));
@@ -171,17 +168,19 @@ void InitCPUMapReduce(cpu_context* d_g_state)
 	for (int i=0;i<num_cpus_cores;i++){
 		d_g_state->panda_cpu_task_info[i].d_g_state = d_g_state;
 		d_g_state->panda_cpu_task_info[i].num_cpus_cores = num_cpus_cores;
-		d_g_state->panda_cpu_task_info[i].start_idx = 0;
+		d_g_state->panda_cpu_task_info[i].start_row_id_idx = 0;
 		d_g_state->panda_cpu_task_info[i].end_idx = 0;
 	}//for
 	d_g_state->configured = true;
 	DoLog("DONE");
 #endif
 }//void
-	
+
+//For Version 0.3 test depressed
+
 void InitGPUMapReduce4(thread_info_t* thread_info)
 {	
-
+#ifdef DEV_MODE
 	gpu_context *d_g_state = (gpu_context *)(thread_info->d_g_state);
 	job_configuration* gpu_job_conf = (job_configuration*)(thread_info->job_conf);
 	keyval_t * kv_p = gpu_job_conf->input_keyval_arr;
@@ -189,7 +188,6 @@ void InitGPUMapReduce4(thread_info_t* thread_info)
 	DoLog("d_g_state->configured:%s  enable for iterative applications",d_g_state->configured? "true" : "false");
 	//if (d_g_state->configured)
 	//	return;
-
 	DoLog("copy %d input records from Host to GPU memory",gpu_job_conf->num_input_record);
 	//checkCudaErrors(cudaMalloc((void **)&d_g_state->d_input_keyval_arr,sizeof(keyval_t)*d_g_state->num_input_record));
 	int totalKeySize = 0;
@@ -238,7 +236,7 @@ void InitGPUMapReduce4(thread_info_t* thread_info)
 	cudaThreadSynchronize(); 
 	d_g_state->configured = true;
 	//(thread_info->d_g_state) = d_g_state;
-	//printData2<<<1,1>>>(*d_g_state);
+#endif
 }//void
 
 void InitGPUMapReduce3(gpu_context* d_g_state)
@@ -295,11 +293,9 @@ void InitGPUMapReduce3(gpu_context* d_g_state)
 	cudaThreadSynchronize(); 
 	d_g_state->configured = true;
 
-	//printData2<<<1,1>>>(*d_g_state);
-
 }//void
 
-#if 0
+#ifdef DEV_MODE
 void InitGPUMapReduce2(gpu_context* d_g_state)
 {	
 	
@@ -356,27 +352,11 @@ void InitGPUMapReduce2(gpu_context* d_g_state)
 #endif
 
 
-/*
-void InitMapReduce(Spec_t* spec)
-{
-	if (g_spec->dimBlockMap <= 0)
-		g_spec->dimBlockMap = DEFAULT_DIMBLOCK;
-	if (g_spec->dimBlockReduce <= 0)
-		g_spec->dimBlockReduce = DEFAULT_DIMBLOCK;
-	if (g_spec->numRecTaskReduce <= 0)
-		g_spec->numRecTaskReduce = DEFAULT_NUMTASK;
-	if (g_spec->numRecTaskMap <= 0)
-		g_spec->numRecTaskMap = DEFAULT_NUMTASK;
-	if (g_spec->workflow <= 0)
-		g_spec->workflow = MAP_ONLY;
-}*/
-
 void InitCPUDevice(thread_info_t*thread_info){
 
 	//------------------------------------------
 	//1, init CPU device
 	//------------------------------------------
-	
 	cpu_context *d_g_state = (cpu_context *)(thread_info->d_g_state);
 	if (d_g_state->num_cpus_cores<=0) d_g_state->num_cpus_cores = getCPUCoresNum();
 
@@ -407,12 +387,10 @@ void InitGPUDevice(thread_info_t*thread_info){
 	cudaGetDeviceCount(&gpu_count);
 
 	DoLog("check GPU Device IDs -> tid:%d current gpu_id:%d num_gpus by user:%d cudaGetDeviceCount:%d", tid, gpu_id, num_gpus, gpu_count);
-
 	if ( gpu_id != tid ){
 		//DoLog("cudaSetDevice gpu_id %d == (tid num_gpus) %d ", gpu_id, tid%num_gpus);
 		cudaSetDevice(tid % num_gpus);  
 	}//if
-	//DoLog("------------------------------------------------------------------------");
 
 	cudaGetDevice(&gpu_id);
 	d_g_state->gpu_id = gpu_id;
@@ -422,7 +400,7 @@ void InitGPUDevice(thread_info_t*thread_info){
 	cudaDeviceSetLimit(cudaLimitMallocHeapSize, (int)(total_mem*0.2)); 
 	cudaDeviceGetLimit(&heap_limit, cudaLimitMallocHeapSize);
 
-	DoLog("TID:[%d] num_gpus:%d gpu_id:%d device_name:%s",tid,num_gpus,gpu_id,thread_info->device_name);
+	DoLog("TID:[%d] num_gpus:%d gpu_id:%d ",tid,num_gpus,gpu_id);
 	DoLog("GPU_ID:[%d] cudaLimitMallocHeapSize:%d MB avail_mem:%d MB total_mem:%d MB",gpu_id, heap_limit/1024/1024, avail_mem/1024/1024,total_mem/1024/1024);
 
 }
@@ -432,7 +410,7 @@ void InitGPUDevice(thread_info_t*thread_info){
 //Tgpu = (execution time on 1 GPU for sampled tasks)/(#sampled tasks)
 
 float Smart_Scheduler(job_configuration *job_conf){
-#ifdef ABC	
+#ifdef DEV_MODE	
 	int num_gpus = 1;//job_conf->num_gpus;
 	int num_cpus_cores = getCPUCoresNum();//job_conf->num_cpus;
 	if (num_cpus_cores >2)
@@ -482,19 +460,19 @@ float Smart_Scheduler(job_configuration *job_conf){
 		gpu_sampled_tasks_num = job_conf->num_input_record;
 
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_group); dev_id++){
-		int start_id = 0;
+		int start_row_id_id = 0;
 		int end_id = 0;//job_conf->num_cpus_cores*2; //(job_conf->num_input_record/100);
 		
 		if (thread_info[dev_id].device_type == GPU_ACC){
 				gpu_context* d_g_state = (gpu_context*)(thread_info[dev_id].d_g_state);
-				end_id = start_id + gpu_sampled_tasks_num;
-				AddMapInputRecordGPU(d_g_state,(job_conf->input_keyval_arr), start_id, end_id);
+				end_id = start_row_id_id + gpu_sampled_tasks_num;
+				AddMapInputRecordGPU(d_g_state,(job_conf->input_keyval_arr), start_row_id_id, end_id);
 			}//if
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
-				end_id = start_id + cpu_sampled_tasks_num;
-				AddMapInputRecordCPU(d_g_state,(job_conf->input_keyval_arr), start_id, end_id);
+				end_id = start_row_id_id + cpu_sampled_tasks_num;
+				AddMapInputRecordCPU(d_g_state,(job_conf->input_keyval_arr), start_row_id_id, end_id);
 				
 		}//if
 	}//for
@@ -502,7 +480,7 @@ float Smart_Scheduler(job_configuration *job_conf){
 	double t1 = PandaTimer();
 	Panda_Map((void *)&(thread_info[0]));
 	double t2 = PandaTimer();
-	//start cpu 
+	//start_row_id cpu 
 	Panda_Map((void *)&(thread_info[1]));
 	double t3 = PandaTimer();
 	
@@ -526,14 +504,14 @@ float Smart_Scheduler(job_configuration *job_conf){
 }//void
 
 //--------------------------------------------------
-//  Panda_Job_Scheduler
+//  PandaMetaScheduler
 //--------------------------------------------------
 /*
  * 1) input a set of panda worker (thread)
  * 2) each panda worker consist of one panda job and pand device
- * 3) copy input data from pand job to pand device
- *
+ * 3) copy input data from pand job to pand device 
  */
+
 void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_groups){
 
 	panda_context *panda = GetPandaContext();
@@ -567,58 +545,53 @@ void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_g
 
 	///////////////////////////////////////////////////
 	
-	//DoLog("num_cpus_group:%d num_cpu_input_record:", num_cpus_groups /*,cpu_job_conf->num_input_record*/);
+	
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_groups); dev_id++){
 
 		if (thread_info[dev_id].device_type == GPU_ACC){
 
-				/*int num_input_record_per_gpu = gpu_job_conf->num_input_record/num_gpus;
-				int start_id = num_input_record_per_gpu*dev_id;
-				int end_id = start_id + num_input_record_per_gpu;
-				DoLog("num_gpus:%d num_gpu_input_record:%d start:%d end:%d", num_gpus , gpu_job_conf->num_input_record,start_id,end_id);
-				if (dev_id == num_gpus -1)
-					end_id = gpu_job_conf->num_input_record;*/
 				job_configuration *gpu_job_conf = (job_configuration *)(thread_info[dev_id].job_conf);
-				int start_id = 0;
+				int start_row_id_id = 0;
 				int end_id = gpu_job_conf->num_input_record;
 				gpu_context* d_g_state = (gpu_context*)(thread_info[dev_id].d_g_state);
 
-				AddMapInputRecordGPU(d_g_state,(gpu_job_conf->input_keyval_arr), start_id,end_id);
+				AddMapInputRecordGPU(d_g_state,(gpu_job_conf->input_keyval_arr), start_row_id_id,end_id);
 				
 		}//if
 	
 		if (thread_info[dev_id].device_type == CPU_ACC){
 
 				job_configuration *cpu_job_conf = (job_configuration *)(thread_info[dev_id].job_conf);
-				int start_id = 0;
+				int start_row_id_id = 0;
 				int end_id = cpu_job_conf->num_input_record;
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
 				
-				AddMapInputRecordCPU(d_g_state,(cpu_job_conf->input_keyval_arr),start_id, end_id);
+				AddMapInputRecordCPU(d_g_state,(cpu_job_conf->input_keyval_arr),start_row_id_id, end_id);
 				
 		}//if
 	}//for
 	
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_groups); dev_id++){
-		//if (thread_info[dev_id].device_type == GPU_ACC){
 		if (pthread_create(&(no_threads[dev_id]), NULL, Panda_Map, (char *)&(thread_info[dev_id])) != 0) 
 			perror("Thread creation failed!\n");
 	}//for
 
-	for (int i=0; i < num_gpus + num_cpus_groups; i++){
+	for (int i = 0; i < num_gpus + num_cpus_groups; i++){
 		void *exitstat;
 		if (pthread_join(no_threads[i],&exitstat)!=0) perror("joining failed");
 	}//for
 
-	//DoLog("start to merge for GPU's and CPU's results");
+	//DoLog("start to merge results of GPU's and CPU's device to Panda scheduler");
 	for (int i = 0; i < num_gpus+num_cpus_groups; i++){
+
 		if (thread_info[i].device_type == CPU_ACC)
 			Panda_Shuffle_Merge_CPU((panda_context*)panda, (cpu_context*)(thread_info[i].d_g_state));
+
 		if (thread_info[i].device_type == GPU_ACC)
 			Panda_Shuffle_Merge_GPU((panda_context*)panda, (gpu_context*)(thread_info[i].d_g_state));
 	}//for
-	//DoLog("totoal number of different intermediate records:%d",panda->sorted_keyvals_arr_len);
 
+	//TODO reduce task ratio 
 	int num_sorted_intermediate_record = panda->sorted_keyvals_arr_len;
 	int records_per_device = num_sorted_intermediate_record/(num_gpus*10+num_cpus_groups);
 	int *split = (int*)malloc(sizeof(int)*(num_gpus+num_cpus_groups));
@@ -631,23 +604,22 @@ void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_g
 	split[num_gpus + num_cpus_groups-1] = num_sorted_intermediate_record;
 
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_groups); dev_id++){
-		int start_id = 0;
-		if (dev_id>0) start_id = split[dev_id-1];
+		int start_row_id_id = 0;
+		if (dev_id>0) start_row_id_id = split[dev_id-1];
 		int end_id = split[dev_id];
 				
 		if (thread_info[dev_id].device_type == GPU_ACC){
 				gpu_context* d_g_state = (gpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id; i<end_id; i++){
-				AddReduceInputRecordGPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_id, end_id);
-				//}//for
+				
+				AddReduceInputRecordGPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_row_id_id, end_id);
 
 		}//if
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id;i<end_id;i++){
-				AddReduceInputRecordCPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_id, end_id);
-				//}//for
+
+				AddReduceInputRecordCPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_row_id_id, end_id);
+
 		}//if
 	}//for
 
@@ -662,10 +634,9 @@ void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_g
 	}//for
 	
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
-	//Panda_Reduce(&thread_info[num_gpus-1]);															 //
+	//Panda_Reduce_Merge(&thread_info[num_gpus-1]);															 //
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	DoLog("Finishing Panda MapReduce Job...");
+	
 	int total_output_records = 0;
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_groups); dev_id++){
 	
@@ -679,15 +650,15 @@ void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_g
 				total_output_records += d_g_state->sorted_keyvals_arr_len;
 		}//if
 	}//for
-	DoLog("there are :%d output records\n",total_output_records);
-	DoLog("=====finish map/reduce=====");
+	DoLog("number of reduce output:%d\n",total_output_records);
+	DoLog("=====panda mapreduce job finished=====");
 
 }//PandaMetaScheduler
 
 
 
 void Start_Panda_Job(job_configuration *job_conf){
-#ifdef ABC	
+#ifdef DEV_MODE	
 	int num_gpus = job_conf->num_gpus;
 	int num_cpus_cores = job_conf->num_cpus_cores;
 	int num_cpus_group = job_conf->num_cpus_groups;
@@ -761,23 +732,23 @@ void Start_Panda_Job(job_configuration *job_conf){
 	printf("\n");
 
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_group); dev_id++){
-		int start_id = 0;
-		if (dev_id>0) start_id = split[dev_id-1];
+		int start_row_id_id = 0;
+		if (dev_id>0) start_row_id_id = split[dev_id-1];
 
 		int end_id = split[dev_id];
 		
 		if (thread_info[dev_id].device_type == GPU_ACC){
 				gpu_context* d_g_state = (gpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id; i<end_id; i++){
+				//for (int i=start_row_id_id; i<end_id; i++){
 				//printf(":%s  keySize:%d",job_conf->input_keyval_arr[i].val, job_conf->input_keyval_arr[i].valSize);
-				AddMapInputRecordGPU(d_g_state,(job_conf->input_keyval_arr), start_id,end_id);
+				AddMapInputRecordGPU(d_g_state,(job_conf->input_keyval_arr), start_row_id_id,end_id);
 				//}//for
 			}//if
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id;i<end_id;i++){
-				AddMapInputRecordCPU(d_g_state,(job_conf->input_keyval_arr),start_id, end_id);
+				//for (int i=start_row_id_id;i<end_id;i++){
+				AddMapInputRecordCPU(d_g_state,(job_conf->input_keyval_arr),start_row_id_id, end_id);
 				//}//for
 		}//if
 	}//for
@@ -793,7 +764,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 		if (pthread_join(no_threads[i],&exitstat)!=0) perror("joining failed");
 	}//for
 
-	DoLog("start to merge!");
+	DoLog("start_row_id to merge!");
 	for (int i = 0; i<num_gpus; i++){
 		Panda_Shuffle_Merge_GPU((panda_context*)panda, (gpu_context*)(thread_info[i].d_g_state));
 	}//for
@@ -818,22 +789,22 @@ void Start_Panda_Job(job_configuration *job_conf){
 	split[num_gpus + num_cpus_group-1] = num_sorted_intermediate_record;
 
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_group); dev_id++){
-		int start_id = 0;
-		if (dev_id>0) start_id = split[dev_id-1];
+		int start_row_id_id = 0;
+		if (dev_id>0) start_row_id_id = split[dev_id-1];
 		int end_id = split[dev_id];
 				
 		if (thread_info[dev_id].device_type == GPU_ACC){
 				gpu_context* d_g_state = (gpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id; i<end_id; i++){
-				AddReduceInputRecordGPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_id, end_id);
+				//for (int i=start_row_id_id; i<end_id; i++){
+				AddReduceInputRecordGPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_row_id_id, end_id);
 				//}//for
 
 		}//if
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
-				//for (int i=start_id;i<end_id;i++){
-				AddReduceInputRecordCPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_id, end_id);
+				//for (int i=start_row_id_id;i<end_id;i++){
+				AddReduceInputRecordCPU(d_g_state,(panda->sorted_intermediate_keyvals_arr),start_row_id_id, end_id);
 				//}//for
 		}//if
 		
@@ -895,16 +866,16 @@ void AddPandaTask(job_configuration* job_conf,
 	
 }
 
-void AddReduceInputRecordGPU(gpu_context* d_g_state, keyvals_t * sorted_intermediate_keyvals_arr, int starti, int endi){
+void AddReduceInputRecordGPU(gpu_context* d_g_state, keyvals_t * sorted_intermediate_keyvals_arr, int start_row_idi, int endi){
 	
 	long total_count = 0;
-	for(int i=starti;i<endi;i++){
+	for(int i=start_row_idi;i<endi;i++){
 		total_count += sorted_intermediate_keyvals_arr[i].val_arr_len;
 	}//for
 	
 	int totalKeySize = 0;
 	int totalValSize = 0;
-	for(int i=starti;i<endi;i++){
+	for(int i=start_row_idi;i<endi;i++){
 		totalKeySize += sorted_intermediate_keyvals_arr[i].keySize;
 		for (int j=0;j<sorted_intermediate_keyvals_arr[i].val_arr_len;j++)
 		totalValSize += sorted_intermediate_keyvals_arr[i].vals[j].valSize;
@@ -922,16 +893,16 @@ void AddReduceInputRecordGPU(gpu_context* d_g_state, keyvals_t * sorted_intermed
 	char *sorted_vals_shared_buff = (char *)d_g_state->h_sorted_vals_shared_buff;
 	char *keyval_pos_arr = (char *)malloc(sizeof(keyval_pos_t)*total_count);
 	
-	int sorted_key_arr_len = (endi-starti);
+	int sorted_key_arr_len = (endi-start_row_idi);
 	keyval_pos_t *tmp_keyval_pos_arr = (keyval_pos_t *)malloc(sizeof(keyval_pos_t)*total_count);
-	DoLog("total number of different intermediate records:%d total records:%d", endi-starti, total_count);
+	DoLog("total number of different intermediate records:%d total records:%d", endi-start_row_idi, total_count);
 	int *pos_arr_4_pos_arr = (int*)malloc(sizeof(int)*(sorted_key_arr_len));
 	memset(pos_arr_4_pos_arr,0,sizeof(int)*sorted_key_arr_len);
 
 	int index = 0;
 	int keyPos = 0;
 	int valPos = 0;
-	for (int i=starti;i<endi;i++){
+	for (int i=start_row_idi;i<endi;i++){
 		keyvals_t* p = (keyvals_t*)&(sorted_intermediate_keyvals_arr[i]);
 		memcpy(sorted_keys_shared_buff+keyPos,p->key, p->keySize);
 		
@@ -945,10 +916,10 @@ void AddReduceInputRecordGPU(gpu_context* d_g_state, keyvals_t * sorted_intermed
 			index++;
 		}//for
 		keyPos += p->keySize;
-		pos_arr_4_pos_arr[i-starti] = index;
+		pos_arr_4_pos_arr[i-start_row_idi] = index;
 	}//
 
-	d_g_state->d_sorted_keyvals_arr_len = endi-starti;
+	d_g_state->d_sorted_keyvals_arr_len = endi-start_row_idi;
 	checkCudaErrors(cudaMemcpy(d_g_state->d_keyval_pos_arr,tmp_keyval_pos_arr,sizeof(keyval_pos_t)*total_count,cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMalloc((void**)&d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,sizeof(int)*sorted_key_arr_len));
 	checkCudaErrors(cudaMemcpy(d_g_state->d_pos_arr_4_sorted_keyval_pos_arr,pos_arr_4_pos_arr,sizeof(int)*sorted_key_arr_len,cudaMemcpyHostToDevice));
@@ -960,18 +931,18 @@ void AddReduceInputRecordGPU(gpu_context* d_g_state, keyvals_t * sorted_intermed
 
 
 void AddMapInputRecordGPU(gpu_context* d_g_state,
-						keyval_t *kv_p, int start_id, int end_id){
+						keyval_t *kv_p, int start_row_id_id, int end_id){
 		
 	int len = d_g_state->num_input_record;
 	//DoLog("len:%d realloc:%d",len,sizeof(keyval_t)*(len+1));
 	if (len == 0) d_g_state->h_input_keyval_arr = NULL;
 	if (len<0) return;
-	if (end_id<=start_id) return;
-	DoLog("add map input record for gpu context current len:%d added len:%d", len, end_id - start_id);			
+	if (end_id<=start_row_id_id) return;
+	DoLog("GPU_ID:[%d] add map input record for gpu context current #input:%d added #input:%d",d_g_state->gpu_id, len, end_id - start_row_id_id);			
 
-	d_g_state->h_input_keyval_arr = (keyval_t *)realloc(d_g_state->h_input_keyval_arr, sizeof(keyval_t)*(len+end_id - start_id));
+	d_g_state->h_input_keyval_arr = (keyval_t *)realloc(d_g_state->h_input_keyval_arr, sizeof(keyval_t)*(len+end_id - start_row_id_id));
 	//assert(d_g_state->h_input_keyval_arr != NULL);
-	for (int i=start_id;i<end_id;i++){
+	for (int i=start_row_id_id;i<end_id;i++){
 	d_g_state->h_input_keyval_arr[len].keySize = kv_p[i].keySize;
 	d_g_state->h_input_keyval_arr[len].valSize = kv_p[i].valSize;
 	d_g_state->h_input_keyval_arr[len].key = kv_p[i].key;
@@ -981,22 +952,22 @@ void AddMapInputRecordGPU(gpu_context* d_g_state,
 	d_g_state->num_input_record++;
 	len++;
 	}
-	//DoLog("added %d map tasks",end_id-start_id);
+	//DoLog("added %d map tasks",end_id-start_row_id_id);
 			
 }
 
 
 void AddMapInputRecordCPU(cpu_context* d_g_state,
-						keyval_t *kv_p, int starti, int endi){
+						keyval_t *kv_p, int start_row_idi, int endi){
 
 	int len = d_g_state->num_input_record;
 	if (len<0) return;
 	if (len == 0) d_g_state->input_keyval_arr = NULL;
-	DoLog("add map input record for cpu context current len:%d added len:%d",len,endi-starti);			
+	DoLog("CPU_GROUP_ID:[%d] add map input record for cpu context current #input:%d added #input:%d",d_g_state->cpu_group_id,len,endi-start_row_idi);			
 	//DoLog("len:%d size:%d",len,sizeof(keyval_t)*(len+1));
-	d_g_state->input_keyval_arr = (keyval_t *)realloc(d_g_state->input_keyval_arr, sizeof(keyval_t)*(len+endi-starti));
+	d_g_state->input_keyval_arr = (keyval_t *)realloc(d_g_state->input_keyval_arr, sizeof(keyval_t)*(len+endi-start_row_idi));
 
-	for (int i=starti;i<endi;i++){
+	for (int i=start_row_idi;i<endi;i++){
 	
 	d_g_state->input_keyval_arr[len].keySize = kv_p[i].keySize;
 	d_g_state->input_keyval_arr[len].valSize = kv_p[i].valSize;
@@ -1011,25 +982,25 @@ void AddMapInputRecordCPU(cpu_context* d_g_state,
 }
 
 void AddReduceInputRecordCPU(cpu_context* d_g_state,
-						keyvals_t *kv_p, int start_id, int end_id){
+						keyvals_t *kv_p, int start_row_id_id, int end_id){
 							
-    if (end_id<start_id){	DoLog("error ! end_id <= start_id");		end_id = start_id;	}
+    if (end_id<start_row_id_id){	DoLog("error ! end_id <= start_row_id_id");		end_id = start_row_id_id;	}
 							
 	int len = d_g_state->sorted_keyvals_arr_len;
 	if (len<0) {	DoLog("error ! len<0");		return;	}
 	if (len == 0) d_g_state->sorted_intermediate_keyvals_arr = NULL;
 	
-	DoLog("start_id:%d, end_id:%d, len:%d\n",start_id,end_id,len);
+	//DoLog("start_row_id_id:%d, end_id:%d, len:%d\n",start_row_id_id,end_id,len);
 
 	d_g_state->sorted_intermediate_keyvals_arr = (keyvals_t *)realloc(d_g_state->sorted_intermediate_keyvals_arr, 
-		sizeof(keyvals_t)*(len+end_id-start_id));
+		sizeof(keyvals_t)*(len+end_id-start_row_id_id));
 
-	for (int i = len; i< len+end_id-start_id; i++){
-		int test = kv_p[start_id+i-len].keySize;
-		d_g_state->sorted_intermediate_keyvals_arr[i].keySize = kv_p[start_id+i-len].keySize;
-		d_g_state->sorted_intermediate_keyvals_arr[i].key = kv_p[start_id+i-len].key;
-		d_g_state->sorted_intermediate_keyvals_arr[i].vals = kv_p[start_id+i-len].vals;
-		d_g_state->sorted_intermediate_keyvals_arr[i].val_arr_len = kv_p[start_id+i-len].val_arr_len;
+	for (int i = len; i< len+end_id-start_row_id_id; i++){
+		int test = kv_p[start_row_id_id+i-len].keySize;
+		d_g_state->sorted_intermediate_keyvals_arr[i].keySize = kv_p[start_row_id_id+i-len].keySize;
+		d_g_state->sorted_intermediate_keyvals_arr[i].key = kv_p[start_row_id_id+i-len].key;
+		d_g_state->sorted_intermediate_keyvals_arr[i].vals = kv_p[start_row_id_id+i-len].vals;
+		d_g_state->sorted_intermediate_keyvals_arr[i].val_arr_len = kv_p[start_row_id_id+i-len].val_arr_len;
 		d_g_state->sorted_keyvals_arr_len++;
 	}//for
 
@@ -1159,29 +1130,29 @@ __global__ void GPUMapPartitioner(gpu_context d_g_state)
 	int tid = THREAD_ID;*/
 
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_idx = block_start_idx 
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 			
 	if (thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
 
-	if (thread_start_idx >= thread_end_idx)
+	if (thread_start_row_id_idx >= thread_end_idx)
 		return;
 
 	char * buff = (char *)malloc(sizeof(char)*1024*100);
 	int * total_arr_len = (int*)malloc(sizeof(int));
 	(*total_arr_len) = 0;
 
-	keyval_arr_t *kv_arr_t_arr = (keyval_arr_t *)malloc(sizeof(keyval_arr_t)*(thread_end_idx-thread_start_idx+STRIDE-1)/STRIDE);
+	keyval_arr_t *kv_arr_t_arr = (keyval_arr_t *)malloc(sizeof(keyval_arr_t)*(thread_end_idx-thread_start_row_id_idx+STRIDE-1)/STRIDE);
 	int index = 0;
 
-	//printf("Mapper TID:%d, thread_start_idx:%d  thread_end_idx:%d runed tasks:%d totalTasks:%d\n",
-	//	TID, thread_start_idx,thread_end_idx,(thread_end_idx - thread_start_idx)/STRIDE,d_g_state.num_input_record);
+	//printf("Mapper TID:%d, thread_start_row_id_idx:%d  thread_end_idx:%d runed tasks:%d totalTasks:%d\n",
+	//	TID, thread_start_row_id_idx,thread_end_idx,(thread_end_idx - thread_start_row_id_idx)/STRIDE,d_g_state.num_input_record);
 
-	for(int map_task_idx=thread_start_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 		
 		keyval_arr_t *kv_arr_t = (keyval_arr_t *)&(kv_arr_t_arr[index]);
 		index++;
@@ -1229,7 +1200,7 @@ int StartCPUMap2(thread_info_t* thread_info)
 	cpu_context *d_g_state = (cpu_context*)(thread_info->d_g_state);
 	job_configuration *cpu_job_conf = (job_configuration*)(thread_info->job_conf);
 
-	DoLog("there are %d input records for map tasks.",cpu_job_conf->num_input_record);
+	//DoLog("there are %d input records for map tasks.",cpu_job_conf->num_input_record);
 	if (cpu_job_conf->num_input_record<=0) { DoLog("Error: no any input keys"); exit(-1);}
 	if (cpu_job_conf->input_keyval_arr == NULL) { DoLog("Error: input_keyval_arr == NULL"); exit(-1);}
 	if (d_g_state->num_cpus_cores <= 0) {	DoLog("Error: d_g_state->num_cpus == 0"); exit(-1);}
@@ -1238,7 +1209,7 @@ int StartCPUMap2(thread_info_t* thread_info)
 	//1, prepare buffer to store intermediate results
 	//-------------------------------------------------------
 	
-	DoLog("prepare buffer to store intermediate results");
+	//DoLog("prepare buffer to store intermediate results");
 	
 	keyval_arr_t *d_keyval_arr_p;
 	int *count = NULL;
@@ -1247,35 +1218,35 @@ int StartCPUMap2(thread_info_t* thread_info)
 	//3, determine the number of threads to run
 	//---------------------------------------------
 
-	DoLog("the number of cpus used in computation:%d",d_g_state->num_cpus_cores);
+	DoLog("CPU_GROUP_ID:[%d] the number of cpus used in computation:%d",d_g_state->cpu_group_id, d_g_state->num_cpus_cores);
 	
 	//--------------------------------------------------
-	//4, start map
+	//4, start_row_id map
 	//--------------------------------------------------
 	
 	int num_threads = d_g_state->num_cpus_cores;
-	DoLog("start CPUMapPartitioner num_threads:%d  num_input_record:%d",num_threads, cpu_job_conf->num_input_record);
+	//DoLog("start_row_id CPUMapPartitioner num_threads:%d  num_input_record:%d",num_threads, cpu_job_conf->num_input_record);
 	int num_records_per_thread = (cpu_job_conf->num_input_record+num_threads-1)/(num_threads);
 	
-	int start_idx = 0;
+	int start_row_id_idx = 0;
 	int end_idx = 0;
 
 	//pthread_t  *cpu_threads;
 	//thread_info_t *cpu_threads_info;
 	for (int tid = 0;tid<num_threads;tid++){
 	
-		end_idx = start_idx + num_records_per_thread;
+		end_idx = start_row_id_idx + num_records_per_thread;
 		if (tid < (cpu_job_conf->num_input_record % num_threads) )
 			end_idx++;
 			
-		d_g_state->panda_cpu_task_info[tid].start_idx = start_idx;
+		d_g_state->panda_cpu_task_info[tid].start_row_id_idx = start_row_id_idx;
 		if (end_idx > cpu_job_conf->num_input_record)
 			end_idx = cpu_job_conf->num_input_record;
 		d_g_state->panda_cpu_task_info[tid].end_idx = end_idx;
 		
 		if (pthread_create(&(d_g_state->panda_cpu_task[tid]),NULL,RunPandaCPUMapThread,(char *)&(d_g_state->panda_cpu_task_info[tid]))!=0) 
 			perror("Thread creation failed!\n");
-		start_idx = end_idx;
+		start_row_id_idx = end_idx;
 	}//for
 	
 	for (int tid = 0;tid<num_threads;tid++){
@@ -1283,11 +1254,7 @@ int StartCPUMap2(thread_info_t* thread_info)
 		if (pthread_join(d_g_state->panda_cpu_task[tid],&exitstat)!=0) perror("joining failed");
 	}//for
 	
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[1].arr_len);
-	DoLog("DONE *********** current intermediate len:%d", d_g_state->intermediate_keyval_arr_arr_p[2].arr_len);
-
-	DoLog("CPU GROUP ID:[%d] DONE", thread_info->tid);
+	DoLog("CPU_GROUP_ID:[%d] DONE", thread_info->tid);
 	return 0;
 }//int 
 
@@ -1295,7 +1262,7 @@ int StartCPUMap2(thread_info_t* thread_info)
 
 int StartCPUMap(cpu_context *d_g_state)
 {		
-#ifdef ABC
+#ifdef DEV_MODE
 
 	DoLog("there are %d map tasks.",d_g_state->num_input_record);
 	if (d_g_state->num_input_record<=0) { DoLog("Error: no any input keys"); exit(-1);}
@@ -1318,15 +1285,15 @@ int StartCPUMap(cpu_context *d_g_state)
 	DoLog("the number of cpus used in computation:%d",d_g_state->num_cpus_cores);
 	
 	//--------------------------------------------------
-	//4, start map
+	//4, start_row_id map
 	//--------------------------------------------------
 	
 	int num_threads = d_g_state->num_cpus_cores;
 
-	DoLog("start CPUMapPartitioner num_threads:%d  num_input_record:%d",num_threads, d_g_state->num_input_record);
+	DoLog("start_row_id CPUMapPartitioner num_threads:%d  num_input_record:%d",num_threads, d_g_state->num_input_record);
 	int num_records_per_thread = (d_g_state->num_input_record+num_threads-1)/(num_threads);
 	
-	int start_idx = 0;
+	int start_row_id_idx = 0;
 	int end_idx = 0;
 
 	//pthread_t  *cpu_threads;
@@ -1334,11 +1301,11 @@ int StartCPUMap(cpu_context *d_g_state)
 
 	for (int tid = 0;tid<num_threads;tid++){
 	
-		end_idx = start_idx + num_records_per_thread;
+		end_idx = start_row_id_idx + num_records_per_thread;
 		if (tid < (d_g_state->num_input_record % num_threads) )
 			end_idx++;
 			
-		d_g_state->panda_cpu_task_info[tid].start_idx = start_idx;
+		d_g_state->panda_cpu_task_info[tid].start_row_id_idx = start_row_id_idx;
 		if (end_idx > d_g_state->num_input_record)
 			end_idx = d_g_state->num_input_record;
 		d_g_state->panda_cpu_task_info[tid].end_idx = end_idx;
@@ -1349,7 +1316,7 @@ int StartCPUMap(cpu_context *d_g_state)
 		if (pthread_create(&(d_g_state->panda_cpu_task[tid]),NULL,RunPandaCPUMapThread,(char *)&(d_g_state->panda_cpu_task_info[tid]))!=0) 
 			perror("Thread creation failed!\n");
 		
-		start_idx = end_idx;
+		start_row_id_idx = end_idx;
 	}//for
 
 	
@@ -1358,7 +1325,7 @@ int StartCPUMap(cpu_context *d_g_state)
 		if (pthread_join(d_g_state->panda_cpu_task[tid],&exitstat)!=0) perror("joining failed");
 	}//for
 	
-	DoLog("DONE :%d tasks current intermediate len:%d",panda_cpu_task_info->end_idx - panda_cpu_task_info->start_idx, d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
+	DoLog("DONE :%d tasks current intermediate len:%d",panda_cpu_task_info->end_idx - panda_cpu_task_info->start_row_id_idx, d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
 	DoLog("DONE");
 #endif
 	return 0;
@@ -1419,13 +1386,13 @@ int StartGPUMap(gpu_context *d_g_state)
 	//calculate NUM_BLOCKS, NUM_THREADS
 	
 	//--------------------------------------------------
-	//4, start map
+	//4, start_row_id map
 	//--------------------------------------------------
 	/*dim3 h_dimBlock(512,1,1);
     dim3 h_dimGrid(4,1,1);
 	dim3 h_dimThread(1,1,1);
 	int sizeSmem = 128;*/
-	//DoLog("start GPUMapPartitioner");
+	//DoLog("start_row_id GPUMapPartitioner");
 	cudaThreadSynchronize();
 	
 	//printf("avail_mem:%d \n",avail_mem);
@@ -1452,7 +1419,7 @@ int StartGPUMap(gpu_context *d_g_state)
 
 
 //--------------------------------------------------
-//start map
+//start_row_id map
 //
 //1, get map input data on host
 //2, upload map input data to device memory
@@ -1465,12 +1432,12 @@ int StartGPUMap(gpu_context *d_g_state)
 //	 ii)	d_interValsSizePerTask
 //	 iii)	d_interCountPerTask
 //6, allocate intermediate memory on device memory
-//7, start map
+//7, start_row_id map
 //8, free allocated memory
 //--------------------------------------------------
 
 /*
-int startMap(Spec_t* spec, gpu_context *d_g_state)
+int start_row_idMap(Spec_t* spec, gpu_context *d_g_state)
 {
 	    
 	Spec_t* g_spec = spec;
@@ -1507,14 +1474,14 @@ void *RunPandaCPUMapThread(void *ptr){
 	cpu_context *d_g_state = (cpu_context *)(panda_cpu_task_info->d_g_state); 
 	job_configuration *cpu_job_conf = (job_configuration *)(panda_cpu_task_info->cpu_job_conf); 
 
-	//DoLog("panda_cpu_task_info_t start_idx:%d end_idx:%d",panda_cpu_task_info->start_idx, panda_cpu_task_info->end_idx);
-	for (int map_idx = panda_cpu_task_info->start_idx; map_idx < panda_cpu_task_info->end_idx; map_idx++){
+	//DoLog("panda_cpu_task_info_t start_row_id_idx:%d end_idx:%d",panda_cpu_task_info->start_row_id_idx, panda_cpu_task_info->end_idx);
+	for (int map_idx = panda_cpu_task_info->start_row_id_idx; map_idx < panda_cpu_task_info->end_idx; map_idx++){
 		keyval_t *kv_p = (keyval_t *)(&(cpu_job_conf->input_keyval_arr[map_idx]));
 		//void cpu_map(void *KEY, void*VAL, int keySize, int valSize, cpu_context *d_g_state, int map_task_idx){
 		cpu_map(kv_p->key,kv_p->val,kv_p->keySize,kv_p->valSize,d_g_state,map_idx);
-		//DoLog("finished map_task:%d at tid:%d",d_g_state->end_idx - d_g_state->start_idx, d_g_state->tid);
+		//DoLog("finished map_task:%d at tid:%d",d_g_state->end_idx - d_g_state->start_row_id_idx, d_g_state->tid);
 	}//for
-	DoLog("DONE :%d tasks current intermediate len:%d",panda_cpu_task_info->end_idx - panda_cpu_task_info->start_idx, d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
+	DoLog("DONE :%d tasks current intermediate len:%d",panda_cpu_task_info->end_idx - panda_cpu_task_info->start_row_id_idx, d_g_state->intermediate_keyval_arr_arr_p[0].arr_len);
 	return NULL;
 }
 
@@ -1537,7 +1504,7 @@ void * Panda_Reduce(void *ptr){
 		int gpu_id;
 		cudaGetDevice(&gpu_id);
 		gpu_context *d_g_state = (gpu_context *)(thread_info->d_g_state);
-		DoLog( "start reduce tasks on GPU:%d tid:%d",gpu_id, tid);
+		DoLog( "start_row_id reduce tasks on GPU:%d tid:%d",gpu_id, tid);
 		
 		StartGPUReduce(d_g_state);
 		
@@ -1557,7 +1524,7 @@ void * Panda_Reduce(void *ptr){
 		//StartCPUReduce(d_g_state);
 		//panda_cpu_task_info_t *panda_cpu_task_info = (panda_cpu_task_info_t *)ptr;
 		//cpu_context *d_g_state = (cpu_context *)(panda_cpu_task_info->d_g_state); 
-		//DoLog("panda_cpu_task_info_t start_idx:%d end_idx:%d",panda_cpu_task_info->start_idx, panda_cpu_task_info->end_idx);
+		//DoLog("panda_cpu_task_info_t start_row_id_idx:%d end_idx:%d",panda_cpu_task_info->start_row_id_idx, panda_cpu_task_info->end_idx);
 
 		for (int map_idx = 0; map_idx < d_g_state->sorted_keyvals_arr_len; map_idx++){
 
@@ -1606,43 +1573,43 @@ __device__ void *GetKey(void *key, int4* interOffsetSizes, int keyIndex, int val
 __global__ void ReducePartitioner(gpu_context d_g_state)
 {
 	int num_records_per_thread = (d_g_state.d_sorted_keyvals_arr_len+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
 
-	int thread_start_idx = block_start_idx 
+	int thread_start_row_id_idx = block_start_row_id_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 
-	int thread_end_idx = thread_start_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
 	if(thread_end_idx>d_g_state.d_sorted_keyvals_arr_len)
 		thread_end_idx = d_g_state.d_sorted_keyvals_arr_len;
 
-	//printf("ReducePartitioner: TID:%d  start_idx:%d  end_idx:%d d_sorted_keyvals_arr_len:%d\n",TID,thread_start_idx,thread_end_idx,d_g_state.d_sorted_keyvals_arr_len);
+	//printf("ReducePartitioner: TID:%d  start_row_id_idx:%d  end_idx:%d d_sorted_keyvals_arr_len:%d\n",TID,thread_start_row_id_idx,thread_end_idx,d_g_state.d_sorted_keyvals_arr_len);
 
-	int start, end;
-	for(int reduce_task_idx=thread_start_idx; reduce_task_idx < thread_end_idx; reduce_task_idx+=STRIDE){
+	int start_row_id, end;
+	for(int reduce_task_idx=thread_start_row_id_idx; reduce_task_idx < thread_end_idx; reduce_task_idx+=STRIDE){
 		if (reduce_task_idx==0)
-			start = 0;
+			start_row_id = 0;
 		else
-			start = d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[reduce_task_idx-1];
+			start_row_id = d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[reduce_task_idx-1];
 		end = d_g_state.d_pos_arr_4_sorted_keyval_pos_arr[reduce_task_idx];
 
-		val_t *val_t_arr = (val_t*)malloc(sizeof(val_t)*(end-start));
+		val_t *val_t_arr = (val_t*)malloc(sizeof(val_t)*(end-start_row_id));
 		//assert(val_t_arr!=NULL);
-		int keySize = d_g_state.d_keyval_pos_arr[start].keySize;
-		int keyPos = d_g_state.d_keyval_pos_arr[start].keyPos;
+		int keySize = d_g_state.d_keyval_pos_arr[start_row_id].keySize;
+		int keyPos = d_g_state.d_keyval_pos_arr[start_row_id].keyPos;
 		void *key = (char*)d_g_state.d_sorted_keys_shared_buff+keyPos;
 		//printf("keySize;%d keyPos:%d key:%s\n",keySize,keyPos,key);
-		//printf("reduce_task_idx:%d		keyPos:%d,  keySize:%d, key:% start:%d end:%d\n",reduce_task_idx,keyPos,keySize,start,end);
-		//printf("start:%d end:%d\n",start,end);
+		//printf("reduce_task_idx:%d		keyPos:%d,  keySize:%d, key:% start_row_id:%d end:%d\n",reduce_task_idx,keyPos,keySize,start_row_id,end);
+		//printf("start_row_id:%d end:%d\n",start_row_id,end);
 		
 		
-		for (int index = start;index<end;index++){
+		for (int index = start_row_id;index<end;index++){
 			int valSize = d_g_state.d_keyval_pos_arr[index].valSize;
 			int valPos = d_g_state.d_keyval_pos_arr[index].valPos;
-			val_t_arr[index-start].valSize = valSize;
-			val_t_arr[index-start].val = (char*)d_g_state.d_sorted_vals_shared_buff + valPos;
+			val_t_arr[index-start_row_id].valSize = valSize;
+			val_t_arr[index-start_row_id].val = (char*)d_g_state.d_sorted_vals_shared_buff + valPos;
 		}   //for
-		gpu_reduce(key, val_t_arr, keySize, end-start, d_g_state);
+		gpu_reduce(key, val_t_arr, keySize, end-start_row_id, d_g_state);
 
 	}//for
 }
@@ -1650,7 +1617,7 @@ __global__ void ReducePartitioner(gpu_context d_g_state)
 
 
 //----------------------------------------------
-//start reduce
+//start_row_id reduce
 //
 //1, if there is not a reduce phase, just return
 //   then user uses spec->interKeys/spec->intervals 
@@ -1665,7 +1632,7 @@ __global__ void ReducePartitioner(gpu_context d_g_state)
 //	 ii)	d_outputValsSizePerTask
 //	 iii)	d_outputCountPerTask
 //7, allocate output memory on device memory
-//8, start reduce
+//8, start_row_id reduce
 //9, copy output data to Spect_t structure
 //10,free allocated memory
 //----------------------------------------------

@@ -74,9 +74,6 @@ extern "C"
 void __checkCudaErrors(cudaError err, const char *file, const int line );
 
 
-
-
-
 //used for unsorted values
 typedef struct
 {
@@ -168,7 +165,7 @@ typedef struct {
 	void *d_g_state;//gpu_context  cpu_context
 	void *cpu_job_conf;
 	
-	int start_idx;
+	int start_row_id_idx;
 	int end_idx;
 
 } panda_cpu_task_info_t;
@@ -275,7 +272,7 @@ typedef struct {
 	void *d_g_state;	//device context
 	void *job_conf;		//job configuration
 	
-	int start_idx;
+	int start_row_id_idx;
 	int end_idx;
 
 } thread_info_t;
@@ -398,19 +395,19 @@ void AddMapInputRecord2(gpu_context*		spec,
 
 extern "C"
 void AddMapInputRecordGPU(gpu_context* d_g_state,
-						keyval_t *kv_p, int start_id, int end_id);
+						keyval_t *kv_p, int start_row_id_id, int end_id);
 
 extern "C"
 void AddReduceInputRecordGPU(gpu_context* d_g_state, 
-							 keyvals_t * sorted_intermediate_keyvals_arr, int starti, int endi);
+							 keyvals_t * sorted_intermediate_keyvals_arr, int start_row_idi, int endi);
 
 extern "C"
 void AddMapInputRecordCPU(cpu_context* d_g_state,
-						keyval_t *kv_p, int start, int end);
+						keyval_t *kv_p, int start_row_id, int end);
 
 extern "C"
 void AddReduceInputRecordCPU(cpu_context* d_g_state,
-						keyvals_t * kv_p, int starti, int endj);
+						keyvals_t * kv_p, int start_row_idi, int endj);
 
 
 extern "C"

@@ -22,24 +22,13 @@
 
 __device__ void gpu_reduce(void *KEY, val_t* VAL, int keySize, int valCount, gpu_context d_g_state){
 
-		int count = 0;
-		for (int i=0;i<valCount;i++){
-			count += *(int *)(VAL[i].val);
-		}//
-		
-		Emit2(KEY,&count,keySize,sizeof(int),&d_g_state);
+		return;
 		
 }//reduce2
 
 void cpu_reduce(void *KEY, val_t* VAL, int keySize, int valCount, cpu_context* d_g_state){
 
-		int count = 0;
-		for (int i=0;i<valCount;i++){
-			count += *(int *)(VAL[i].val);
-		}//
-		
-		//Emit2(KEY,&count,keySize,sizeof(int),&d_g_state);
-		printf("reduce:%s :%d  :%d\n",(char *)KEY, count);
+		return;
 		
 }//reduce2
 
