@@ -1,18 +1,27 @@
+
 /*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
-	Code Name: Panda 0.1
+	
+	Code Name: Panda 
+	
 	File: Global.h 
-	Time: 2012-07-01 
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
+
 	Developer: Hui Li (lihui@indiana.edu)
 
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
- */	
+
+ */
 
 #ifndef __GLOBAL_H__
 #define __GLOBAL_H__
 
-#define BLOCK_SIZE 50
+
+#define MATRIX_BLOCK_SIZE 64
+
 #define CHECK_BANK_CONFLICTS 0
 #if CHECK_BANK_CONFLICTS
 #define AS(i, j) cutilBankChecker(((float*)&As[0][0]), (BLOCK_SIZE * i + j))
@@ -48,7 +57,7 @@ typedef struct
 		float* h_matrix2;
 		float* h_matrix3;
 
-		int test;
+		//int test;
 
 } MM_KEY_T;
 
@@ -57,8 +66,8 @@ typedef struct
         int row;
         int col;
 		
-		int bz;
-		int ty;
+		//int tbz;//thread block size
+		//int mbz;//matrix block size
 		
         int row_dim;
         int col_dim;

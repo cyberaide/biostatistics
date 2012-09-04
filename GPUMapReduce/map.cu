@@ -1,3 +1,4 @@
+
 /*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
@@ -5,11 +6,12 @@
 	Code Name: Panda 
 	
 	File: map.cu 
-	First Version:	2012-07-01 V0.1
-	Current Version: V0.3	
-	Last Updates:   2012-8-29
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
 
 	Developer: Hui Li (lihui@indiana.edu)
+
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
 
  */
@@ -26,7 +28,7 @@ __device__ float operator*(float4 a, float4 b)
 }//__device__
 
 
-void cpu_1d_blocked_matrix(float *A, float *B, float *C, int wA,int start_row_id_id,int end_id, int bz);
+void cpu_1d_blocked_matrix(float *A, float *B, float *C, int wA,int start_row_id,int end_id, int bz);
 void cpu_2d_blocked_matrix(float *A, float *B, float *C, int wA,int row_id,int col_id, int bz);
 
 void cpu_map(void *KEY, void*VAL, int keySize, int valSize, cpu_context *d_g_state, int map_task_idx){
@@ -36,7 +38,7 @@ void cpu_map(void *KEY, void*VAL, int keySize, int valSize, cpu_context *d_g_sta
 
 	int rowId = pVal->row;
 	int colId = pVal->col;
-	int bz = pVal->bz;
+	int bz = MATRIX_BLOCK_SIZE;
 
 	int wA = pVal->col_dim;
 	int wB = pVal->col_dim;
@@ -48,19 +50,19 @@ void cpu_map(void *KEY, void*VAL, int keySize, int valSize, cpu_context *d_g_sta
 	
 }//map2
 
-__device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
+//Last update 9/2/2012
+//blocked matrix useful
+__device__ void gpu_map1(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
 
 	MM_KEY_T* pKey = ((MM_KEY_T*)KEY);
 	MM_VAL_T* pVal = ((MM_VAL_T*)VAL);
 
-	int start_row_id_id = pVal->row;
-	int end_id = pVal->col;
 
 	int wA = pVal->col_dim;
 	int wB = pVal->col_dim;
-	int bz = pVal->bz; //size of each tile
+	
 	int m = wA;
-	bz = BLOCK_SIZE;
+	int bz = MATRIX_BLOCK_SIZE;
 
 	float Csub = 0.0;
 	float *A = pKey->matrix1;
@@ -71,8 +73,8 @@ __device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_conte
 	float4*Bs = (float4*)B;
 
 	int i,j,k;
-	int start_row_idPointA = pVal->row*bz;
-	int start_row_idPointB = pVal->col*bz;
+	int start_row_id_a_matrix = pVal->row*bz;
+	int start_row_id_b_matrix = pVal->col*bz;
 
 	int aHeight = bz;
 	int aHeightBlocks = aHeight/bz;
@@ -116,7 +118,8 @@ __device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_conte
 			for (kb =0;kb<commBlocks;kb++){
 				if (commLastBlockWidth>0 && kb==(commBlocks-1))
 					commBlockWidth = commLastBlockWidth;
-				for (i = start_row_idPointA + ib*bz;i<start_row_idPointA+(ib*bz)+aBlockHeight;i++){
+
+				for (i = start_row_id_a_matrix + ib*bz;i<start_row_id_a_matrix+(ib*bz)+aBlockHeight;i++){
 					for (k = kb*bz;k<(kb*bz)+(commBlockWidth);k++){
 						aik = A[i*m+k];
 						float4 *Bsub = (float4*)(B+k*m+jb*bz);
@@ -132,9 +135,10 @@ __device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_conte
 							*((Csub)+j) = c4;
 							//(C[i*m+j]+=A[i*m+k]*B[k*m+j];
 						}//for
+						int indexBase = jb*bz+4*(bBlockWidth/4);
 						for (int rj=0; rj<(bBlockWidth%4); rj++){
-							int index = jb*bz+4*(bBlockWidth/4)+rj;
-							C[i*m+index] += aik*(*(B+k*m+index));
+							int index = indexBase + rj;
+							C[i*m+index] += aik*(*(B+ k*m +index));
 						}
 					}
 				}//for
@@ -151,331 +155,219 @@ __device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_conte
 	}*/
 }
 
-
-__device__ void gpu_map2(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
+//Last Update 9/2/2012
+__device__ void gpu_map(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
 
 	MM_KEY_T* pKey = ((MM_KEY_T*)KEY);
 	MM_VAL_T* pVal = ((MM_VAL_T*)VAL);
-
-	int start_row_id_id = pVal->row;
-	int end_id = pVal->col;
-
+	
 	int wA = pVal->col_dim;
 	int wB = pVal->col_dim;
-	int bz = pVal->bz; //size of each tile
+	//int tbz = pVal->tbz; 
+	//int mbz = pVal->mbz;
+	int tbz = THREAD_BLOCK_SIZE;
+	int mbz = MATRIX_BLOCK_SIZE;
 	int m = wA;
 
 	float Csub = 0.0;
-	//printf("map2 TID:%d, key:%d, val:%s \n",TID,*(int*)KEY,(char *)VAL);
 	float *A = pKey->matrix1;
 	float *B = pKey->matrix2;
 	float *C = pKey->matrix3;
+	
+	int start_row_id_a_matrix = pVal->row*mbz;
+	int start_row_id_b_matrix = pVal->col*mbz;
 
-	int i,j,k;
-
-	int start_row_idpoint = start_row_id_id;
-	int endpoint = end_id;
-	//DoLog("start_row_id_id:%d end_id:%d",start_row_id_id,end_id);
-
-	int aHeight = endpoint - start_row_idpoint;
-	int aHeightBlocks = aHeight/bz;
-	int aLastBlockHeight = aHeight - (aHeightBlocks*bz);
-
+	int aHeight = mbz;
+	int aHeightBlocks = aHeight/tbz;
+	int aLastBlockHeight = aHeight - (aHeightBlocks*tbz);
 	if (aLastBlockHeight>0){
-		aHeightBlocks++;
+		//aHeightBlocks++;
 	}//if
-	int bWidthBlocks = m/bz;
-	int bLastBlockWidth = m - (bWidthBlocks*bz);
+
+	int bWidth = mbz;
+	int bWidthBlocks = bWidth/tbz;
+	int bLastBlockWidth = bWidth - (bWidthBlocks*tbz);
 	if (bLastBlockWidth>0){
-		bWidthBlocks++;
+		//bWidthBlocks++;
 	}//if
 
-	int commBlocks = m/bz;
-	int commLastBlockWidth = m - (commBlocks*bz);
+	int commBlocks = m/tbz;
+	int commLastBlockWidth = m - (commBlocks*tbz);
 	if (commLastBlockWidth >0){
-		commBlocks++;
+		//commBlocks++;
 	}//fi
+	int aBlockHeight = tbz;
+	int bBlockWidth = tbz;
+	int commBlockWidth = tbz;
+	int ib,jb,kb;	
 
-	int aBlockHeight = bz;
-	int bBlockWidth = bz;
-	int commBlockWidth = bz;
-	int ib,jb,kb;
+	//int bx = blockIdx.x;
+	//int by = blockIdx.y;
+	int tx = threadIdx.x;
+	int ty = threadIdx.y;
+	
+	__shared__ float As[THREAD_BLOCK_SIZE][THREAD_BLOCK_SIZE];
+	__shared__ float Bs[THREAD_BLOCK_SIZE][THREAD_BLOCK_SIZE];
+	__shared__ int row_id_a;
+	__shared__ int row_id_b;
 
-	for (ib=0;ib<aHeightBlocks;ib++){
+	for (ib=0; ib<aHeightBlocks; ib++){
 		if (aLastBlockHeight>0 && ib==(aHeightBlocks-1)){
 			aBlockHeight = aLastBlockHeight;
 		}//if
 
-		bBlockWidth = bz;
+		bBlockWidth = tbz;
 		for (jb=0; jb<bWidthBlocks;jb++){
-			if (bLastBlockWidth>0&&jb==(bWidthBlocks-1))
+			if (bLastBlockWidth>0 && jb==(bWidthBlocks-1)){
 				bBlockWidth = bLastBlockWidth;
+			}
 
-			commBlockWidth = bz;
+			/*commBlockWidth = tbz;
 			for (kb =0;kb<commBlocks;kb++){
 				if (commLastBlockWidth>0 && kb==(commBlocks-1))
-					commBlockWidth = commLastBlockWidth;
-				for (i = start_row_idpoint+ib*bz;i<start_row_idpoint+(ib*bz)+aBlockHeight;i++){
-					for (k = kb*bz;k<(kb*bz)+commBlockWidth;k++){
-						for (j= jb*bz;j<(jb*bz)+bBlockWidth;j++){
-							C[i*m+j]+=A[i*m+k]*B[k*m+j];
-						}//for
-					}
-				}//for
-			}//for
-		}//for
-	}//for
+					commBlockWidth = commLastBlockWidth;*/
 
+			for (int y=0;y<THREAD_BLOCK_SIZE;y++){
+				for (int x=0;x<THREAD_BLOCK_SIZE;x++){
+				Csub = 0.0;					
+				if (y*THREAD_BLOCK_SIZE+x==THREAD_ID){
+					row_id_a = start_row_id_a_matrix+ib*tbz;
+					row_id_b = start_row_id_b_matrix+jb*tbz;
+				}//if	
+					
+				__syncthreads();
+							
+				int row_id = (row_id_a + ty);
+				if (row_id >= m) row_id = m-1;
+				int col_id = (row_id_b + tx);
+				if (col_id >= m) col_id = m-1;
+		
+				for (int cb=0; cb<commBlocks; cb++){
+				
+				As[ty][tx] = A[(row_id)*m + cb*tbz + tx];
+				Bs[ty][tx] = B[(col_id)*m + cb*tbz + tx];
+				
+				//if(cb==commBlocks-1)
+				//	printf("row:%d col:%d  index:%d As[%d][%d]:%f\n",row_id,col_id,(row_id)*m + cb*tbz + tx,ty,tx,As[ty][tx]);
+				
+				__syncthreads();
+				
+				#pragma unroll		
+					for (int k = 0; k<THREAD_BLOCK_SIZE; k++)
+						Csub += As[ty][k]*Bs[k][tx];
+				__syncthreads();
+				
+				}//for
+
+				int index = (row_id)*m + (col_id);
+				if(index>m*m-1){
+					printf("error! index>m*m-1\n");
+					index = m*m-1;
+				}
+				C[index] = Csub;
+				}//for (int x=0;x<16;x++)
+			}//for (int y=0;y<16;y++)
+		}//for (jb=0
+	}
 }
 
 
-__device__ void gpu_map1(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
+//Last Updated 9/1/2012
+//CUDA implementation of Matrix Multiplication useful
+__device__ void gpu_map2(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
 
+	//printf("map_task_idx:%d\n",map_task_idx);
+	
 	MM_KEY_T* pKey = ((MM_KEY_T*)KEY);
 	MM_VAL_T* pVal = ((MM_VAL_T*)VAL);
-
-	int rowId = pVal->row;
-	int colId = pVal->col;
 
 	int wA = pVal->col_dim;
 	int wB = pVal->col_dim;
-	//int BLOCK_SIZE = pVal->bz;
+	//int bz = pVal->tbz; //size of each tile
+	int bz = MATRIX_BLOCK_SIZE;
+	int m = wA;
 
-	// Index of the first sub-matrix of A processed by the block
 	float Csub = 0.0;
-	//float4 *A = (float4*)(pKey->matrix1);
-	//float4 *B = (float4*)(pKey->matrix2);
+	float *A = pKey->matrix1;
+	float *B = pKey->matrix2;
 	float *C = pKey->matrix3;
-	float *A = (float*)(pKey->matrix1);
-	float *B = (float*)(pKey->matrix2);
 	
-	//float4* As;
-	//float4* Bs;
+	int start_row_id_a_matrix = pVal->row*bz;
+	int start_row_id_b_matrix = pVal->col*bz;
 
-	/*if (map_task_idx == 1){
-		printf("in gpu_map\n");
-		for (int i=0;i<10;i++){
-			printf("%f :%f",pKey->matrix2[i], pKey->matrix3[i]);
-		}
-		printf("\n");
-	}*/
+	int aHeight = bz;
+	int aHeightBlocks = aHeight/bz;
+	int aLastBlockHeight = aHeight - (aHeightBlocks*bz);
+	if (aLastBlockHeight>0){
+		aHeightBlocks++;
+	}//if
+	int bWidth = bz;
+	int bWidthBlocks = bWidth/bz;
+	int bLastBlockWidth = bWidth - (bWidthBlocks*bz);
+	if (bLastBlockWidth>0){
+		bWidthBlocks++;
+	}//if
+	int commBlocks = m/bz;
+	int commLastBlockWidth = m - (commBlocks*bz);
+	if (commLastBlockWidth >0){
+		//commBlocks++;
+	}//fi
+	int aBlockHeight = bz;
+	int bBlockWidth = bz;
+	int commBlockWidth = bz;
+	int ib,jb,kb;	
 
-	int aBase = (rowId)*wA*BLOCK_SIZE;
-	int bBase = (colId)*wB*BLOCK_SIZE;
-	// Index of the last sub-matrix of A processed by the block
-	int aBegin = aBase;
-	int bBegin = bBase;
-	int x, y;
-	for (int step = 0; step < wA/BLOCK_SIZE; step++){
-		for (int n=0;n<BLOCK_SIZE;n++){
-			int aEnd = aBegin + BLOCK_SIZE;
-
-			for (int step2 = 0; step2< wB/BLOCK_SIZE; step2++){
-				for (int n2=0;n2<BLOCK_SIZE;n2++){
-
-					//int aBegin = aBase + n*wA + step*BLOCK_SIZE;	
-					int bEnd = bBegin + BLOCK_SIZE;
-					//int x = (rowId-1)*BLOCK_SIZE + n;
-					//int y = (colId-1)*BLOCK_SIZE + n;
-
-					//As = (float4*)(A+aBegin);
-					//Bs = (float4*)(B+bBegin);
-
-					for (int i=0;i<(aEnd-aBegin);i++)
-						for (int j=0;j<(bEnd-bBegin);j++){
-							
-							/*
-							Csub += As[i].x*Bs[j].x;		
-							Csub += As[i].y*Bs[j].y;		
-							Csub += As[i].z*Bs[j].z;		
-							Csub += As[i].w*Bs[j].w;		
-							*/
-							Csub += A[i]*B[j];		
-							//Csub += 4;
-
-						}//for
-
-						/*
-					int aRe = (aEnd-aBegin) & 0x00000003;
-					int bRe = (bEnd-bBegin) & 0x00000003;
-
-					float *rMatrix1 = (float*)(As + (aEnd-aBegin)/4);
-					float *rMatrix2 = (float*)(Bs + (bEnd-bBegin)/4);
-					//float f1,f2;
-					for (int i = 0; i < aRe; i++)
-						for (int j = 0; j < bRe; j++)
-						{
-							//f1 = rMatrix1[i];
-							//f2 = rMatrix2[j];
-							//Csub += (rMatrix1[i] * rMatrix2[j]);
-							Csub += 1.0;
-						}//for
-						*/
-							/*
-							for (int i=aBegin;i<aEnd;i++)
-							for (int j=bBegin;j<bEnd;j++){
-							Csub += As[i]*Bs[j];		
-							}//for
-							*/
-					 x = (rowId)*BLOCK_SIZE + n;
-					 y = (colId)*BLOCK_SIZE + n2;
-					if (x>=wA) x = wA -1;
-					if (y>=wA) y = wA -1;
-					//C[x+y] = Csub;
-					bBegin = bBase + wB;
-				}
-				bBegin = bBase + BLOCK_SIZE;
-			}
-			aBegin = aBase + wA;
-		}//int
-		aBegin = aBase + BLOCK_SIZE;
-	}//for
-	C[x+y] = Csub;
-	printf("Csub:%f\n",Csub);
-	/*
-	if (map_task_idx == 1){
-		for (int i=0;i<3;i++){
-			printf("%f ",C[i]);
-		}
-		printf("\n");
-	}*/
-}
-
-
-__device__ void gpu_map3(void *KEY, void*VAL, int keySize, int valSize, gpu_context *d_g_state, int map_task_idx){
-
-	MM_KEY_T* pKey = ((MM_KEY_T*)KEY);
-	MM_VAL_T* pVal = ((MM_VAL_T*)VAL);
-
-	int rowId = pVal->row;
-	int colId = pVal->col;
-	//int BLOCK_SIZE = pVal->bz;
-	int M_COL_COUNT = pVal->col_dim;
-
-	/*
-	float4 *matrix1 = (float4*)(pKey->matrix1+rowId*M_COL_COUNT);
-	float4 *matrix2 = (float4*)(pKey->matrix2+colId*M_COL_COUNT);
-
-	float newVal = 0.0f;
-	int col4 = M_COL_COUNT >> 2;
-	int remainder = M_COL_COUNT & 0x00000003;
-	*/
-
-	int bx = blockIdx.x;
-	int by = blockIdx.y;
-	// Thread index
+	//int bx = blockIdx.x;
+	//int by = blockIdx.y;
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
 
-	int wA = pVal->col_dim;
-	int wB = pVal->col_dim;
+	__shared__ float As[THREAD_BLOCK_SIZE][THREAD_BLOCK_SIZE];
+	__shared__ float Bs[THREAD_BLOCK_SIZE][THREAD_BLOCK_SIZE];
+	__shared__ int row_id_a;
+	__shared__ int row_id_b;
+	
 
-	// Index of the first sub-matrix of A processed by the block
-	int aBegin = wA * BLOCK_SIZE * by;
-	// Index of the last sub-matrix of A processed by the block
-	int aEnd   = aBegin + wA - 1;
-
-	// Step size used to iterate through the sub-matrices of A
-	int aStep  = BLOCK_SIZE;
-	// Index of the first sub-matrix of B processed by the block
-	int bBegin = BLOCK_SIZE * bx;
-	// Step size used to iterate through the sub-matrices of B
-	int bStep  = BLOCK_SIZE * wB;
-	// Csub is used to store the element of the block sub-matrix
-	// that is computed by the thread
-	float Csub = 0;
-	//printf("map2 TID:%d, key:%d, val:%s \n",TID,*(int*)KEY,(char *)VAL);
-	float *A = pKey->matrix1;
-	float *B = pKey->matrix2;
-
-	for (int a = aBegin, b = bBegin;
-		a <= aEnd;
-		a += aStep, b += bStep) {
-
-			//printf("a:%d, b:%d ty:%d tx:%d\n",a,b,ty,tx);
-
-			// Declaration of the shared memory array As used to
-			// store the sub-matrix of A
-			/*
-			__shared__ float As[BLOCK_SIZE][BLOCK_SIZE];
-
-			// Declaration of the shared memory array Bs used to
-			// store the sub-matrix of B
-			__shared__ float Bs[BLOCK_SIZE][BLOCK_SIZE];
-
-			// Load the matrices from device memory
-			// to shared memory; each thread loads
-			// one element of each matrix
-			int index = a + wA * ty + tx;
-			//int bound = wA*wA;
-			//if (index >= bound) index = bound -1;
-			//index = 0;
-
-			for (int i=0;i<BLOCK_SIZE;i++){
-			for (int j=0;j<BLOCK_SIZE;j++){
-			//AS(ty, tx) = A[a + wA * ty + tx];
-			AS(i, j) = A[a + wA * i + j];
-			BS(i, j) = B[b + wB * i + j];
-			}//for
-			}//for
-			*/
-
-			//AS(ty, tx) = A[index];
-			//index = b + wB * ty + tx;
-			//if (index >= bound) index = bound -1;
-			//BS(ty, tx) = B[b + wB * ty + tx];
-			//index = 0;
-			//BS(ty, tx) = B[index];
-			// Synchronize to make sure the matrices are loaded
+	for (int y=0;y<MATRIX_BLOCK_SIZE;y++){
+		for (int x=0;x<MATRIX_BLOCK_SIZE;x++){
+			Csub = 0.0;					
+			if (y*MATRIX_BLOCK_SIZE+x==THREAD_ID){
+				row_id_a = start_row_id_a_matrix;
+				row_id_b = start_row_id_b_matrix;
+			}//if	
+					
 			__syncthreads();
 
-			// Multiply the two matrices together;
-			// each thread computes one element
-			// of the block sub-matrix
-			for (int i=0;i<BLOCK_SIZE;i++)
-				for(int j=0;j<BLOCK_SIZE;j++){
-#pragma unroll
-					for (int k = 0; k < BLOCK_SIZE; ++k)
-						//Csub += AS(ty, k) * AS(k, tx);
-						//			Csub += AS(i, k) * AS(k, j);
-						int kk;
-				}
-				//Csub += AS(ty, k) * BS(k, tx);
-				// Synchronize to make sure that the preceding
-				// computation is done before loading two new
-				// sub-matrices of A and B in the next iteration
+			int row_id = (row_id_a+ty);
+			if (row_id >= m) row_id = m-1;
+			int col_id = (row_id_b+tx);
+			if (col_id >= m) col_id = m-1;
+			
+
+
+			for (int cb=0; cb<commBlocks; cb++){
+			
+				//As[ty][tx] = A[(row_id_a + ty)*m + cb*bz + tx];
+				//Bs[ty][tx] = B[(row_id_b + ty)*m + cb*bz + tx];
+				As[ty][tx] = A[(row_id)*m + cb*bz + tx];
+				Bs[ty][tx] = B[(row_id)*m + cb*bz + tx];
+
 				__syncthreads();
+				#pragma unroll		
+					for (int k = 0; k < MATRIX_BLOCK_SIZE; k++)
+						Csub += As[ty][k]*Bs[k][tx];
+				__syncthreads();
+			}//for
 
+			//if ((x==0) && (y==5)&&(map_task_idx%50==1))
+			//	printf("commBlocks:%d map_task_idx:%d tx:%d ty:%d Csub:%f index:%d row_id_a:%d bz:%d THREAD_ID:%d\n",commBlocks, map_task_idx, tx, ty, Csub, index, row_id_a, bz, THREAD_ID);
+			int index = (row_id)*m + (col_id);
+			C[index] = Csub;
+			
+		}//for
 	}
+}
 
-
-	// Write the block sub-matrix to device memory;
-	// each thread writes one element
-
-	int c = wB * BLOCK_SIZE * by + BLOCK_SIZE * bx;
-	//C[c + wB * ty + tx] = Csub;
-
-	/*for (int i = 0; i < col4; i++)
-	{
-	float4 v1 = matrix1[i];
-	float4 v2 = matrix2[i];
-
-	newVal += v1.x * v2.x;
-	newVal += v1.y * v2.y;
-	newVal += v1.z * v2.z;
-	newVal += v1.w * v2.w;
-	}
-	float *rMatrix1 = (float*)(matrix1+col4);
-	float *rMatrix2 = (float*)(matrix2+col4);
-	for (int i = 0; i < remainder; i++)
-	{
-	float f1 = rMatrix1[i];
-	float f2 = rMatrix2[i];
-	newVal += (f1 * f2);
-	}
-	__syncthreads(); */
-
-}//map2
 
 
 #endif //__MAP_CU__

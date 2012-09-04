@@ -1,15 +1,21 @@
-/*	
 
+/*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
-	Code Name: Panda 0.1
+	
+	Code Name: Panda 
+	
 	File: PandaSort.cu 
-	Time: 2012-07-01 
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
+
 	Developer: Hui Li (lihui@indiana.edu)
 
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
- 
+
  */
+
 
 
 #include <stdlib.h>
@@ -682,17 +688,17 @@ __global__ void copyDataFromDevice2Host1(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_row_id_idx = block_start_row_id_idx 
+	int block_start_row_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_idx = block_start_row_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_idx+num_records_per_thread*STRIDE;
 	
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
 	
-	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		int begin=0;
 		int end=0;
@@ -718,11 +724,11 @@ __global__ void copyDataFromDevice2Host3(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_row_id_idx = block_start_row_id_idx 
+	int block_start_row_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_idx = block_start_row_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_idx+num_records_per_thread*STRIDE;
 	
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
@@ -731,7 +737,7 @@ __global__ void copyDataFromDevice2Host3(gpu_context d_g_state)
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
 	
-	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 		
 		begin=0;
 		end=0;
@@ -784,17 +790,17 @@ __global__ void copyDataFromDevice2Host2(gpu_context d_g_state)
 {	
 	
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_row_id_idx = block_start_row_id_idx 
+	int block_start_row_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_idx = block_start_row_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_idx+num_records_per_thread*STRIDE;
 
 	//if (TID>=d_g_state.num_input_record)return;
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
 
-	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		int begin=0;
 		int end=0;
@@ -837,7 +843,7 @@ void StartCPUShuffle2(thread_info_t *thread_info){
 		total_count += intermediate_keyval_arr_arr_p[i].arr_len;
 	}//for
 
-	DoLog("total intermediate record count:%d\n",total_count);
+	
 	
 	d_g_state->sorted_intermediate_keyvals_arr = NULL;
 	keyvals_t * sorted_intermediate_keyvals_arr = d_g_state->sorted_intermediate_keyvals_arr;
@@ -901,8 +907,7 @@ void StartCPUShuffle2(thread_info_t *thread_info){
 	d_g_state->sorted_intermediate_keyvals_arr = sorted_intermediate_keyvals_arr;
 	d_g_state->sorted_keyvals_arr_len = sorted_key_arr_len;
 
-	DoLog("total number of different intermediate records:%d",sorted_key_arr_len);
-
+	DoLog("CPU_GROUP_ID:[%d] #Intermediate Records:%d; #Intermediate Records:%d After Shuffle",d_g_state->cpu_group_id, total_count,sorted_key_arr_len);
 
 }
 
@@ -1011,7 +1016,6 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 	}//for
 	free(count_arr);
 
-	DoLog("GPU_ID:[%d] total number of intermediate records:%lu  num_input_records:%d", d_g_state->gpu_id, total_count, d_g_state->num_input_record);
 	checkCudaErrors(cudaMalloc((void **)&(d_g_state->d_intermediate_keyval_arr),sizeof(keyval_t)*total_count));
 	
 	int num_blocks = (d_g_state->num_mappers + (NUM_THREADS)-1)/(NUM_THREADS);
@@ -1137,10 +1141,9 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 	
 	keyval_pos_t *tmp_keyval_pos_arr = (keyval_pos_t *)malloc(sizeof(keyval_pos_t)*total_count);
 	
+	DoLog("GPU_ID:[%d] #input_records:%d #intermediate_records:%lu #different_intermediate_records:%d totalKeySize:%d totalValSize:%d", 
+		d_g_state->gpu_id, d_g_state->num_input_record, total_count, sorted_key_arr_len,totalKeySize,totalValSize);
 	
-	DoLog("GPU_ID:[%d] total number of different intermediate records:%d totalKeySize:%d totalValSize:%d",
-		d_g_state->gpu_id, sorted_key_arr_len,totalKeySize,totalValSize);
-
 	int *pos_arr_4_pos_arr = (int*)malloc(sizeof(int)*sorted_key_arr_len);
 	memset(pos_arr_4_pos_arr,0,sizeof(int)*sorted_key_arr_len);
 
@@ -1179,8 +1182,6 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 }
 
 
-
-
 //host function sort_CPU
 //copy intermediate records from device memory to host memory and sort the intermediate records there. 
 //The host API cannot copy from dynamically allocated addresses on device runtime heap, only device code can access them
@@ -1188,19 +1189,18 @@ void Shuffle4GPUOutput(gpu_context* d_g_state){
 void sort_CPU(gpu_context* d_g_state){
 
 #ifdef REMOVE
-
-	
 	
 	//start_row_id sorting
 	//partition
+
 #endif
 
 }
 
 
 
-void Panda_Shuffle_Merge_CPU(panda_context *d_g_state_0, cpu_context *d_g_state_1){
-	DoLog("Panda_Shuffle_Merge_CPU CPU_GROUP_ID:[%d]", d_g_state_1->cpu_group_id);
+void PandaShuffleMergeCPU(panda_context *d_g_state_0, cpu_context *d_g_state_1){
+	DoLog("PandaShuffleMergeCPU CPU_GROUP_ID:[%d]", d_g_state_1->cpu_group_id);
 	
 	keyvals_t * panda_sorted_intermediate_keyvals_arr = d_g_state_0->sorted_intermediate_keyvals_arr;
 
@@ -1284,9 +1284,9 @@ void Panda_Shuffle_Merge_CPU(panda_context *d_g_state_0, cpu_context *d_g_state_
 }
 
 
-void Panda_Shuffle_Merge_GPU(panda_context *d_g_state_1, gpu_context *d_g_state_0){
+void PandaShuffleMergeGPU(panda_context *d_g_state_1, gpu_context *d_g_state_0){
 	
-	DoLog("Panda_Shuffle_Merge_GPU GPU_ID:[%d]",d_g_state_0->gpu_id);
+	DoLog("PandaShuffleMergeGPU GPU_ID:[%d]",d_g_state_0->gpu_id);
 	
 	char *sorted_keys_shared_buff_0 = (char *)d_g_state_0->h_sorted_keys_shared_buff;
 	char *sorted_vals_shared_buff_0 = (char *)d_g_state_0->h_sorted_vals_shared_buff;
@@ -1340,8 +1340,6 @@ void Panda_Shuffle_Merge_GPU(panda_context *d_g_state_1, gpu_context *d_g_state_
 			if (d_g_state_1->sorted_keyvals_arr_len == 0) sorted_intermediate_keyvals_arr = NULL;
 
 			//val_t *vals = sorted_intermediate_keyvals_arr[j].vals;
-			//DoLog("hi there");
-
 			int val_arr_len =keyval_pos_arr_0[i].val_arr_len;
 			
 			val_pos_t * val_pos_arr =keyval_pos_arr_0[i].val_pos_arr;
@@ -1391,7 +1389,6 @@ void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1){
 	void *key_0,*key_1;
 	int keySize_0,keySize_1;
 	bool equal;	
-			
 	//DoLog("len1:%d  len2:%d\n",d_g_state_0->d_sorted_keyvals_arr_len, d_g_state_1->d_sorted_keyvals_arr_len);
 	for (int i=0;i<d_g_state_0->d_sorted_keyvals_arr_len;i++){
 		key_0 = sorted_keys_shared_buff_0 + keyval_pos_arr_0[i].keyPos;

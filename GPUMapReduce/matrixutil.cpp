@@ -5,9 +5,9 @@
 	Code Name: Panda 
 	
 	File: matrixutil.cpp 
-	First Version:	2012-07-01 V0.1
-	Current Version: V0.3	
-	Last Updates:   2012-8-29
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
 
 	Developer: Hui Li (lihui@indiana.edu)
 
@@ -71,10 +71,10 @@ void cpu_2d_blocked_matrix(float *A, float *B, float *C, int wA,int row_id,int c
 }
 
 
-void cpu_1d_blocked_matrix(float *A, float *B, float *C, int m, int start_row_id_id, int end_id, int bz){
+void cpu_1d_blocked_matrix(float *A, float *B, float *C, int m, int start_row_id, int end_id, int bz){
 
 	int i,j,k;
-    int start_row_idpoint = start_row_id_id;
+    int start_row_idpoint = start_row_id;
 	int endpoint = end_id;
 
     int aHeight = endpoint - start_row_idpoint;

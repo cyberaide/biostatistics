@@ -17,14 +17,14 @@ LIBPATH =  -L./ -L/sw/keeneland/cuda/4.1/linux_binary/lib64/ -L/opt/NVIDIA_GPU_C
 .c.o:
 	$(CC) -c $<
 
-OBJ		= main.o PandaLib.o PandaUtils.o PandaScan.o PandaSort.o matrixutil.o
+OBJ		= main.o PandaLib.o PandaUtils.o PandaSched.o PandaSort.o matrixutil.o
 
 PandaLib.o: PandaLib.cu
 	$(NVCC) -O -arch=sm_20 -c PandaLib.cu $(INCLUDE) -lcudart
 PandaUtils.o: PandaUtils.cu
 	$(NVCC) -O -arch=sm_20 -c PandaUtils.cu $(INCLUDE) -lcudart 
-PandaScan.o: PandaScan.cu
-	nvcc -arch=sm_20 -c PandaScan.cu -o PandaScan.o $(INCLUDE) -lcudart
+PandaSched.o: PandaSched.cu
+	nvcc -arch=sm_20 -c PandaSched.cu -o PandaSched.o $(INCLUDE) -lcudart
 PandaSort.o: PandaSort.cu
 	nvcc -arch=sm_20 -c PandaSort.cu -o PandaSort.o $(INCLUDE) -lcudart 
 matrixutil.o: matrixutil.cpp

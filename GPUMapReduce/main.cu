@@ -1,3 +1,4 @@
+
 /*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
@@ -5,11 +6,12 @@
 	Code Name: Panda 
 	
 	File: main.cu 
-	First Version:	2012-07-01 V0.1
-	Current Version: V0.3	
-	Last Updates:   2012-8-29
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
 
 	Developer: Hui Li (lihui@indiana.edu)
+
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
 
  */
@@ -21,7 +23,6 @@
 
 //-----------------------------------------------------------------------
 //	Panda Matrix Multiplication
-//	Data: 8/29/2012
 //-----------------------------------------------------------------------
 
 static float *GenMatrix(int M_ROW_COUNT, int M_COL_COUNT, float init)
@@ -49,7 +50,7 @@ int main(int argc, char** argv)
 {		
 	if (argc != 8)
 	{	
-		printf("usage: %s [rowNum][colNum][num gpus][num cpu groups][num_mappers][cpu/gpu work ratio][sample rate]\n", argv[0]);
+		printf("usage: %s [rowNum][colNum][num gpus][num cpu groups][num_mappers][cpu/gpu work ratio][auto tuning]\n", argv[0]);
 		exit(-1);	
 	}//if
 	
@@ -61,7 +62,7 @@ int main(int argc, char** argv)
 	int num_cpus_groups = atoi(argv[4]);
 	int num_mappers = atoi(argv[5]);
 	float ratio = atof(argv[6]);
-	int sample_rate = atoi(argv[7]);
+	int auto_tune = atoi(argv[7]);
 
 	double t1 = PandaTimer();
 
@@ -78,7 +79,8 @@ int main(int argc, char** argv)
     MM_VAL_T val;
 	val.row_dim = ROW_NUM;
     val.col_dim = COL_NUM;
-	val.bz = BLOCK_SIZE;
+	//val.mbz = MATRIX_BLOCK_SIZE;
+	//val.tbz = THREAD_BLOCK_SIZE;
 
 	int start_row_id, end_row_id;
 	start_row_id = end_row_id = 0;
@@ -88,6 +90,7 @@ int main(int argc, char** argv)
 	//panda worker
 	thread_info_t *thread_info = (thread_info_t*)malloc(sizeof(thread_info_t)*(num_gpus + num_cpus_groups));
 
+	
 	for (int dev_id=0; dev_id<num_cpus_groups; dev_id++){
 		if (cpu_task_num == 0)
 			break;
@@ -113,10 +116,10 @@ int main(int argc, char** argv)
 			end_row_id = start_row_id+task_per_partition;
 			val.row = start_row_id;
 			val.col = end_row_id;
-			if( i==(partitions-1) )
+			if( i == (partitions-1) )
 				val.col = cpu_task_num;
 
-			if (val.col>val.row)
+			if (val.col > val.row)
 				AddPandaTask(cpu_job_conf, &key, &val, sizeof(MM_KEY_T), sizeof(MM_VAL_T));
 		}//for
 
@@ -132,7 +135,7 @@ int main(int argc, char** argv)
 		gpu_job_conf->num_mappers = num_mappers;
 		gpu_job_conf->auto_tuning = false;
 		gpu_job_conf->ratio = (double)ratio;
-		gpu_job_conf->auto_tuning_sample_rate = sample_rate;
+		gpu_job_conf->auto_tuning_sample_rate = -1;//sample_rate;
 
 		if ( dev_id == 0 )
 			start_row_id = cpu_task_num;	
@@ -166,10 +169,10 @@ int main(int argc, char** argv)
 		key.h_matrix3 = NULL;
 
 		if(end_row_id>start_row_id)
-			for (int i = start_row_id/BLOCK_SIZE; i < (end_row_id + BLOCK_SIZE-1)/BLOCK_SIZE; i++)
+			for (int i = start_row_id/MATRIX_BLOCK_SIZE; i < (end_row_id + MATRIX_BLOCK_SIZE-1)/MATRIX_BLOCK_SIZE; i++)
 			{
 				val.row = i;
-				for (int j = 0; j < (COL_NUM+BLOCK_SIZE-1)/BLOCK_SIZE; j++)
+				for (int j = 0; j < (COL_NUM + MATRIX_BLOCK_SIZE-1)/MATRIX_BLOCK_SIZE; j++)
 				{
 					val.col = j;
 					AddPandaTask(gpu_job_conf, &key, &val, sizeof(MM_KEY_T), sizeof(MM_VAL_T));
@@ -177,11 +180,22 @@ int main(int argc, char** argv)
 			}//for
 			thread_info[num_cpus_groups + dev_id].job_conf = gpu_job_conf;
 			thread_info[num_cpus_groups + dev_id].device_type = GPU_ACC;
-
 	}
-
+	
 	double t4 = PandaTimer();
-	PandaMetaScheduler(thread_info, num_gpus, num_cpus_groups);
+	panda_context *panda = GetPandaContext();
+	
+	panda->num_gpus = num_gpus;
+	panda->num_cpus_groups = num_cpus_groups;
+	panda->ratio = ratio;
+
+	/*if (auto_tune ==1){
+	ratio = Smart_Scheduler(thread_info, panda);
+	panda->ratio = ratio;
+	}
+	else*/
+	PandaMetaScheduler(thread_info, panda);
+	
 	cudaThreadSynchronize();
 	double t5 = PandaTimer();
 
@@ -189,7 +203,7 @@ int main(int argc, char** argv)
 	DoLog("Copy to GPU:%f",t4-t3);
 	DoLog("Compute:%f",t5-t4);
 	char str[128];
-	sprintf(str,"matrix size:%d copy to GPU:%f  compute:%f cpu/gpu ratio:%f sample rate:%d", ROW_NUM, t3-t2, t5-t4, (double)ratio,sample_rate);
+	sprintf(str,"matrix size:%d copy2GPU:%f  compute:%f cpu/gpu ratio:%f auto-tune:%d", ROW_NUM, t3-t2, t5-t4, (double)ratio,auto_tune);
 	DoDiskLog(str);
 
 	return 0;
