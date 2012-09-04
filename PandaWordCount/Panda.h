@@ -1,13 +1,20 @@
+
 /*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
-	Code Name: Panda 0.1
-	File: Panda.h 
-	Time: 2012-07-01 
-	Developer: Hui Li (lihui@indiana.edu)
 	
+	Code Name: Panda 
+	
+	File: Panda.h 
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
+
+	Developer: Hui Li (lihui@indiana.edu)
+
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
-*/
+
+ */
 
 /*
 #ifdef WIN32 
@@ -19,11 +26,6 @@
 #ifndef __PANDA_H__
 #define __PANDA_H__
 
-//#include <unistd.h>
-//#include <sys/mman.h>
-
-//#include <cutil.h>
-//#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -35,12 +37,6 @@
 #include <time.h>
 #include <stdarg.h>
 #include <pthread.h>
-
-//helper for shared that are common to CUDA SDK samples
-//#include <shrUtils.h>
-//#include <sdkHelper.h>  
-//#include <shrQATest.h>  
-
 
 
 #define _DEBUG 0x01
@@ -61,9 +57,10 @@
 //#define TID (BLOCK_ID * blockDim.x + THREAD_ID)
 
 //NOTE NUM_THREADS*NUM_BLOCKS > STRIDE !
-#define NUM_THREADS	16
+#define NUM_THREADS	256
 #define NUM_BLOCKS	4
 #define STRIDE	32
+#define THREAD_BLOCK_SIZE 16
 
 extern "C"
 double PandaTimer();
@@ -165,8 +162,8 @@ typedef struct {
 	void *d_g_state;//gpu_context  cpu_context
 	void *cpu_job_conf;
 	
-	int start_row_id_idx;
-	int end_idx;
+	int start_row_idx;
+	int end_row_idx;
 
 } panda_cpu_task_info_t;
 
@@ -192,7 +189,7 @@ typedef struct
 {	
   bool configured;
 
-  int gpu_id;
+  int gpu_id;   //assigned gpu device id used for resource allocation
   int num_gpus;
 
   int num_mappers;
@@ -242,6 +239,8 @@ typedef struct
 
   keyval_t* d_reduced_keyval_arr;
 
+  int matrix_size;
+  //temporally
   
 
 } gpu_context;
@@ -252,11 +251,13 @@ typedef struct {
 	keyval_arr_t *intermediate_keyval_arr_arr_p;
 	keyvals_t * sorted_intermediate_keyvals_arr;
 	int sorted_keyvals_arr_len;
-
-	gpu_context *gpu_context;
+	
 	int num_cpus_groups;
 	int num_gpus;
+
 	cpu_context *cpu_context;
+	gpu_context *gpu_context;
+	float ratio;
 
 } panda_context;
 
@@ -272,7 +273,7 @@ typedef struct {
 	void *d_g_state;	//device context
 	void *job_conf;		//job configuration
 	
-	int start_row_id_idx;
+	int start_row_idx;
 	int end_idx;
 
 } thread_info_t;
@@ -285,14 +286,79 @@ typedef struct {
 typedef int4 cmp_type_t;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// PandaLib.cu API
+// Panda  APIs in alphabet order
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 extern "C"
-void sort_CPU(gpu_context *d_g_state);
+void AddPandaTask(job_configuration* job_conf,
+						void*		key, 
+						void*		val,
+						int		keySize, 
+						int		valSize);
+
 
 extern "C"
-void Shuffle4GPUOutput(gpu_context *d_g_state);
+void AddMapInputRecord2(gpu_context*		spec, 
+		   void*		key, 
+		   void*		val, 
+		   int		keySize, 
+		   int		valSize);
+
+extern "C"
+void AddMapInputRecordGPU(gpu_context* d_g_state,
+						keyval_t *kv_p, int start_row_id, int end_id);
+
+extern "C"
+void AddReduceInputRecordGPU(gpu_context* d_g_state, 
+							 keyvals_t * sorted_intermediate_keyvals_arr, int start_row_id, int end_row_id);
+
+extern "C"
+void AddMapInputRecordCPU(cpu_context* d_g_state,
+						keyval_t *kv_p, int start_row_id, int end);
+
+extern "C"
+void AddReduceInputRecordCPU(cpu_context* d_g_state,
+						keyvals_t * kv_p, int start_row_id, int end_row_id);
+
+
+
+extern "C"
+void CPUEmitMapOutput(void *key, 
+					  void *val, 
+					  int keySize, 
+					  int valSize, 
+					  cpu_context *d_g_state, 
+					  int map_task_idx);
+
+extern "C"
+void CPUEmitReduceOuput (void*		key, 
+						void*		val, 
+						int		keySize, 
+						int		valSize,
+		           cpu_context *d_g_state);
+
+extern "C"
+void DoDiskLog(const char *str);
+
+extern "C"
+void DestroyDGlobalState(gpu_context * d_g_state);
+
+
+__device__ void GPUEmitReduceOuput (void*		key, 
+						void*		val, 
+						int		keySize, 
+						int		valSize,
+		           gpu_context *d_g_state);
+
+
+__device__ void GPUEmitMapOuput(void *key, 
+								  void *val, 
+								  int keySize, 
+								  int valSize, 
+								  gpu_context *d_g_state,
+								  int map_task_idx
+								  );
+
 
 extern "C"
 void InitGPUMapReduce(gpu_context* d_g_state);
@@ -304,10 +370,30 @@ extern "C"
 void InitCPUDevice(thread_info_t* thread_info);
 
 extern "C"
+void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda);
+
+extern "C"
+void *Panda_Map(void *ptr);
+
+//reserve for future usage
+extern "C"
+void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1);
+
+extern "C"
+void PandaShuffleMergeGPU(panda_context *d_g_state_1, gpu_context *d_g_state_0);
+
+extern "C"
+void PandaShuffleMergeCPU(panda_context *d_g_state_1, cpu_context *d_g_state_0);
+
+extern "C"
+void *Panda_Reduce(void *ptr);
+
+
+extern "C"
 void Start_Panda_Job(job_configuration*job_conf);
 
 extern "C"
-void PandaMetaScheduler(thread_info_t *thread_info, int num_gpus, int num_cpus_groups);
+float Smart_Scheduler(thread_info_t *thread_info, panda_context *panda);
 
 extern "C"
 int StartGPUMap(gpu_context *d_g_state);
@@ -331,19 +417,19 @@ extern "C"
 void StartGPUReduce(gpu_context *d_g_state);
 
 extern "C"
-void DestroyDGlobalState(gpu_context * d_g_state);
+void sort_CPU(gpu_context *d_g_state);
 
 extern "C"
-void *Panda_Map(void *ptr);
+void Shuffle4GPUOutput(gpu_context *d_g_state);
+
 
 extern "C"
 void *RunPandaCPUMapThread(void *ptr);
 
-extern "C"
-void CPUEmitIntermediate(void *key, void *val, int keySize, int valSize, cpu_context *d_g_state, int map_task_idx);
-
-extern "C"
-void DoDiskLog(const char *str);
+__global__ 
+void RunGPUMapTasks(gpu_context d_g_state, 
+					int curIter, 
+					int totalIter);
 
 extern "C"
 int getCPUCoresNum();
@@ -351,30 +437,8 @@ int getCPUCoresNum();
 extern "C"
 int getGPUCoresNum();
 
-
-//extern "C"
-//void *Panda_CPU_Map(void *ptr);
-
-//reserve for future usage
 extern "C"
-void Panda_Shuffle_Merge(gpu_context *d_g_state_0, gpu_context *d_g_state_1);
-
-extern "C"
-void Panda_Shuffle_Merge_GPU(panda_context *d_g_state_1, gpu_context *d_g_state_0);
-
-extern "C"
-void Panda_Shuffle_Merge_CPU(panda_context *d_g_state_1, cpu_context *d_g_state_0);
-
-
-extern "C"
-void *Panda_Reduce(void *ptr);
-
-extern "C"
-void AddPandaTask(job_configuration* job_conf,
-						void*		key, 
-						void*		val,
-						int		keySize, 
-						int		valSize);
+panda_context *GetPandaContext();
 
 extern "C"
 gpu_context *GetDGlobalState();
@@ -383,31 +447,11 @@ extern "C"
 cpu_context *GetCPUContext();
 
 extern "C"
+gpu_context *GetGPUContext();
+
+extern "C"
 job_configuration *GetJobConf();
 
-
-extern "C"
-void AddMapInputRecord2(gpu_context*		spec, 
-		   void*		key, 
-		   void*		val, 
-		   int		keySize, 
-		   int		valSize);
-
-extern "C"
-void AddMapInputRecordGPU(gpu_context* d_g_state,
-						keyval_t *kv_p, int start_row_id_id, int end_id);
-
-extern "C"
-void AddReduceInputRecordGPU(gpu_context* d_g_state, 
-							 keyvals_t * sorted_intermediate_keyvals_arr, int start_row_idi, int endi);
-
-extern "C"
-void AddMapInputRecordCPU(cpu_context* d_g_state,
-						keyval_t *kv_p, int start_row_id, int end);
-
-extern "C"
-void AddReduceInputRecordCPU(cpu_context* d_g_state,
-						keyvals_t * kv_p, int start_row_idi, int endj);
 
 
 extern "C"
@@ -416,22 +460,6 @@ void MapReduce2(gpu_context *d_g_state);
 extern "C"
 void FinishMapReduce2(gpu_context* state);
 
-__device__ void Emit2 (void*		key, 
-						void*		val, 
-						int		keySize, 
-						int		valSize,
-		           gpu_context *d_g_state);
-
-
-
-
-__device__ void EmitIntermediate2(void *key, 
-								  void *val, 
-								  int keySize, 
-								  int valSize, 
-								  gpu_context *d_g_state,
-								  int map_task_idx
-								  );
 
 //------------------------------------------------------
 //PandaScan.cu
@@ -453,41 +481,8 @@ __device__ void EmitIntermediate2(void *key,
 
 typedef struct
 {
-	//for input data on host
-	char*		inputKeys;
-	char*		inputVals;
-	int4*		inputOffsetSizes;
-	int		inputRecordCount;
-
-	//for intermediate data on host
-	char*		interKeys;
-	char*		interVals;
-	int4*		interOffsetSizes;
-	int2*		interKeyListRange;
-	int		interRecordCount;
-	int		interDiffKeyCount;
-	int		interAllKeySize;
-	int		interAllValSize;
-
-	//for output data on host
-	char*		outputKeys;
-	char*		outputVals;
-	int4*		outputOffsetSizes;
-	int2*		outputKeyListRange;
-	int		outputRecordCount;
-	int		outputAllKeySize;
-	int		outputAllValSize;
-	int		outputDiffKeyCount;
-
-	//user specification
-	char		workflow;
-	char		outputToHost;
-
-	int		numRecTaskMap;
-	int		numRecTaskReduce;
-	int		dimBlockMap;
-	int		dimBlockReduce;
-	//char* myKeys;
+	
+	
 } Spec_t;
 
 __device__ void *GetVal(void *vals, int4* interOffsetSizes, int index, int valStartIndex);
@@ -497,7 +492,6 @@ extern __shared__ char sbuf[];
 #define GET_OUTPUT_BUF(offset) (sbuf + threadIdx.x * 5 * sizeof(int) + offset)
 #define GET_VAL_FUNC(vals, index) GetVal(vals, interOffsetSizes, index, valStartIndex)
 #define GET_KEY_FUNC(key, index) GetKey(key, interOffsetSizes, index, valStartIndex)
-
 
 //-------------------------------------------------------
 //MarsUtils.cu
@@ -513,6 +507,8 @@ __global__ void printData3(float *C);
 #else
 #define DoLog(...) //do{printf(__VA_ARGS__);printf("\n");}while(0)
 #endif
+
+#define DoError(...) do{printf("[#Error#][%s]\t\t",__FUNCTION__);printf(__VA_ARGS__);printf("\n");}while(0)
 
 typedef void (*PrintFunc_t)(void* key, void* val, int keySize, int valSize);
 void PrintOutputRecords(Spec_t* spec, int num, PrintFunc_t printFunc);

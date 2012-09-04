@@ -1,14 +1,21 @@
-/*	
 
+/*	
 	Copyright 2012 The Trustees of Indiana University.  All rights reserved.
 	CGL MapReduce Framework on GPUs and CPUs
-	Code Name: Panda 0.1
+	
+	Code Name: Panda 
+	
 	File: PandaUtils.cu 
-	Time: 2012-07-01 
+	First Version:		2012-07-01 V0.1
+	Current Version:	2012-09-01 V0.3	
+	Last Updates:		2012-09-02
+
 	Developer: Hui Li (lihui@indiana.edu)
+
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
 
-*/
+ */
+
 
 #include "Panda.h"
 #include "Global.h"
@@ -120,11 +127,11 @@ void __checkCudaErrors(cudaError err, const char *file, const int line )
 __global__ void printData(gpu_context d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_row_id_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_row_id_idx = block_start_row_id_idx 
+	int block_start_row_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_idx = block_start_row_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
-	int thread_end_idx = thread_start_row_id_idx+num_records_per_thread*STRIDE;
+	int thread_end_idx = thread_start_row_idx+num_records_per_thread*STRIDE;
 
 	if(thread_end_idx>d_g_state.num_input_record)
 		thread_end_idx = d_g_state.num_input_record;
@@ -132,7 +139,7 @@ __global__ void printData(gpu_context d_g_state ){
 	int begin, end, val_pos, key_pos;
 	char *val_p,*key_p;
 
-	for(int map_task_idx=thread_start_row_id_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
+	for(int map_task_idx=thread_start_row_idx; map_task_idx < thread_end_idx; map_task_idx+=STRIDE){
 	
 		begin=0;
 		end=0;
