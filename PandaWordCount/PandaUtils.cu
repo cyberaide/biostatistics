@@ -18,7 +18,7 @@
 
 
 #include "Panda.h"
-#include "Global.h"
+#include "UserAPI.h"
 
 
 #ifdef _WIN32 
@@ -49,7 +49,7 @@ int getGPUCoresNum() {
 			sm_per_multiproc = arch_cores_sm[2];
 
 	return ((gpu_dev.multiProcessorCount)*(sm_per_multiproc));
-	//DoLog("Configure Device ID:%d: Device Name:%s MultProcessorCount:%d sm_per_multiproc:%d", i, gpu_dev.name,gpu_dev.multiProcessorCount,sm_per_multiproc);
+	//ShowLog("Configure Device ID:%d: Device Name:%s MultProcessorCount:%d sm_per_multiproc:%d", i, gpu_dev.name,gpu_dev.multiProcessorCount,sm_per_multiproc);
 
 }
 
@@ -103,12 +103,12 @@ double PandaTimer(){
 	gettimeofday(&tv,NULL);
 	double curTime = tv.tv_sec + tv.tv_usec/1000000.0;
 
-	//DoLog("\t Panda CurTime:%f", curTime);
+	//ShowLog("\t Panda CurTime:%f", curTime);
 	return curTime;
 	#else
 	//newtime = localtime( &long_time2 ); 
 	double curTime = GetTickCount(); 
-	//DoLog("\t Panda CurTime:%f", curTime);
+	//ShowLog("\t Panda CurTime:%f", curTime);
 	curTime /=1000.0;
 	return curTime;
 	#endif
@@ -127,8 +127,8 @@ void __checkCudaErrors(cudaError err, const char *file, const int line )
 __global__ void printData(gpu_context d_g_state ){
 	//printf("-----------printData TID:%d\n",TID);
 	int num_records_per_thread = (d_g_state.num_input_record+(gridDim.x*blockDim.x)-1)/(gridDim.x*blockDim.x);
-	int block_start_row_idx = num_records_per_thread*blockIdx.x*blockDim.x;
-	int thread_start_row_idx = block_start_row_idx 
+	int block_start_idx = num_records_per_thread*blockIdx.x*blockDim.x;
+	int thread_start_row_idx = block_start_idx 
 		+ (threadIdx.x/STRIDE)*num_records_per_thread*STRIDE
 		+ (threadIdx.x%STRIDE);
 	int thread_end_idx = thread_start_row_idx+num_records_per_thread*STRIDE;

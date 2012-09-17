@@ -20,6 +20,7 @@
 
 // includes, kernels
 #include "Panda.h"
+#include "UserAPI.h"
 
 
 //--------------------------------------------------
@@ -49,7 +50,7 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 		if (thread_info[dev_id].device_type == GPU_ACC){
 			
 			job_configuration* gpu_job_conf = (job_configuration*)(thread_info[dev_id].job_conf);
-			gpu_context *d_g_state = GetGPUContext();
+			gpu_context *d_g_state = CreateGPUContext();
 			d_g_state->num_mappers = gpu_job_conf->num_mappers;
 			d_g_state->num_reducers = gpu_job_conf->num_reducers;
 			d_g_state->num_gpus = num_gpus;
@@ -58,18 +59,18 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 			thread_info[dev_id].tid = dev_id;
 			thread_info[dev_id].d_g_state = d_g_state;
 
-			DoLog("Assigned Dev_ID:[%d] GPU_ACC TID:%d",assigned_gpu_id,thread_info[dev_id].tid);
+			ShowLog("Assigned Dev_ID:[%d] GPU_ACC TID:%d",assigned_gpu_id,thread_info[dev_id].tid);
 			assigned_gpu_id++;
 		}//if
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 			
-			cpu_context *d_g_state = GetCPUContext();
+			cpu_context *d_g_state = CreateCPUContext();
 			d_g_state->cpu_group_id = assigned_cpu_group_id;
 			thread_info[dev_id].tid = dev_id;
 			thread_info[dev_id].d_g_state = d_g_state;
 
-			DoLog("Assigned Dev_ID:[%d] CPU_ACC TID:%d",dev_id,thread_info[dev_id].tid);
+			ShowLog("Assigned Dev_ID:[%d] CPU_ACC TID:%d",dev_id,thread_info[dev_id].tid);
 			assigned_cpu_group_id++;
 		}//if
 	}//for
@@ -111,7 +112,7 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 		if (pthread_join(no_threads[i],&exitstat)!=0) perror("joining failed");
 	}//for
 
-	//DoLog("start to merge results of GPU's and CPU's device to Panda scheduler");
+	//ShowLog("start to merge results of GPU's and CPU's device to Panda scheduler");
 	for (int i = 0; i < num_gpus+num_cpus_groups; i++){
 
 		if (thread_info[i].device_type == CPU_ACC)
@@ -143,7 +144,7 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 				split[0] = records_per_device*ratio;
 				else 
 				split[i] = split[i-1] + records_per_device*ratio;
-								
+				ShowLog("split[%d]=%d ratio:%f records_per_device:%d",i,split[i],ratio,records_per_device);						
 	}//for
 	split[num_gpus + num_cpus_groups-1] = num_sorted_intermediate_record;
 
@@ -160,6 +161,10 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 
 		if (thread_info[dev_id].device_type == CPU_ACC){
 				cpu_context* d_g_state = (cpu_context*)(thread_info[dev_id].d_g_state);
+				d_g_state->sorted_keyvals_arr_len = 0;
+				//free(d_g_state->sorted_intermediate_keyvals_arr);
+				//d_g_state->sorted_intermediate_keyvals_arr = NULL;
+//ShowLog("AddReduceInputRecordCPU start_row_id:%d, end_row_id:%d num_sorted_intermediate_record:%d",start_row_id, end_row_id,num_sorted_intermediate_record);
 				AddReduceInputRecordCPU(d_g_state,(panda->sorted_intermediate_keyvals_arr), start_row_id, end_row_id);
 		}//if
 	}//for
@@ -193,8 +198,8 @@ void PandaMetaScheduler(thread_info_t *thread_info, panda_context *panda){
 		}//if
 		
 	}//for
-	DoLog("number of reduce output:%d\n",total_output_records);
-	DoLog("=====panda mapreduce job finished=====");
+	ShowLog("number of reduce output:%d\n",total_output_records);
+	ShowLog("=====panda mapreduce job finished=====");
 
 }//PandaMetaScheduler
 
@@ -206,11 +211,11 @@ void Start_Panda_Job(job_configuration *job_conf){
 	int num_cpus_cores = job_conf->num_cpus_cores;
 	int num_cpus_group = job_conf->num_cpus_groups;
 
-	panda_context *panda = GetPandaContext();
+	panda_context *panda = CreatePandaContext();
 	
 	panda->num_gpus = num_gpus;
 	panda->num_cpus_groups = num_cpus_group;
-	DoLog("Start num_gpus:%d  num_cpus_groups:%d", num_gpus, num_cpus_group);
+	ShowLog("Start num_gpus:%d  num_cpus_groups:%d", num_gpus, num_cpus_group);
 	pthread_t *no_threads = (pthread_t*)malloc(sizeof(pthread_t)*(num_gpus + num_cpus_group));
 	thread_info_t *thread_info = (thread_info_t*)malloc(sizeof(thread_info_t)*(num_gpus + num_cpus_group));
 	
@@ -223,10 +228,10 @@ void Start_Panda_Job(job_configuration *job_conf){
 		cudaDeviceProp gpu_dev;
 		cudaGetDeviceProperties(&gpu_dev, i);
 		
-		//DoLog("Configure Device ID:%d: Device Name:%s MultProcessorCount:%d sm_per_multiproc:%d", i, gpu_dev.name,gpu_dev.multiProcessorCount,sm_per_multiproc);
+		//ShowLog("Configure Device ID:%d: Device Name:%s MultProcessorCount:%d sm_per_multiproc:%d", i, gpu_dev.name,gpu_dev.multiProcessorCount,sm_per_multiproc);
 
 		thread_info[i].device_name = gpu_dev.name;
-		gpu_context *d_g_state = GetGPUContext();
+		gpu_context *d_g_state = CreateGPUContext();
 		d_g_state->matrix_size = job_conf->matrix_size;
 		d_g_state->num_mappers = job_conf->num_mappers;
 		d_g_state->num_reducers = job_conf->num_reducers;
@@ -237,7 +242,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 	for (int i=num_gpus; i<num_gpus+num_cpus_group; i++){
 		thread_info[i].tid = i;
 		thread_info[i].device_type = CPU_ACC;
-		cpu_context *d_g_state = GetCPUContext();
+		cpu_context *d_g_state = CreateCPUContext();
 		d_g_state->num_cpus_cores = num_cpus_cores;
 		thread_info[i].d_g_state = d_g_state;
 	}//for
@@ -252,7 +257,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 	}//if
 	
 	//////////////////////////////////////////////////
-	DoLog("num_gpus:%d num_cpus_group:%d num_input_record:%d sizeof(int):%d  ratio:%f\n", num_gpus, num_cpus_group,job_conf->num_input_record,sizeof(int),ratio);
+	ShowLog("num_gpus:%d num_cpus_group:%d num_input_record:%d sizeof(int):%d  ratio:%f\n", num_gpus, num_cpus_group,job_conf->num_input_record,sizeof(int),ratio);
 
 	int *split = NULL;
 	split = (int *)malloc(sizeof(int)*(num_gpus+num_cpus_group));
@@ -306,7 +311,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 		if (pthread_join(no_threads[i],&exitstat)!=0) perror("joining failed");
 	}//for
 
-	DoLog("start_row_id to merge!");
+	ShowLog("start_row_id to merge!");
 	for (int i = 0; i<num_gpus; i++){
 		PandaShuffleMergeGPU((panda_context*)panda, (gpu_context*)(thread_info[i].d_g_state));
 	}//for
@@ -315,7 +320,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 		PandaShuffleMergeCPU((panda_context*)panda, (cpu_context*)(thread_info[i].d_g_state));
 	}//for
 
-	DoLog("totoal number of different intermediate records:%d",panda->sorted_keyvals_arr_len);
+	ShowLog("totoal number of different intermediate records:%d",panda->sorted_keyvals_arr_len);
 	//TOD smart job for reduce ratio
 
 	//cudaThreadSynchronize();
@@ -367,7 +372,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 	//Panda_Reduce(&thread_info[num_gpus-1]);
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	DoLog("Finishing Panda MapReduce Job...");
+	ShowLog("Finishing Panda MapReduce Job...");
 	int total_output_records = 0;
 	for (int dev_id = 0; dev_id<(num_gpus+num_cpus_group); dev_id++){
 	
@@ -381,8 +386,8 @@ void Start_Panda_Job(job_configuration *job_conf){
 				total_output_records += d_g_state->sorted_keyvals_arr_len;
 		}//if
 	}//for
-	DoLog("there are :%d output records\n",total_output_records);
-	DoLog("=====finish map/reduce=====");
+	ShowLog("there are :%d output records\n",total_output_records);
+	ShowLog("=====finish map/reduce=====");
 #endif
 }		
 
@@ -393,7 +398,7 @@ void Start_Panda_Job(job_configuration *job_conf){
 
 float AutoTuningScheduler(thread_info_t *thread_info, panda_context *panda){
 	
-	DoLog("AutoTuningScheduler");
+	ShowLog("AutoTuningScheduler");
 	int num_gpus = panda->num_gpus;
 	int num_cpus_cores = getCPUCoresNum();//job_conf->num_cpus;
 	int num_cpus_groups = panda->num_cpus_groups;
@@ -419,7 +424,7 @@ float AutoTuningScheduler(thread_info_t *thread_info, panda_context *panda){
 				continue;
 			gpu_index = tid;
 
-			gpu_context *d_g_state = GetGPUContext();
+			gpu_context *d_g_state = CreateGPUContext();
 			d_g_state->num_gpus = num_gpus;
 			thread_info[tid].d_g_state = d_g_state;
 
@@ -436,7 +441,7 @@ float AutoTuningScheduler(thread_info_t *thread_info, panda_context *panda){
 				continue;
 			cpu_index = tid;
 
-			cpu_context *d_g_state = GetCPUContext();
+			cpu_context *d_g_state = CreateCPUContext();
 			//d_g_state->num_cpus_groups = num_cpus_groups;
 			thread_info[tid].d_g_state = d_g_state;
 
@@ -470,7 +475,7 @@ float AutoTuningScheduler(thread_info_t *thread_info, panda_context *panda){
 	//double ratio = (t_cpu*gpu_sampled_tasks_num)/(t_gpu*cpu_sampled_tasks_num);
 	
 	double ratio = (t_cpu)/(t_gpu);
-	DoLog("cpu time:%f gpu time:%f ratio:%f", (t_cpu), (t_gpu), ratio);
+	ShowLog("cpu time:%f gpu time:%f ratio:%f", (t_cpu), (t_gpu), ratio);
 	/*
 	char log[128];
 	sprintf(log,"	cpu_sampled_tasks:%d cpu time:%f cpu time per task:%f", cpu_sampled_tasks_num, t_cpu, t_cpu/(cpu_sampled_tasks_num));
@@ -497,7 +502,7 @@ void PandaDynamicMetaScheduler(thread_info_t *thread_info, panda_context *panda)
 		if (thread_info[dev_id].device_type == GPU_ACC){
 			
 			job_configuration* gpu_job_conf = (job_configuration*)(thread_info[dev_id].job_conf);
-			gpu_context *d_g_state = GetGPUContext();
+			gpu_context *d_g_state = CreateGPUContext();
 			d_g_state->num_mappers = gpu_job_conf->num_mappers;
 			d_g_state->num_reducers = gpu_job_conf->num_reducers;
 			d_g_state->num_gpus = num_gpus;
@@ -506,19 +511,19 @@ void PandaDynamicMetaScheduler(thread_info_t *thread_info, panda_context *panda)
 			thread_info[dev_id].tid = dev_id;
 			thread_info[dev_id].d_g_state = d_g_state;
 
-			DoLog("Assigned Dev_ID:[%d] GPU_ACC TID:%d",assigned_gpu_id,thread_info[dev_id].tid);
+			ShowLog("Assigned Dev_ID:[%d] GPU_ACC TID:%d",assigned_gpu_id,thread_info[dev_id].tid);
 			assigned_gpu_id++;
 		}//if
 
 		int cpu_group_id = 0;
 		if (thread_info[dev_id].device_type == CPU_ACC){
 			
-			cpu_context *d_g_state = GetCPUContext();
+			cpu_context *d_g_state = CreateCPUContext();
 			d_g_state->cpu_group_id = cpu_group_id;
 			thread_info[dev_id].tid = dev_id;
 			thread_info[dev_id].d_g_state = d_g_state;
 
-			DoLog("Assigned Dev_ID:[%d] CPU_ACC TID:%d",dev_id,thread_info[dev_id].tid);
+			ShowLog("Assigned Dev_ID:[%d] CPU_ACC TID:%d",dev_id,thread_info[dev_id].tid);
 			cpu_group_id++;
 		}//if
 	}//for
@@ -561,14 +566,15 @@ void PandaDynamicMetaScheduler(thread_info_t *thread_info, panda_context *panda)
 		if (pthread_join(no_threads[i],&exitstat)!=0) perror("joining failed");
 	}//for
 
-	//DoLog("start to merge results of GPU's and CPU's device to Panda scheduler");
+	//ShowLog("start to merge results of GPU's and CPU's device to Panda scheduler");
 	for (int i = 0; i < num_gpus+num_cpus_groups; i++){
 
 		if (thread_info[i].device_type == CPU_ACC)
 			PandaShuffleMergeCPU((panda_context*)panda, (cpu_context*)(thread_info[i].d_g_state));
 
 		if (thread_info[i].device_type == GPU_ACC)
-			PandaShuffleMergeGPU((panda_context*)panda, (gpu_context*)(thread_info[i].d_g_state));
+			
+			((panda_context*)panda, (gpu_context*)(thread_info[i].d_g_state));
 			
 	}//for
 	
@@ -643,8 +649,8 @@ void PandaDynamicMetaScheduler(thread_info_t *thread_info, panda_context *panda)
 		}//if
 		
 	}//for
-	DoLog("number of reduce output:%d\n",total_output_records);
-	DoLog("=====panda mapreduce job finished=====");
+	ShowLog("number of reduce output:%d\n",total_output_records);
+	ShowLog("=====panda mapreduce job finished=====");
 
 }//PandaMetaScheduler
 

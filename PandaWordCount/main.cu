@@ -12,16 +12,14 @@
 	Developer: Hui Li (lihui@indiana.edu)
 
 	This is the source code for Panda, a MapReduce runtime on GPUs and CPUs.
-
  */
 
 
 #include "Panda.h"
-#include "Global.h"
+#include "UserAPI.h"
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 
 //#include <sys/time.h>
 
@@ -29,43 +27,6 @@
 //usage: WordCount datafile
 //param: datafile 
 //-----------------------------------------------------------------------
-
-
-
-void word_count_config_input(thread_info_t *thread_info){
-/*
-		char str[256];
-		char strInput[10100];
-		FILE *myfp;
-		char *fn = thread_info->file_name;
-		gpu_context *d_g_state = thread_info->d_g_state;
-
-		myfp = fopen(fn, "r");
-		int iKey = 0;
-		int totalLen = 0;
-		
-		while(fgets(str,sizeof(str),myfp) != NULL)
-		{
-			for (int i = 0; i < strlen(str); i++)
-			str[i] = toupper(str[i]);
-			//printf("%s\t len:%d\n", str,strlen(str));
-			strcpy((strInput + totalLen),str);
-			totalLen += (int)strlen(str);
-			if(totalLen>1000){
-			//printf("strLen:%s\n",strInput);
-			totalLen = 100;
-			//TODO
-			AddMapInputRecord2(d_g_state, &iKey, strInput, sizeof(int), totalLen);
-			totalLen=0;
-			iKey++;
-			if (iKey%100==0)
-				printf("iKey:%d\n",iKey);
-			}//if
-		}//while
-		fclose(myfp);
-		printf("%s input:%s  \ttotal lines:%d\n",thread_info->device_name, fn,iKey);
-*/
-}
 		
 int main(int argc, char** argv)
 {		
@@ -75,13 +36,12 @@ int main(int argc, char** argv)
 		printf("usage: %s [text file][num gpu][num cpu groups][num_mappers][cpu/gpu work ratio]\n", argv[0]);
 		exit(-1);	
 	}//if
-	DoLog("%s %s",argv[0],argv[1]);
+	ShowLog("%s %s",argv[0],argv[1]);
 	char *fn = argv[1];
 	int num_gpus = atoi(argv[2]);
 	int num_cpus_groups = atoi(argv[3]);
 	int num_mappers = atoi(argv[4]);
 	float ratio = atof(argv[5]);
-	
 	
 	char str[256];
 	char strInput[10100];
@@ -99,7 +59,8 @@ int main(int argc, char** argv)
 
 	int cpuWorkLoad = filestatus.st_size * ratio;
 	int gpuWorkLoad = filestatus.st_size * (1 - ratio);
-	DoLog("input file size:%d cpu workload:%d gpu workload:%d", filestatus.st_size, cpuWorkLoad, gpuWorkLoad );
+	ShowLog("input file size:%d cpu workload:%d gpu workload:%d", filestatus.st_size, cpuWorkLoad, gpuWorkLoad );
+	double t3 = PandaTimer();
 
 	for (int dev_id = 0; dev_id < num_gpus; dev_id++){
 		//configure gpu job
@@ -118,7 +79,7 @@ int main(int argc, char** argv)
 			strcpy((strInput + totalLen),str);
 			totalLen += (int)strlen(str);
 		
-			if(totalLen>500){
+			if(totalLen>2000){
 			
 			//totalLen = 100;
 			AddPandaTask(gpu_job_conf, &iKey, strInput, sizeof(int), totalLen);
@@ -135,7 +96,7 @@ int main(int argc, char** argv)
 
 		//fclose(myfp);
 
-		DoLog("configure resources for Panda gpu jobs. input:%s  total map tasks:%d",fn,iKey);
+		ShowLog("configure resources for Panda gpu jobs. input:%s  total map tasks:%d",fn,iKey);
 
 		//configure panda worker
 		thread_info[dev_id].job_conf = gpu_job_conf;
@@ -146,7 +107,7 @@ int main(int argc, char** argv)
 
 	for (int dev_id=num_gpus; dev_id < num_gpus+num_cpus_groups; dev_id++){
 
-		job_configuration *cpu_job_conf = GetJobConf();
+		job_configuration *cpu_job_conf = CreateJobConf();
 		cpu_job_conf->num_cpus_groups = num_cpus_groups;
 		cpu_job_conf->num_cpus_cores = getCPUCoresNum();
 
@@ -168,7 +129,7 @@ int main(int argc, char** argv)
 			}//if
 		}//while
 		
-		DoLog("configure resources for Panda cpu jobs. input:%s  total map tasks:%d",fn,iKey);
+		ShowLog("configure resources for Panda cpu jobs. input:%s  total map tasks:%d",fn,iKey);
 		
 		thread_info[dev_id].job_conf = cpu_job_conf;
 		thread_info[dev_id].device_type = CPU_ACC;
@@ -177,14 +138,19 @@ int main(int argc, char** argv)
 	fclose(myfp);
 
 	double t4 = PandaTimer();
-	panda_context *panda = GetPandaContext();
-	
+	panda_context *panda = CreatePandaContext();
 	panda->num_gpus = num_gpus;
 	panda->num_cpus_groups = num_cpus_groups;
 	panda->ratio = ratio;
-	
 	PandaMetaScheduler(thread_info, panda);
-	
+	double t5 = PandaTimer();
+
+	ShowLog("Copy Input Data:%f",t4-t3);
+	ShowLog("Compute:%f",t5-t4);
+	char strLog[128];
+	sprintf(strLog,"data size:%d KB copy data:%f compute:%f cpu/gpu ratio:%f", filestatus.st_size/1024, t4-t3, t5-t4, (double)ratio);
+	DoDiskLog(strLog);
+
 	return 0;
 		
 }//		
