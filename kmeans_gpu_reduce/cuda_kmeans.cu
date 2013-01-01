@@ -196,8 +196,10 @@ float** cuda_kmeans(float **objects,
 
         cudaDeviceSynchronize(); checkLastCudaError();
 
-        compute_delta <<< 1, numReductionThreads, reductionBlockSharedDataSize >>>
-            (deviceIntermediates, numClusterBlocks, numReductionThreads);
+        //compute_delta <<< 1, numReductionThreads, reductionBlockSharedDataSize >>>
+        //    (deviceIntermediates, numClusterBlocks, numReductionThreads);
+
+ 	parallel_reduce<int><<< 1, numReductionThreads, reductionBlockSharedDataSize >>>(deviceIntermediates);
 
         cudaDeviceSynchronize(); checkLastCudaError();
 
@@ -249,7 +251,7 @@ float** cuda_kmeans(float **objects,
 }
 
 template <typename T, typename Op>
-__device__ void reduce(T * const array)
+__device__ void parallel_reduce(T * const array)
 {
 		Op op;
 		if (threadIdx.x < 128) array[threadIdx.x] = op(array[threadIdx.x], array[threadIdx.x + 128]);
