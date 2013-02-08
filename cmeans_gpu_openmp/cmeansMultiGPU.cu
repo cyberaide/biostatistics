@@ -110,7 +110,6 @@ int main(int argc, char* argv[])
         cudaGetDeviceProperties(&dprop, i);
         printf("   %d: %s\n", i, dprop.name);
     }
-    printf("---------------------------\n");
     
     cutStartTimer(timer_main_cpu); 
     srand((unsigned)(time(0)));
@@ -247,14 +246,12 @@ int main(int argc, char* argv[])
             cudaTimer_t timer;
             createTimer(&timer);
             startTimer(timer);
-
             size = sizeof(float)*NUM_DIMENSIONS*NUM_CLUSTERS;
 
             // Copy the cluster centers to the GPU
             startTimer(timer_memcpy);
             CUDA_SAFE_CALL(cudaMemcpy(d_C, myClusters, size, cudaMemcpyHostToDevice));
             stopTimer(timer_memcpy);
-            
 
             startTimer(timer_gpu);
             DEBUG("Launching ComputeDistanceMatrix kernel\n");
@@ -544,19 +541,15 @@ float* readFCS (char*filename){
     printf("%s\n",pFCSVersion);
 
     char *pToBeginText = strtok(NULL, " ");
-    //printf("hi 0.0 :%s\n",pToBeginText);
     int toBeginText = atoi(pToBeginText);
 
     char *pToEndText = strtok(NULL, " ");
     int toEndText = atoi(pToEndText);
-    //printf("hi 0.1 :%s\n",pToEndText);
 
     char *pToBeginDATA = strtok(NULL, " ");
     int toBeginDATA = atoi(pToBeginDATA);
-    //printf("hi 0.2 :%s\n",pToBeginDATA);
 
     char *pToEndDATA = strtok(NULL, " ");
-    //printf("hi 0.3 :%s\n",pToEndDATA);
     int toEndDATA = atoi(pToEndDATA);
 
     char *pToBeginANAL = strtok(NULL, " ");
@@ -564,7 +557,6 @@ float* readFCS (char*filename){
     int toBeginANAL = atoi(pToBeginANAL);
 
     char *pToEndANAL = strtok(NULL, " ");
-    //printf("hi 0.5 :%s\n",pToEndANAL);
     int toEndANAL = atoi(pToEndANAL);
 
     long remainingHeaderSize = toBeginText - initialHeaderSize;
@@ -648,8 +640,6 @@ float* readFCS (char*filename){
    		}//strcmp(dataType,"F")==0)
    	return dataMatrix;
 }//float readFCS
-
-
 
 float* readCSV(char* filename) {
     FILE* myfile = fopen(filename, "r");
